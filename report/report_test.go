@@ -250,3 +250,53 @@ func TestFixListVersionVerdicts(t *testing.T) {
 		t.Errorf("summary mentions ruled-out flaws:\n%s", s)
 	}
 }
+
+func TestFixListSecretsAndBreaches(t *testing.T) {
+	fs := []match.Finding{
+		{Key: "secret|0123456789abcdef|app/settings.py", Kind: match.KindSecret, TechID: "github-pat",
+			Technology: "GitHub personal access token", Evidence: "ghp_ab… (40 chars)", File: "app/settings.py", Line: 12,
+			Fingerprint: "0123456789abcdef", Score: 90, Severity: match.Critical, Confidence: match.ConfidenceObserved},
+		{Key: "secret|0123456789abcdef|old/config.py", Kind: match.KindSecret, TechID: "github-pat",
+			Technology: "GitHub personal access token", Evidence: "ghp_ab… (40 chars)", File: "old/config.py", Line: 3,
+			Commit: "8f2c1d0e9b7a6f5e4d3c2b1a", Fingerprint: "0123456789abcdef", Score: 90, Severity: match.Critical,
+			Confidence: match.ConfidenceObserved},
+		{Key: "breach|example.com|Adobe", Kind: match.KindBreach, Host: "example.com", TechID: "Adobe", Name: "Adobe",
+			BreachDate: "2013-10-04", DateAdded: "2013-12-04", Accounts: 5, Passwords: true, Score: 60, Severity: match.Medium,
+			Confidence: match.ConfidenceObserved},
+		{Key: "breach|example.com|Spamlist", Kind: match.KindBreach, Host: "example.com", TechID: "Spamlist", Name: "Spam <list>",
+			BreachDate: "2020-01-01", DateAdded: "2020-02-01", Accounts: 40, Score: 30, Severity: match.Low,
+			Confidence: match.ConfidenceObserved},
+	}
+	var b strings.Builder
+	if err := FixList(&b, fs, meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		"**Fix now: 1 · This week: 0 · This month: 1 · Later: 0**",
+		"### 1. Secret in source code: GitHub personal access token",
+		"- **Secret:** `ghp_ab… (40 chars)`",
+		"  - `app/settings.py:12`\n",
+		"  - `old/config.py:3` · commit `8f2c1d0e9b7a`\n",
+		"### 2. Accounts on example.com in known data breaches",
+		"appear in 2 data breaches, 1 of which exposed passwords",
+		"  - **Adobe** · breached 2013-10-04 · 5 accounts · passwords exposed\n",
+		"  - **Spam &lt;list&gt;** · breached 2020-01-01 · 40 accounts\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("fix list is missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "example.com:0") || strings.Contains(out, " :0") {
+		t.Errorf("fix list shows a port for secrets or breaches:\n%s", out)
+	}
+	s := Summary(fs, fs, nil, true, meta("pl"))
+	for _, want := range []string{
+		"[krytyczne] Sekret w kodzie źródłowym: GitHub personal access token: app/settings.py:12",
+		"[średnie] Konta w domenie example.com w znanych wyciekach danych",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("summary is missing %q\n%s", want, s)
+		}
+	}
+}

@@ -30,6 +30,8 @@ const (
 	KindTLSExpiring  Kind = "tls-expiring"  // certificate expires soon
 	KindAdminExposed Kind = "admin-exposed" // admin interface reachable
 	KindExposedFile  Kind = "exposed-file"  // a file that should not be public, found by -checks
+	KindSecret       Kind = "secret"        // a secret in source code, found by `hejnal leaks scan`
+	KindBreach       Kind = "breach"        // accounts on a domain in a known data breach
 )
 
 // exposureScores rates exposed files: environment files usually hold
@@ -149,12 +151,25 @@ type Finding struct {
 	Packaged bool `json:"packaged,omitempty"`
 	// Condition names the platform the flaw needs according to NVD, such
 	// as "microsoft windows"; the version seen is affected only there.
-	Condition  string     `json:"condition,omitempty"`
-	Subject    string     `json:"subject,omitempty"`
-	Expires    *time.Time `json:"expires,omitempty"`
-	Score      int        `json:"score"`
-	Severity   Severity   `json:"severity"`
-	Confidence string     `json:"confidence"`
+	Condition string     `json:"condition,omitempty"`
+	Subject   string     `json:"subject,omitempty"`
+	Expires   *time.Time `json:"expires,omitempty"`
+	// File, Line and Commit locate a secret in source code. Commit is set
+	// when the secret was found in the Git history. Fingerprint identifies
+	// the secret without revealing it.
+	File        string `json:"file,omitempty"`
+	Line        int    `json:"line,omitempty"`
+	Commit      string `json:"commit,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// BreachDate, Accounts and Passwords describe a data breach: when it
+	// happened, how many accounts on the domain it exposed and whether it
+	// exposed passwords.
+	BreachDate string   `json:"breachDate,omitempty"`
+	Accounts   int      `json:"accounts,omitempty"`
+	Passwords  bool     `json:"passwords,omitempty"`
+	Score      int      `json:"score"`
+	Severity   Severity `json:"severity"`
+	Confidence string   `json:"confidence"`
 }
 
 // Options tune matching.
@@ -428,8 +443,13 @@ func Sort(fs []Finding) {
 }
 
 // Group is one item to fix: all known exploited flaws of one product on one
-// service, or a single hygiene finding.
+// service, every place one secret was found, all breaches of one domain, or a
+// single hygiene finding.
 type Group struct {
+	// Key identifies the item across runs: kind, host, port and product for
+	// known exploited flaws, the fingerprint for a secret, the domain for
+	// breaches, and the finding's key otherwise.
+	Key        string
 	Kind       Kind
 	Host       string
 	Port       int
@@ -467,14 +487,21 @@ func Groups(fs []Finding) []Group {
 	var out []Group
 	for _, f := range sorted {
 		k := f.Key
-		if f.Kind == KindKEV {
+		switch f.Kind {
+		case KindKEV:
 			k = fmt.Sprintf("%s|%s|%d|%s", f.Kind, f.Host, f.Port, f.TechID)
+		case KindSecret:
+			// One secret to replace, wherever it was found.
+			k = fmt.Sprintf("%s|%s", f.Kind, f.Fingerprint)
+		case KindBreach:
+			k = fmt.Sprintf("%s|%s", f.Kind, f.Host)
 		}
 		i, ok := idx[k]
 		if !ok {
 			i = len(out)
 			idx[k] = i
 			out = append(out, Group{
+				Key:        k,
 				Kind:       f.Kind,
 				Host:       f.Host,
 				Port:       f.Port,

@@ -163,7 +163,65 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("admin.todo"))
 		writeSeen(b, tr, g, false)
 		b.WriteString("\n")
+	case match.KindSecret:
+		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("secret.title", mdEscape(g.Technology)))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("secret.why"))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("secret.todo"))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.secret"), mdCode(g.Evidence))
+		fmt.Fprintf(b, "- **%s:**\n", tr("label.found"))
+		for i, f := range g.Findings {
+			if i == maxFlaws {
+				fmt.Fprintf(b, "  - %s\n", tr("sum.more", len(g.Findings)-maxFlaws))
+				break
+			}
+			fmt.Fprintf(b, "  - %s\n", secretPlace(tr, f, true))
+		}
+		b.WriteString("\n")
+	case match.KindBreach:
+		withPasswords := 0
+		for _, f := range g.Findings {
+			if f.Passwords {
+				withPasswords++
+			}
+		}
+		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("breach.title", mdEscape(g.Host)))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("breach.why", len(g.Findings), withPasswords))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("breach.todo"))
+		fmt.Fprintf(b, "- **%s:**\n", tr("label.breaches"))
+		for i, f := range g.Findings {
+			if i == maxFlaws {
+				fmt.Fprintf(b, "  - %s\n", tr("sum.more", len(g.Findings)-maxFlaws))
+				break
+			}
+			parts := []string{"**" + mdEscape(f.Name) + "**", tr("breach.date", f.BreachDate), tr("breach.accounts", f.Accounts)}
+			if f.Passwords {
+				parts = append(parts, tr("breach.passwords"))
+			}
+			fmt.Fprintf(b, "  - %s\n", strings.Join(parts, " · "))
+		}
+		b.WriteString("\n")
 	}
+}
+
+// secretPlace says where a secret was found: a file and line, and the commit
+// when it was found in the Git history.
+func secretPlace(tr translator, f match.Finding, markdown bool) string {
+	place := fmt.Sprintf("%s:%d", f.File, f.Line)
+	commit := f.Commit
+	if len(commit) > 12 {
+		commit = commit[:12]
+	}
+	if !markdown {
+		if commit != "" {
+			place += " (" + tr("secret.commit", commit) + ")"
+		}
+		return place
+	}
+	place = mdCode(place)
+	if commit != "" {
+		place += " · " + tr("secret.commit", mdCode(commit))
+	}
+	return place
 }
 
 func writeSeen(b *strings.Builder, tr translator, g match.Group, withVersion bool) {
@@ -345,6 +403,10 @@ func groupTitle(tr translator, g match.Group) string {
 		return tr("admin.title", g.Technology, where)
 	case match.KindExposedFile:
 		return tr("file.title."+g.TechID, where)
+	case match.KindSecret:
+		return tr("secret.title", g.Technology) + ": " + secretPlace(tr, g.Findings[0], false)
+	case match.KindBreach:
+		return tr("breach.title", g.Host)
 	}
 	return where
 }

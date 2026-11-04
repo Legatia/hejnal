@@ -9,7 +9,11 @@ the people who read the reports.
 Hejnal must stay safe to point at production systems. We will not merge:
 
 - exploit code or payloads, even "harmless" proof-of-concept ones;
-- checks that log in, guess passwords, guess paths or fuzz parameters;
+- checks that log in, guess passwords, brute-force paths or fuzz parameters;
+- requests to new paths in the default scan. The opt-in `-checks` mode may
+  request a short, fixed list of well-known paths with ordinary `GET`
+  requests, never following redirects; a new one needs a strong case and must
+  not store secrets it finds;
 - anything that contacts hosts outside the scope or weakens the scope checks;
 - new third-party Go dependencies without a strong reason. Hejnal uses only
   the Go standard library, so anyone can audit what it does.
@@ -45,7 +49,9 @@ any redirects inside the scope:
   "generator": "^ExampleCMS",
   "body": ["/exgw/static/", "exgwLogin\\("],
   "versions": [{"source": "header:Server", "regex": "ExampleGW/([0-9.]+)"}],
-  "kev": [{"vendor": "^Example Corp$", "product": "Secure Gateway"}]
+  "packaged": [{"source": "header:Server", "regex": "\\((Debian|Ubuntu)\\)"}],
+  "kev": [{"vendor": "^Example Corp$", "product": "Secure Gateway"}],
+  "cpe": ["examplecorp:secure_gateway"]
 }
 ```
 
@@ -62,6 +68,14 @@ any redirects inside the scope:
   catalog by their `vendorProject` and `product` fields. For entries CISA
   files under "Multiple Products", add `text` so that only entries whose name
   or description mention this product match.
+- `cpe` lists the product's NVD names as `vendor:product`, the third and
+  fourth parts of its CPE names (for example `apache:http_server`). With it,
+  Hejnal compares a version it sees with NVD's affected version ranges. List
+  every name NVD has used for the product, such as `f5:nginx` and
+  `nginx:nginx`.
+- `packaged` marks versions that come from a Linux distribution package.
+  Distributions backport fixes without changing the version, so Hejnal never
+  treats such a version as confirmed affected.
 - Categories: `edge` and `remote-access` raise the score, because attackers
   go for internet-facing gateways first. Use the existing categories (the
   tests list them).
