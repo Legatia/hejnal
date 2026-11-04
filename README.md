@@ -13,8 +13,9 @@ The name comes from the *hejnał mariacki*, the bugle call played every hour
 from St Mary's Church in Kraków. Legend has it a trumpeter once used it to warn
 the city of an attack.
 
-> **Status:** early (v0.1). The open-source core works end to end. Hosted,
-> managed and partner (MSP) editions are planned on top of it.
+> **Status:** early (v0.2). The open-source core works end to end. Hosted,
+> managed and partner (MSP) editions are built on top of it as a separate
+> commercial product.
 
 ## What it does
 
@@ -30,16 +31,22 @@ the city of an attack.
 3. **Matches it against what is exploited now.** It compares what it found
    with the [CISA Known Exploited Vulnerabilities
    catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
-   (KEV). It ranks each match by how recently the flaw was added, whether the
-   system is an internet-facing gateway, ransomware use, CISA's call for
-   forensic triage and the [FIRST EPSS](https://www.first.org/epss/)
-   exploitation probability.
-4. **Tells you what to do.** It writes a fix list in English or Polish and can
-   post a chat message when something new appears. If a system was
-   compromised, it can draft a NIS2 early warning.
+   (KEV). When a product shows its version, Hejnal compares it with the
+   affected versions recorded by [NVD](https://nvd.nist.gov/), so flaws your
+   version is not affected by drop out of the way. It ranks each match by how
+   recently the flaw was added, whether the system is an internet-facing
+   gateway, ransomware use, CISA's call for forensic triage and the
+   [FIRST EPSS](https://www.first.org/epss/) exploitation probability.
+4. **Tells you what to do.** It writes a fix list in English or Polish and
+   sends new findings to Slack, Microsoft Teams or email. Each month it can
+   report what was found, what was fixed and how long fixes took. If a system
+   was compromised, it can draft a NIS2 early warning.
 
 It also flags expired or expiring TLS certificates and admin interfaces it can
-reach, such as Jenkins, phpMyAdmin or a vCenter login.
+reach, such as Jenkins, phpMyAdmin or a vCenter login. With `-checks` it also
+looks for exposed `.git` directories, `.env` files and server status pages.
+A REST API and an MCP server make the results available to other tools and to
+AI assistants.
 
 See an [example fix list](examples/fix-list.en.md) (and [in
 Polish](examples/fix-list.pl.md)).
@@ -72,8 +79,14 @@ prints this every time it runs.
   points to another host in scope, that host gets its own check.
 - **Small ranges.** IP ranges are capped at 1,024 addresses, so a typo cannot
   become a large scan.
-- **Detection only.** No logins, no password guessing, no path guessing, no
-  exploit payloads. Hejnal sends one `GET /` per web service.
+- **Detection only.** No logins, no password guessing, no exploit payloads.
+  By default Hejnal sends one `GET /` per web service.
+- **Opt-in checks are fixed and few.** With `-checks`, Hejnal sends a few more
+  ordinary `GET` requests per web service to fixed, well-known paths:
+  `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
+  version page (such as WordPress's `/feed/` or Grafana's `/api/health`) for
+  recognised products that hide their version. It never follows redirects
+  for these, and an exposed `.env` file is counted, never stored.
 - **Private results.** The inventory and findings are written readable only
   by their owner (mode 0600), because they map your attack surface.
 
@@ -82,7 +95,20 @@ people's systems can be illegal.
 
 ## Install
 
-You need [Go](https://go.dev/dl/) 1.26 or newer.
+Download a release for Linux, macOS or Windows from the
+[releases page](https://github.com/Legatia/hejnal/releases). Each release
+signs `checksums.txt` with Sigstore and ships an SBOM per archive. To verify:
+
+```sh
+cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/Legatia/hejnal/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+sha256sum --ignore-missing -c checksums.txt
+```
+
+With [Go](https://go.dev/dl/) 1.26 or newer you can also install it directly:
 
 ```sh
 go install github.com/Legatia/hejnal/cmd/hejnal@latest
@@ -106,6 +132,7 @@ hejnal init                        # writes an example scope.json
 $EDITOR scope.json                 # list your systems and who authorised the checks
 hejnal run -scope scope.json       # discover, match and write .hejnal/fixlist.md
 hejnal report fixlist -lang pl     # the fix list in Polish
+hejnal report monthly              # this month: exposure, found, fixed, time to fix
 hejnal report nis2                 # a NIS2 early-warning draft
 ```
 
@@ -142,19 +169,27 @@ scope.
 
 ## Run it every day
 
-`hejnal run` is made for cron or a systemd timer. It sends a chat message only
-on the first run and when something new appears. If the message cannot be
-sent, the run exits with status 1 and the next run reports the same findings
-again.
+`hejnal run` is made for cron or a systemd timer. It notifies only on the
+first run and when something new appears. If a notification cannot be sent,
+the run exits with status 1 and the next run reports the same findings again.
 
 ```cron
 HEJNAL_WEBHOOK=https://hooks.slack.com/services/T000/B000/XXXX
+HEJNAL_NVD_API_KEY=your-free-nvd-key
 17 7 * * *  cd /srv/hejnal && hejnal run -lang pl -fail-on high >> hejnal.log 2>&1
 ```
 
-The webhook accepts any Slack-compatible incoming webhook, including Slack,
-Mattermost and Rocket.Chat. Pass it in the `HEJNAL_WEBHOOK` environment
-variable rather than on the command line, so it stays out of process lists.
+Notification channels, configured through environment variables so secrets
+stay out of process lists:
+
+| Channel | Settings |
+|---|---|
+| Slack, Mattermost, Rocket.Chat | `HEJNAL_WEBHOOK` (or `-webhook`) |
+| Microsoft Teams | `HEJNAL_TEAMS_WEBHOOK` (or `-teams-webhook`): a Workflows "post to a channel when a webhook request is received" URL |
+| Email | `HEJNAL_EMAIL_TO` (or `-email-to`), `HEJNAL_SMTP_HOST`, `HEJNAL_SMTP_PORT` (587 by default; 465 for TLS), `HEJNAL_SMTP_USER`, `HEJNAL_SMTP_PASSWORD`, `HEJNAL_SMTP_FROM`. Hejnal refuses to send unencrypted. The fix list is attached. |
+
+A free [NVD API key](https://nvd.nist.gov/developers/request-an-api-key) in
+`HEJNAL_NVD_API_KEY` makes version checks about ten times faster.
 
 Exit status: `0` when done, `1` on errors, `2` when `-fail-on` is set and new
 findings reach that severity.
@@ -168,12 +203,14 @@ findings reach that severity.
 | `hejnal discover` | Only finds hosts and identifies software; saves the inventory. |
 | `hejnal feeds` | Downloads the KEV catalog into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
-| `hejnal report fixlist\|nis2` | Prints a report from the last run. |
+| `hejnal report fixlist\|nis2\|monthly` | Prints a report from the saved runs. |
+| `hejnal serve` | Serves the results over a REST API. |
+| `hejnal mcp` | Serves the results to AI assistants over MCP. |
 | `hejnal rules` | Lists the products Hejnal recognises. |
 
-Run `hejnal <command> -h` for flags. Useful ones: `-lang en|pl`, `-no-ct` to
-skip certificate transparency, `-no-epss`, `-offline`, `-kev-file`,
-`-concurrency` and `-timeout`.
+Run `hejnal <command> -h` for flags. Useful ones: `-lang en|pl`, `-checks`,
+`-no-ct` to skip certificate transparency, `-no-epss`, `-no-nvd`, `-offline`,
+`-kev-file`, `-concurrency` and `-timeout`.
 
 ### Files
 
@@ -187,7 +224,7 @@ change it):
 | `reported.json` | The findings people were last told about, used to tell what is new. |
 | `history/` | Findings from earlier runs; the last 200 are kept. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
-| `cache/kev.json`, `cache/epss.json` | Downloaded feeds. KEV is refreshed after 6 hours, EPSS scores when they are more than two days old. |
+| `cache/kev.json`, `cache/epss.json`, `cache/nvd/` | Downloaded feeds. KEV is refreshed after 6 hours, EPSS scores when they are more than two days old, NVD records after a week (a day while NVD has not analysed a flaw yet). |
 
 ### Offline and air-gapped use
 
@@ -196,14 +233,70 @@ Download the catalog on a connected machine with `hejnal feeds`. Copy
 `-kev-file` at the copy). Discovery still needs network access to your own
 systems, of course.
 
+## API and AI assistants
+
+`hejnal serve` makes the saved results available over a REST API, for
+dashboards, ticketing and scripts. Clients send the token from
+`HEJNAL_API_TOKEN` as `Authorization: Bearer <token>`.
+
+```sh
+export HEJNAL_API_TOKEN=$(openssl rand -hex 32)
+hejnal serve -addr 127.0.0.1:8080
+curl -H "Authorization: Bearer $HEJNAL_API_TOKEN" http://127.0.0.1:8080/v1/groups?min_severity=high
+```
+
+| Endpoint | Returns |
+|---|---|
+| `GET /v1/health` | Status and version. The only endpoint that needs no token. |
+| `GET /v1/findings` | Findings from the last run. Filters: `min_severity`, `kind`, `host`. |
+| `GET /v1/groups` | Items to fix, as in the fix list. Filter: `min_severity`. |
+| `GET /v1/inventory` | Hosts, services and recognised products. |
+| `GET /v1/changes` | What is new and what was resolved since the last notification. |
+| `GET /v1/reports/fixlist`, `GET /v1/reports/nis2` | The reports as Markdown. Parameter: `lang`. |
+| `POST /v1/runs`, `GET /v1/runs/{id}` | Start a scan of the scope and follow it. Only with `-allow-runs`. |
+
+The API has no TLS of its own. Keep it on a local address, or put it behind a
+reverse proxy that terminates TLS.
+
+`hejnal mcp` lets AI assistants that support the [Model Context
+Protocol](https://modelcontextprotocol.io/) read the results. Add it to the
+assistant's MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "hejnal": {
+      "command": "hejnal",
+      "args": ["mcp", "-state", "/srv/hejnal/.hejnal", "-lang", "pl"]
+    }
+  }
+}
+```
+
+The assistant can then ask for a summary, the fix list, findings filtered by
+severity, host or CVE, the inventory and a NIS2 draft. These tools only read.
+With `-allow-runs -scope scope.json`, it can also start a scan.
+
 ## How matching works, and its limits
 
 The KEV catalog names the vendor and product of each flaw, but not the
-affected versions. Many products also hide their version from visitors. So a
-match means: **you run a product attackers are exploiting right now; make
-sure your version has the fix.** When a product shows its version, Hejnal
-prints it next to the vendor advisories so you can check quickly. Version-aware
-matching is on the roadmap.
+affected versions. When the product shows its version, Hejnal looks up the
+flaw in NVD and compares the version with the affected ranges NVD's analysts
+recorded:
+
+| Result | What Hejnal does |
+|---|---|
+| Affected | Marks the flaw "version affected" and raises its score by 10. |
+| Affected only on a platform | NVD says the flaw needs a platform Hejnal cannot see, such as Windows for CVE-2024-4577. The finding says so; the score stays. |
+| Ruled out | The version is outside every affected range. The flaw drops to low, is left out of alerts and moves to "Probably fixed already". |
+| Unknown | NVD has not analysed the flaw yet (common in the first days), or the version cannot be compared. Nothing changes. |
+
+Versions from Linux distribution packages (for example PHP from Ubuntu, or
+Apache reporting `(Debian)`) are never confirmed this way, because
+distributions backport fixes without changing the version number.
+
+Without a version, a match means: **you run a product attackers are
+exploiting right now; make sure your version has the fix.**
 
 Each match gets a score from 0 to 100:
 
@@ -218,7 +311,9 @@ Each match gets a score from 0 to 100:
 
 Scores of 85 and above are *fix now*, 70 to 84 *this week*, 50 to 69 *this
 month*, and anything lower *later*. Expired certificates score 70, certificates
-expiring within 21 days 50 and reachable admin interfaces 55.
+expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
+an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
+server status page 50.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products
 behind a login page, on ports it does not check, or on hosts it was not told
@@ -226,12 +321,13 @@ about. Treat a clean report as "nothing obvious", not "nothing at all".
 
 ## Roadmap
 
-- Version-aware matching using OSV and NVD version ranges
+- More products, and version pages for more of them
+- OSV version ranges for open-source products NVD has not analysed yet
 - Detection-only confirmation checks for high-impact flaws
-- Checks for leaked credentials and exposed files
-- REST API and an MCP server for assistants
-- Signed releases with SBOMs (goreleaser and cosign)
-- Hosted and managed editions, and a partner edition for MSPs
+- Packages for Debian, Ubuntu and RHEL, and a container image
+
+Hosted, managed and partner (MSP) editions are a separate commercial product
+built on this core.
 
 ## Contributing
 
@@ -244,8 +340,10 @@ itself, see [SECURITY.md](SECURITY.md).
 Hejnal is licensed under the [Apache License 2.0](LICENSE).
 
 It uses the CISA Known Exploited Vulnerabilities catalog (public domain, CC0),
-EPSS scores from [FIRST](https://www.first.org/epss/) and certificate
-transparency search from [crt.sh](https://crt.sh/).
+EPSS scores from [FIRST](https://www.first.org/epss/), affected-version data
+from NVD and certificate transparency search from [crt.sh](https://crt.sh/).
+
+This product uses the NVD API but is not endorsed or certified by the NVD.
 
 ## Po polsku
 
@@ -260,10 +358,13 @@ naprawić najpierw.
   WordPress, PHP, GitLab i Jenkins. Robi to po jednym zwykłym zapytaniu na
   usługę.
 - **Porównuje** je z katalogiem CISA KEV, czyli listą podatności aktywnie
-  wykorzystywanych przez atakujących.
+  wykorzystywanych przez atakujących. Gdy produkt pokazuje wersję, sprawdza
+  w NVD, czy ta wersja jest podatna.
 - **Pisze** listę poprawek po polsku lub angielsku, wysyła powiadomienia na
-  czat i przygotowuje projekt wczesnego ostrzeżenia NIS2 (zgłoszenie do
-  właściwego CSIRT, zwykle przez system S46).
+  Slacka, Microsoft Teams lub e-mailem, przygotowuje raport miesięczny i
+  projekt wczesnego ostrzeżenia NIS2 (zgłoszenie do właściwego CSIRT, zwykle
+  przez system S46).
+- **Udostępnia wyniki** przez REST API i serwer MCP dla asystentów AI.
 
 [Przykładowa lista poprawek](examples/fix-list.pl.md).
 
@@ -275,6 +376,7 @@ nie używa exploitów.
 hejnal init
 hejnal run -scope scope.json -lang pl
 hejnal report fixlist -lang pl
+hejnal report monthly -lang pl
 ```
 
 Sprawdzaj wyłącznie systemy, które należą do Ciebie, albo takie, na których

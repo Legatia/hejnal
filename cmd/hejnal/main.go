@@ -45,6 +45,8 @@ Usage:
   hejnal feeds     [flags]                      download the CISA KEV catalog
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    fixlist|nis2|monthly [flags] print a report from the saved runs
+  hejnal serve     [-addr host:port] [flags]    serve the results over a REST API
+  hejnal mcp       [flags]                      serve the results to AI assistants over MCP
   hejnal rules                                  list the products Hejnal recognises
   hejnal version
 
@@ -115,6 +117,10 @@ func (a *app) run(ctx context.Context, args []string) int {
 		err = a.cmdMatch(ctx, rest)
 	case "report":
 		err = a.cmdReport(rest)
+	case "serve":
+		err = a.cmdServe(ctx, rest)
+	case "mcp":
+		err = a.cmdMCP(ctx, rest)
 	case "rules":
 		err = a.cmdRules(rest)
 	case "version", "-version", "--version":
