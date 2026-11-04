@@ -35,6 +35,10 @@ var testNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 type fakeResolver map[string][]string
 
 func (f fakeResolver) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, error) {
+	if !strings.HasSuffix(host, ".") {
+		return nil, fmt.Errorf("%q is not fully qualified; search domains could apply", host)
+	}
+	host = strings.TrimSuffix(host, ".")
 	ips, ok := f[host]
 	if !ok {
 		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
@@ -167,7 +171,7 @@ func TestRunDiscoversAndFingerprints(t *testing.T) {
 		"vpn.example.test":      {"127.0.0.1"},
 		"mail.example.test":     {"127.0.0.1"},
 		"internal.example.test": {"10.1.2.3"},
-		"skip.example.test":     {"127.0.0.1"},
+		"skip.example.test":     {"192.0.2.50"},
 	}
 	ct := fakeCT{"example.test": {"internal.example.test", "skip.example.test", "gone.example.test", "evil.test"}}
 

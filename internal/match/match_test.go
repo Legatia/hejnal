@@ -1,6 +1,7 @@
 package match
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -184,6 +185,19 @@ func TestSeverity(t *testing.T) {
 	fs := []Finding{{Severity: Medium}}
 	if !AtLeast(fs, Medium) || AtLeast(fs, High) || AtLeast(fs, "") {
 		t.Error("AtLeast is wrong")
+	}
+}
+
+func TestScoreIgnoresInvalidEPSS(t *testing.T) {
+	v := kev.Vulnerability{DateAdded: "2026-11-01", ForensicTriage: "Yes"}
+	base := Score(v, "cms", 0, now)
+	for _, p := range []float64{math.NaN(), -3, math.Inf(-1)} {
+		if got := Score(v, "cms", p, now); got != base {
+			t.Errorf("Score with EPSS %v = %d, want %d", p, got, base)
+		}
+	}
+	if got := Score(v, "cms", 7, now); got != base+10 {
+		t.Errorf("Score with EPSS 7 = %d, want it treated as 1 (%d)", got, base+10)
 	}
 }
 

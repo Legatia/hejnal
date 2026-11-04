@@ -51,18 +51,29 @@ name who confirmed that you may test them, when and on what basis. Hejnal
 prints this every time it runs.
 
 - **One gate for every connection.** Every connection Hejnal opens passes a
-  single scope check. DNS answers, redirects and names in certificates cannot
-  lead it outside the scope.
+  single check of the host, the address and the port. DNS answers, redirects
+  and names in certificates cannot lead it outside the scope.
 - **Discovered names get web ports only.** Hosts found under your domains are
   checked on ports 80 and 443, and only at public internet addresses or
   addresses your scope lists. A DNS record pointing at a private address is
   listed but never contacted. Hosts and ranges you list yourself are checked
   on the ports you configure.
+- **Listed names stay off this machine.** A host you list by name may point at
+  a private address, for checks from inside your network. It is never
+  contacted at the machine Hejnal runs on, link-local addresses or cloud
+  metadata services.
+- **Exclusions cover machines, not just names.** Excluding a hostname also
+  excludes the addresses it resolves to when the run starts. That way the
+  machine is not reached under another name or through a range. Sites that
+  share such an address, behind the same CDN for example, are skipped too and
+  listed as not contacted.
+- **Redirects stay put.** Hejnal follows a redirect only on the same host and
+  to a port allowed for it, never with credentials in the URL. If a redirect
+  points to another host in scope, that host gets its own check.
 - **Small ranges.** IP ranges are capped at 1,024 addresses, so a typo cannot
   become a large scan.
 - **Detection only.** No logins, no password guessing, no path guessing, no
-  exploit payloads. Hejnal sends one `GET /` per web service and follows
-  redirects only when they stay inside the scope.
+  exploit payloads. Hejnal sends one `GET /` per web service.
 - **Private results.** The inventory and findings are written readable only
   by their owner (mode 0600), because they map your attack surface.
 
@@ -132,7 +143,9 @@ scope.
 ## Run it every day
 
 `hejnal run` is made for cron or a systemd timer. It sends a chat message only
-on the first run and when something new appears.
+on the first run and when something new appears. If the message cannot be
+sent, the run exits with status 1 and the next run reports the same findings
+again.
 
 ```cron
 HEJNAL_WEBHOOK=https://hooks.slack.com/services/T000/B000/XXXX
@@ -171,9 +184,10 @@ change it):
 |---|---|
 | `inventory.json` | Hosts, open services, certificates and recognised products. |
 | `findings.json` | Findings from the last run. |
-| `history/` | Earlier findings, used to tell what is new; the last 200 runs are kept. |
+| `reported.json` | The findings people were last told about, used to tell what is new. |
+| `history/` | Findings from earlier runs; the last 200 are kept. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
-| `cache/kev.json`, `cache/epss.json` | Downloaded feeds. KEV is refreshed after 6 hours, EPSS after a day. |
+| `cache/kev.json`, `cache/epss.json` | Downloaded feeds. KEV is refreshed after 6 hours, EPSS scores when they are more than two days old. |
 
 ### Offline and air-gapped use
 

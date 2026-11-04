@@ -26,6 +26,8 @@ const (
 	maxRedirects = 5
 	bannerWait   = 2 * time.Second
 	maxSANs      = 50
+	// probeBudget, times the timeout, bounds one port check end to end.
+	probeBudget = 5
 )
 
 // tlsHint matches the error pages servers send when plain HTTP reaches a TLS
@@ -73,7 +75,7 @@ func allCipherSuites() []uint16 {
 }
 
 // dial is the single point where discovery opens connections. It refuses any
-// host outside the scope and only uses addresses checked by lookup.
+// host or port outside the scope and only uses addresses checked by lookup.
 func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -82,6 +84,9 @@ func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) 
 	host = normalizeHost(host)
 	if !w.r.s.HostInScope(host) {
 		return nil, fmt.Errorf("%w: %s", ErrOutOfScope, host)
+	}
+	if p, err := strconv.Atoi(port); err != nil || !w.r.allowedPort(host, p) {
+		return nil, fmt.Errorf("%w: port %s on %s", ErrOutOfScope, port, host)
 	}
 	res := w.r.lookup(ctx, host)
 	if len(res.allowed) == 0 {
@@ -102,8 +107,11 @@ func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) 
 	return nil, last
 }
 
-// probe checks one port. It returns nil when the port is closed.
+// probe checks one port. It returns nil when the port is closed. However a
+// server behaves, the whole check ends within a fixed time.
 func (w *webClient) probe(ctx context.Context, host string, port int) *inventory.Service {
+	ctx, cancel := context.WithTimeout(ctx, probeBudget*w.r.opts.Timeout)
+	defer cancel()
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	c, err := w.dial(ctx, "tcp", addr)
 	if err != nil {
@@ -137,27 +145,29 @@ func schemesFor(port int) []string {
 	return []string{"https", "http"}
 }
 
-// fetch sends one GET request for "/" and follows redirects that stay in
-// scope. wrongScheme reports a plain-HTTP request answered with "use HTTPS".
+// fetch sends one GET request for "/". It follows redirects only on the same
+// host and to ports allowed for it. A redirect to another host is not
+// followed: an in-scope target is noted and gets its own GET / in the next
+// round. wrongScheme reports a plain-HTTP request answered with "use HTTPS".
 func (w *webClient) fetch(ctx context.Context, host string, port int, scheme string) (svc *inventory.Service, wrongScheme bool, err error) {
 	start := &url.URL{Scheme: scheme, Host: hostPort(host, port, scheme), Path: "/"}
 	var hops []*http.Response
 	client := &http.Client{
 		Transport: w.transport,
-		Timeout:   3 * w.r.opts.Timeout,
+		Timeout:   2 * w.r.opts.Timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) > maxRedirects {
+			if len(via) > maxRedirects || req.URL.User != nil {
 				return http.ErrUseLastResponse
 			}
-			next := normalizeHost(req.URL.Hostname())
-			if !w.r.s.HostInScope(next) {
+			if next := normalizeHost(req.URL.Hostname()); next != host {
+				w.r.noteName(next, SourceRedirect)
+				return http.ErrUseLastResponse
+			}
+			if !w.r.allowedPort(host, urlPort(req.URL)) {
 				return http.ErrUseLastResponse
 			}
 			if req.Response != nil {
 				hops = append(hops, req.Response)
-			}
-			if next != host {
-				w.r.noteName(next, SourceRedirect)
 			}
 			return nil
 		},
@@ -201,7 +211,7 @@ func (w *webClient) fetch(ctx context.Context, host string, port int, scheme str
 	}
 	for _, r := range append(hops, resp) {
 		if leaf := leafCert(r); leaf != nil {
-			for _, n := range leaf.DNSNames {
+			for _, n := range leaf.DNSNames[:min(len(leaf.DNSNames), maxSANs)] {
 				w.r.noteName(n, SourceTLS)
 			}
 		}
@@ -297,6 +307,24 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return strings.ToValidUTF8(s[:n], "")
+}
+
+// urlPort returns the port a URL connects to.
+func urlPort(u *url.URL) int {
+	if p := u.Port(); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return -1
+		}
+		return n
+	}
+	switch u.Scheme {
+	case "http":
+		return 80
+	case "https":
+		return 443
+	}
+	return -1
 }
 
 func hostPort(host string, port int, scheme string) string {

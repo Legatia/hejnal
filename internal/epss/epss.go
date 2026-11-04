@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -32,7 +33,8 @@ type Score struct {
 }
 
 // flexFloat accepts both JSON numbers and numeric strings, because the API
-// returns scores as strings.
+// returns scores as strings. Scores are probabilities, so values outside 0–1
+// are clamped and non-numbers are rejected.
 type flexFloat float64
 
 func (f *flexFloat) UnmarshalJSON(b []byte) error {
@@ -45,7 +47,10 @@ func (f *flexFloat) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	*f = flexFloat(v)
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return fmt.Errorf("invalid score %q", s)
+	}
+	*f = flexFloat(min(1, max(0, v)))
 	return nil
 }
 

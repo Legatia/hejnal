@@ -1,10 +1,11 @@
 // Package discover finds an organisation's internet-facing hosts and services
 // inside its authorised scope and identifies the software they run.
 //
-// Every connection goes through one guard that checks the scope, so nothing
-// outside it is contacted: not through DNS answers, redirects or names found
-// in certificates. Discovery sends one ordinary GET request per web service. It
-// never logs in, guesses paths or sends attack payloads.
+// Every connection goes through one guard that checks the host, the address
+// and the port against the scope, so nothing outside it is contacted: not
+// through DNS answers, redirects or names found in certificates. Discovery
+// sends one ordinary GET request per web service. It never logs in, guesses
+// paths or sends attack payloads.
 package discover
 
 import (
@@ -34,12 +35,19 @@ const (
 	SourceRange    = "range"    // an address in an authorised IP range
 )
 
-// maxRounds limits how many times names found in certificates and redirects
-// are fed back into discovery.
-const maxRounds = 3
+const (
+	// maxRounds limits how many times names found in certificates and
+	// redirects are fed back into discovery.
+	maxRounds = 3
+	// maxAddrsPerHost limits how many addresses of one name are tried, so a
+	// DNS answer with thousands of records cannot stall a run.
+	maxAddrsPerHost = 4
+	// maxListedIPs limits how many addresses an asset lists in the inventory.
+	maxListedIPs = 16
+)
 
-// ErrOutOfScope is returned when something tries to contact a host or address
-// outside the authorised scope.
+// ErrOutOfScope is returned when something tries to contact a host, address
+// or port outside the authorised scope.
 var ErrOutOfScope = errors.New("out of scope")
 
 // Resolver looks up the addresses of a hostname. *net.Resolver satisfies it.
@@ -65,8 +73,8 @@ type Options struct {
 	// Timeout applies to each DNS lookup, connection and response.
 	Timeout   time.Duration
 	UserAgent string
-	// WebPorts are probed on hosts found under a domain rather than listed
-	// explicitly. Defaults to scope.WebPorts.
+	// WebPorts are the only ports probed on hosts found under a domain rather
+	// than listed explicitly. Defaults to scope.WebPorts.
 	WebPorts []int
 	// MaxHosts caps how many hosts one run looks at.
 	MaxHosts int
@@ -91,10 +99,13 @@ type runner struct {
 	s    *scope.Scope
 	web  *webClient
 
-	mu     sync.Mutex
-	dns    map[string]resolution
-	assets map[string]*inventory.Asset
-	found  map[string]string // in-scope names from certificates and redirects
+	mu       sync.Mutex
+	dns      map[string]resolution
+	assets   map[string]*inventory.Asset
+	queued   map[string]bool
+	found    map[string]string // in-scope names from certificates and redirects
+	excluded map[netip.Addr]bool
+	capped   bool
 }
 
 // Run discovers hosts and services in the scope and identifies their software.
@@ -105,27 +116,16 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 	}
 	defer r.web.close()
 	opts = r.opts
-
 	s := opts.Scope
-	queued := map[string]bool{}
-	capped := false
+
+	r.resolveExclusions(ctx)
+
 	var batch []target
 	add := func(host, source string, ports []int) {
-		host = normalizeHost(host)
-		if host == "" || queued[host] || !s.HostInScope(host) {
-			return
+		if t, ok := r.enqueue(host, source, ports); ok {
+			batch = append(batch, t)
 		}
-		if len(queued) >= opts.MaxHosts {
-			if !capped {
-				opts.Logf("reached the limit of %d hosts; skipping the rest", opts.MaxHosts)
-				capped = true
-			}
-			return
-		}
-		queued[host] = true
-		batch = append(batch, target{host: host, source: source, ports: ports})
 	}
-
 	for _, h := range s.Hosts {
 		add(h, SourceHost, s.Ports)
 	}
@@ -200,14 +200,56 @@ func newRunner(opts Options) (*runner, error) {
 	}
 
 	r := &runner{
-		opts:   opts,
-		s:      opts.Scope,
-		dns:    map[string]resolution{},
-		assets: map[string]*inventory.Asset{},
-		found:  map[string]string{},
+		opts:     opts,
+		s:        opts.Scope,
+		dns:      map[string]resolution{},
+		assets:   map[string]*inventory.Asset{},
+		queued:   map[string]bool{},
+		found:    map[string]string{},
+		excluded: map[netip.Addr]bool{},
 	}
 	r.web = newWebClient(r)
 	return r, nil
+}
+
+// resolveExclusions looks up the excluded hostnames once, so their machines
+// stay excluded when they are reached under another name (a CNAME, for
+// example) or through an address range.
+func (r *runner) resolveExclusions(ctx context.Context) {
+	for _, h := range r.s.ExcludedHosts() {
+		ips, _ := r.resolveName(ctx, h)
+		r.mu.Lock()
+		for _, ip := range ips {
+			r.excluded[scope.Canonical(ip)] = true
+		}
+		r.mu.Unlock()
+	}
+	if n := len(r.excluded); n > 0 {
+		r.opts.Logf("excluding %d addresses that excluded hosts resolve to", n)
+	}
+}
+
+// enqueue adds a host to the next batch unless it was seen before, is out of
+// scope or the host limit is reached.
+func (r *runner) enqueue(host, source string, ports []int) (target, bool) {
+	host = normalizeHost(host)
+	if host == "" || !r.s.HostInScope(host) {
+		return target{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.queued[host] {
+		return target{}, false
+	}
+	if len(r.queued) >= r.opts.MaxHosts {
+		if !r.capped {
+			r.opts.Logf("reached the limit of %d hosts; skipping the rest", r.opts.MaxHosts)
+			r.capped = true
+		}
+		return target{}, false
+	}
+	r.queued[host] = true
+	return target{host: host, source: source, ports: ports}, true
 }
 
 func (r *runner) scan(ctx context.Context, batch []target) {
@@ -230,7 +272,9 @@ func (r *runner) scan(ctx context.Context, batch []target) {
 		}
 		hosts++
 		for _, p := range t.ports {
-			jobs = append(jobs, job{t, p})
+			if r.allowedPort(t.host, p) {
+				jobs = append(jobs, job{t, p})
+			}
 		}
 	}
 	r.opts.Logf("checking %d ports on %d hosts", len(jobs), hosts)
@@ -262,13 +306,31 @@ func (r *runner) resolve(ctx context.Context, t target) {
 		}
 		a.Errors = append(a.Errors, dnsError(res.err))
 	case len(res.allowed) == 0:
-		a.Errors = append(a.Errors, "not contacted: resolves only to private, reserved or excluded addresses")
+		reason := "not contacted: resolves only to private or reserved addresses"
+		if slices.ContainsFunc(res.all, r.excludedIP) {
+			reason = "not contacted: shares an address with an excluded host or range"
+		}
+		a.Errors = append(a.Errors, reason)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.assets[t.host]; !ok {
 		r.assets[t.host] = a
 	}
+}
+
+// resolveName asks the resolver for a name. The name is passed fully
+// qualified, so the machine's DNS search domains are never appended to it.
+func (r *runner) resolveName(ctx context.Context, host string) ([]netip.Addr, error) {
+	lctx, cancel := context.WithTimeout(ctx, r.opts.Timeout)
+	defer cancel()
+	ips, err := r.opts.Resolver.LookupNetIP(lctx, "ip", host+".")
+	var out []netip.Addr
+	for _, ip := range ips {
+		out = append(out, ip.WithZone("").Unmap())
+	}
+	slices.SortFunc(out, func(a, b netip.Addr) int { return a.Compare(b) })
+	return slices.Compact(out), err
 }
 
 // lookup resolves host once and keeps the addresses Hejnal may contact. Every
@@ -281,23 +343,24 @@ func (r *runner) lookup(ctx context.Context, host string) resolution {
 	if ok {
 		return res
 	}
+	if !r.s.HostInScope(host) {
+		return resolution{} // never resolve, and so never contact, names outside the scope
+	}
 	if ip, err := netip.ParseAddr(host); err == nil {
-		res.all = []netip.Addr{ip.Unmap()}
+		res.all = []netip.Addr{ip.WithZone("").Unmap()}
 	} else {
-		lctx, cancel := context.WithTimeout(ctx, r.opts.Timeout)
-		ips, err := r.opts.Resolver.LookupNetIP(lctx, "ip", host)
-		cancel()
-		res.err = err
-		for _, ip := range ips {
-			res.all = append(res.all, ip.Unmap().WithZone(""))
-		}
-		slices.SortFunc(res.all, func(a, b netip.Addr) int { return a.Compare(b) })
-		res.all = slices.Compact(res.all)
+		res.all, res.err = r.resolveName(ctx, host)
 	}
 	for _, ip := range res.all {
+		if len(res.allowed) == maxAddrsPerHost {
+			break
+		}
 		if r.allowedIP(host, ip) {
 			res.allowed = append(res.allowed, ip)
 		}
+	}
+	if len(res.all) > maxListedIPs {
+		res.all = res.all[:maxListedIPs]
 	}
 	r.mu.Lock()
 	if prev, ok := r.dns[host]; ok {
@@ -309,41 +372,91 @@ func (r *runner) lookup(ctx context.Context, host string) resolution {
 	return res
 }
 
+// excludedIP reports whether an address is excluded by the scope or belongs
+// to an excluded hostname.
+func (r *runner) excludedIP(ip netip.Addr) bool {
+	c := scope.Canonical(ip)
+	r.mu.Lock()
+	excluded := r.excluded[c]
+	r.mu.Unlock()
+	return excluded || r.s.IPExcluded(c)
+}
+
 // allowedIP decides whether Hejnal may connect to ip on behalf of host.
 func (r *runner) allowedIP(host string, ip netip.Addr) bool {
-	if r.s.IPExcluded(ip) {
+	if r.excludedIP(ip) {
 		return false
 	}
-	if r.s.IPInScope(ip) {
+	c := scope.Canonical(ip)
+	if r.s.IPInScope(c) {
 		return true // an authorised address or range
 	}
 	if _, err := netip.ParseAddr(host); err == nil {
 		return false
 	}
 	if r.s.Explicit(host) {
-		return true // a host listed by name: trust its DNS
+		// A host listed by name may point at private addresses (Hejnal can
+		// run inside a network), but never at this machine, link-local
+		// addresses such as cloud metadata services, or multicast.
+		return !localOnly(c)
 	}
 	// A name found under an authorised domain: only public internet
 	// addresses, so DNS pointing at private or shared address space never
 	// turns into a scan of the network Hejnal runs in.
-	return publicIP(ip)
+	return publicIP(c)
 }
 
-var specialPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),
-	netip.MustParsePrefix("100.64.0.0/10"),
-	netip.MustParsePrefix("192.0.0.0/24"),
-	netip.MustParsePrefix("198.18.0.0/15"),
-	netip.MustParsePrefix("240.0.0.0/4"),
-	netip.MustParsePrefix("2001:db8::/32"),
-	netip.MustParsePrefix("64:ff9b:1::/48"),
+// allowedPort reports whether port may be contacted on host: the configured
+// ports for hosts and ranges listed in the scope, web ports for names found
+// under a domain.
+func (r *runner) allowedPort(host string, port int) bool {
+	if r.s.Explicit(host) {
+		return slices.Contains(r.s.Ports, port)
+	}
+	return slices.Contains(r.opts.WebPorts, port)
 }
 
+func localOnly(ip netip.Addr) bool {
+	return !ip.IsValid() || ip.IsUnspecified() || ip.IsLoopback() || ip.IsLinkLocalUnicast() ||
+		ip.IsMulticast() || ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast()
+}
+
+var (
+	special4 = []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/8"),
+		netip.MustParsePrefix("100.64.0.0/10"),
+		netip.MustParsePrefix("192.0.0.0/24"),
+		netip.MustParsePrefix("198.18.0.0/15"),
+		netip.MustParsePrefix("240.0.0.0/4"),
+	}
+	global6  = netip.MustParsePrefix("2000::/3")
+	special6 = []netip.Prefix{
+		netip.MustParsePrefix("2001::/23"),     // protocol assignments: Teredo, benchmarking, ORCHID
+		netip.MustParsePrefix("2001:db8::/32"), // documentation
+		netip.MustParsePrefix("2002::/16"),     // 6to4, which embeds IPv4 addresses
+		netip.MustParsePrefix("3fff::/20"),     // documentation
+	}
+)
+
+// publicIP reports whether a canonical address is an ordinary public
+// internet address. IPv6 is limited to global unicast space without the
+// blocks that embed IPv4 addresses or are reserved.
 func publicIP(ip netip.Addr) bool {
-	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+	if ip.Is4() {
+		if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+			return false
+		}
+		for _, p := range special4 {
+			if p.Contains(ip) {
+				return false
+			}
+		}
+		return true
+	}
+	if !global6.Contains(ip) {
 		return false
 	}
-	for _, p := range specialPrefixes {
+	for _, p := range special6 {
 		if p.Contains(ip) {
 			return false
 		}
@@ -355,7 +468,7 @@ func publicIP(ip netip.Addr) bool {
 // next round can look at it.
 func (r *runner) noteName(name, source string) {
 	n := normalizeHost(strings.TrimPrefix(strings.TrimSpace(name), "*."))
-	if n == "" || strings.Contains(n, "*") || !r.s.HostInScope(n) {
+	if n == "" || !r.s.HostInScope(n) {
 		return
 	}
 	if _, err := netip.ParseAddr(n); err == nil {
@@ -363,9 +476,13 @@ func (r *runner) noteName(name, source string) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.found[n]; !ok {
-		r.found[n] = source
+	if _, ok := r.found[n]; ok || r.queued[n] {
+		return
 	}
+	if len(r.found)+len(r.queued) >= r.opts.MaxHosts {
+		return
+	}
+	r.found[n] = source
 }
 
 type foundName struct{ name, source string }

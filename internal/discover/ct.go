@@ -3,6 +3,7 @@ package discover
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,9 +31,17 @@ func (c *CrtSh) Subdomains(ctx context.Context, domain string) ([]string, error)
 	if base == "" {
 		base = CrtShURL
 	}
-	client := c.Client
-	if client == nil {
-		client = &http.Client{Timeout: 90 * time.Second}
+	client := &http.Client{Timeout: 90 * time.Second}
+	if c.Client != nil {
+		copied := *c.Client
+		client = &copied
+	}
+	// The service has no reason to send Hejnal anywhere else.
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 || req.URL.Host != via[0].URL.Host {
+			return errors.New("unexpected redirect")
+		}
+		return nil
 	}
 	u := base + "/?q=" + url.QueryEscape("%."+domain) + "&output=json"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)

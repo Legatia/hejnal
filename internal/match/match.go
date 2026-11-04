@@ -217,7 +217,7 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 					f.Links = v.Links()
 					f.Confidence = ConfidenceProduct
 					if e, ok := opts.EPSS[v.CVEID]; ok {
-						f.EPSS, f.EPSSPercentile = e.EPSS, e.Percentile
+						f.EPSS, f.EPSSPercentile = probability(e.EPSS), probability(e.Percentile)
 					}
 					f.Score = Score(v, t.Category, f.EPSS, opts.Now)
 					f.Severity = SeverityFor(f.Score)
@@ -256,8 +256,16 @@ func Score(v kev.Vulnerability, category string, epssScore float64, now time.Tim
 	if v.Forensics() {
 		score += 5
 	}
-	score += int(math.Round(epssScore * 10))
+	score += int(math.Round(probability(epssScore) * 10))
 	return max(0, min(100, score))
+}
+
+// probability keeps a value within 0–1, treating anything invalid as 0.
+func probability(p float64) float64 {
+	if !(p >= 0) { // also catches NaN
+		return 0
+	}
+	return min(p, 1)
 }
 
 func tlsFinding(host string, s inventory.Service, opts Options) (Finding, bool) {

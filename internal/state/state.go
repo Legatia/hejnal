@@ -19,6 +19,7 @@ import (
 const (
 	inventoryFile = "inventory.json"
 	findingsFile  = "findings.json"
+	reportedFile  = "reported.json"
 	historyDir    = "history"
 	// keepHistory is how many past findings snapshots are kept.
 	keepHistory = 200
@@ -81,6 +82,26 @@ func (s Store) LoadFindings() (*Snapshot, error) {
 	if err := readJSON(filepath.Join(s.Dir, findingsFile), &snap); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNoFindings
+		}
+		return nil, err
+	}
+	return &snap, nil
+}
+
+// SaveReported records the findings people were last told about, on screen
+// or in chat. The next run reports what changed since then, so findings are
+// not lost when a notification fails.
+func (s Store) SaveReported(snap *Snapshot) error {
+	return WriteJSON(filepath.Join(s.Dir, reportedFile), snap)
+}
+
+// LoadReported reads the findings people were last told about. It returns
+// nil before anything was reported.
+func (s Store) LoadReported() (*Snapshot, error) {
+	var snap Snapshot
+	if err := readJSON(filepath.Join(s.Dir, reportedFile), &snap); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
 		}
 		return nil, err
 	}

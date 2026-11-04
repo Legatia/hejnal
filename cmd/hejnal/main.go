@@ -38,8 +38,8 @@ import (
 )
 
 const (
-	kevMaxAge  = 6 * time.Hour
-	epssMaxAge = 24 * time.Hour
+	kevMaxAge      = 6 * time.Hour
+	epssMaxAgeDays = 2
 
 	exitOK       = 0
 	exitError    = 1
@@ -399,13 +399,12 @@ func (a *app) loadEPSS(ctx context.Context, o *options, cves []string) map[strin
 	if o.offline {
 		return cache
 	}
-	fresh := false
-	if fi, err := os.Stat(path); err == nil && time.Since(fi.ModTime()) < epssMaxAge {
-		fresh = true
-	}
+	// EPSS publishes new scores every day, dated by the day they describe.
+	// Refresh scores more than two days old.
+	stale := a.now().UTC().AddDate(0, 0, -epssMaxAgeDays).Format("2006-01-02")
 	var want []string
 	for _, c := range cves {
-		if _, ok := cache[c]; !ok || !fresh {
+		if s, ok := cache[c]; !ok || s.Date < stale {
 			want = append(want, c)
 		}
 	}
@@ -454,14 +453,15 @@ func (a *app) matchInventory(ctx context.Context, o *options, inv *inventory.Inv
 	return snap, nil
 }
 
-// previous loads the last snapshot. first is true before the first run.
+// previous loads the findings people were last told about. first is true
+// before anything was reported.
 func previous(store state.Store) (prev []match.Finding, first bool, err error) {
-	snap, err := store.LoadFindings()
-	if errors.Is(err, state.ErrNoFindings) {
-		return nil, true, nil
-	}
+	snap, err := store.LoadReported()
 	if err != nil {
 		return nil, false, err
+	}
+	if snap == nil {
+		return nil, true, nil
 	}
 	return snap.Findings, false, nil
 }
@@ -510,7 +510,7 @@ func (a *app) cmdMatch(ctx context.Context, args []string) error {
 	}
 	added, resolved := state.Diff(prev, snap.Findings)
 	fmt.Fprint(a.stdout, report.Summary(snap.Findings, added, resolved, first, meta(inv, snap, o.lang)))
-	return nil
+	return store.SaveReported(snap)
 }
 
 func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
@@ -591,8 +591,13 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 
 	if o.webhook != "" && (first || len(added) > 0) {
 		if err := hook.Send(ctx, summary); err != nil {
-			return exitError, err
+			// Leave the last reported findings as they were, so the next
+			// run reports these findings again.
+			return exitError, fmt.Errorf("%w; the next run will report these findings again", err)
 		}
+	}
+	if err := store.SaveReported(snap); err != nil {
+		return exitError, err
 	}
 	if match.AtLeast(added, failOn) {
 		return exitFindings, nil

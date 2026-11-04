@@ -134,7 +134,11 @@ func (s *Scope) Validate(now time.Time) error {
 	for i, h := range s.Hosts {
 		n := normalizeHost(h)
 		if ip, err := netip.ParseAddr(n); err == nil {
-			ip = ip.Unmap().WithZone("")
+			if ip.Zone() != "" {
+				add("host %q: IPv6 zones are not supported", h)
+				continue
+			}
+			ip = Canonical(ip)
 			s.Hosts[i] = ip.String()
 			s.hostIPs = append(s.hostIPs, ip)
 			continue
@@ -164,7 +168,12 @@ func (s *Scope) Validate(now time.Time) error {
 	s.excludeHosts, s.excludePrefixes = nil, nil
 	for _, e := range s.Exclude {
 		n := normalizeHost(e)
-		if p, err := parsePrefix(n); err == nil {
+		if _, err := netip.ParseAddr(n); err == nil || strings.ContainsAny(n, "/:") {
+			p, err := parsePrefix(n)
+			if err != nil {
+				add("exclude %q: %v", e, err)
+				continue
+			}
 			s.excludePrefixes = append(s.excludePrefixes, p)
 			continue
 		}
@@ -190,13 +199,19 @@ func (s *Scope) Validate(now time.Time) error {
 }
 
 // HostInScope reports whether a hostname or IP literal may be contacted.
+// Hostnames must be plain ASCII names; anything a resolver might interpret
+// differently from this check, such as Unicode look-alikes or empty labels,
+// is out of scope.
 func (s *Scope) HostInScope(host string) bool {
 	h := normalizeHost(host)
 	if h == "" {
 		return false
 	}
 	if ip, err := netip.ParseAddr(h); err == nil {
-		return s.IPInScope(ip)
+		return ip.Zone() == "" && s.IPInScope(ip)
+	}
+	if validHostname(h) != nil {
+		return false
 	}
 	if s.hostExcluded(h) {
 		return false
@@ -215,7 +230,7 @@ func (s *Scope) HostInScope(host string) bool {
 // IPInScope reports whether an IP address is listed as a host or inside an
 // authorised range, and not excluded.
 func (s *Scope) IPInScope(ip netip.Addr) bool {
-	ip = ip.Unmap().WithZone("")
+	ip = Canonical(ip)
 	if s.IPExcluded(ip) {
 		return false
 	}
@@ -233,7 +248,7 @@ func (s *Scope) IPInScope(ip netip.Addr) bool {
 // IPExcluded reports whether an address falls in an excluded address or range.
 // Hostnames that resolve to an excluded address are never contacted.
 func (s *Scope) IPExcluded(ip netip.Addr) bool {
-	ip = ip.Unmap().WithZone("")
+	ip = Canonical(ip)
 	for _, p := range s.excludePrefixes {
 		if p.Contains(ip) {
 			return true
@@ -241,6 +256,26 @@ func (s *Scope) IPExcluded(ip netip.Addr) bool {
 	}
 	return false
 }
+
+// nat64 is the well-known NAT64 prefix (RFC 6052). On IPv6-only networks,
+// DNS64 resolvers synthesise addresses in it that a gateway translates to the
+// embedded IPv4 address.
+var nat64 = netip.MustParsePrefix("64:ff9b::/96")
+
+// Canonical returns the address a connection to ip actually reaches, for
+// scope checks: without a zone, IPv4-mapped IPv6 as IPv4, and NAT64
+// addresses as the IPv4 address they translate to.
+func Canonical(ip netip.Addr) netip.Addr {
+	ip = ip.WithZone("").Unmap()
+	if nat64.Contains(ip) {
+		b := ip.As16()
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+	}
+	return ip
+}
+
+// ExcludedHosts returns the hostnames listed under exclude.
+func (s *Scope) ExcludedHosts() []string { return slices.Clone(s.excludeHosts) }
 
 // Explicit reports whether a host was listed by name or address, which
 // allows probing all configured ports rather than only web ports.
@@ -314,10 +349,16 @@ func validHostname(h string) error {
 	if len(h) > 253 {
 		return errors.New("too long")
 	}
-	for _, l := range strings.Split(h, ".") {
+	labels := strings.Split(h, ".")
+	for _, l := range labels {
 		if !labelRE.MatchString(l) {
 			return fmt.Errorf("invalid label %q", l)
 		}
+	}
+	// No top-level domain is all digits, and resolvers may read names such
+	// as "8.0.1" as IPv4 addresses.
+	if strings.Trim(labels[len(labels)-1], "0123456789") == "" {
+		return errors.New("looks like an IP address, not a name")
 	}
 	return nil
 }
@@ -329,13 +370,28 @@ func parsePrefix(c string) (netip.Prefix, error) {
 		if err != nil {
 			return netip.Prefix{}, err
 		}
-		return netip.PrefixFrom(ip.Unmap(), ip.Unmap().BitLen()), nil
+		if ip.Zone() != "" {
+			return netip.Prefix{}, errors.New("IPv6 zones are not supported")
+		}
+		ip = Canonical(ip)
+		return netip.PrefixFrom(ip, ip.BitLen()), nil
 	}
 	p, err := netip.ParsePrefix(c)
 	if err != nil {
 		return netip.Prefix{}, err
 	}
-	return p.Masked(), nil
+	p = p.Masked()
+	// Ranges written as IPv4-mapped or NAT64 IPv6 cover IPv4 addresses.
+	for _, embed := range []netip.Prefix{netip.MustParsePrefix("::ffff:0:0/96"), nat64} {
+		if !p.Overlaps(embed) {
+			continue
+		}
+		if p.Bits() < 96 {
+			return netip.Prefix{}, fmt.Errorf("ranges inside %s must be /96 or longer", embed)
+		}
+		return netip.PrefixFrom(Canonical(p.Addr()), p.Bits()-96).Masked(), nil
+	}
+	return p, nil
 }
 
 func prefixSize(p netip.Prefix) *big.Int {

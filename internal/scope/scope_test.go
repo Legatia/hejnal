@@ -129,6 +129,58 @@ func TestValidateErrors(t *testing.T) {
 	}
 }
 
+func TestHostInScopeRejectsOddNames(t *testing.T) {
+	s := mustParse(t, valid)
+	for _, h := range []string{
+		"ｌｅｇａｃｙ.example.com", // full-width look-alike of an excluded name
+		".example.com",
+		"a..example.com",
+		"under_score.example.com",
+		"bad name.example.com",
+		"fe80::1%eth0",
+	} {
+		if s.HostInScope(h) {
+			t.Errorf("HostInScope(%q) = true, want false", h)
+		}
+	}
+}
+
+func TestNumericNamesAndZonesRejected(t *testing.T) {
+	for doc, want := range map[string]string{
+		`{` + auth + `, "domains": ["0.1"]}`:                                       "looks like an IP address",
+		`{` + auth + `, "hosts": ["fe80::1%eth0"]}`:                                "zones",
+		`{` + auth + `, "cidrs": ["::ffff:0:0/95"]}`:                               "must be /96 or longer",
+		`{` + auth + `, "domains": ["example.com"], "exclude": ["::ffff:0:0/90"]}`: "must be /96 or longer",
+	} {
+		if _, err := Parse([]byte(doc), now); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%s) error = %v, want %q", doc, err, want)
+		}
+	}
+}
+
+func TestEmbeddedIPv4(t *testing.T) {
+	s := mustParse(t, `{`+auth+`, "cidrs": ["::ffff:203.0.113.0/125"], "exclude": ["::ffff:203.0.113.4", "64:ff9b::cb00:7105"]}`)
+	if n := len(s.Addresses()); n != 6 {
+		t.Errorf("Addresses() = %d, want 6 (8 in the range minus 2 excluded)", n)
+	}
+	for addr, want := range map[string]bool{
+		"203.0.113.1":        true,
+		"203.0.113.4":        false,
+		"203.0.113.5":        false,
+		"::ffff:203.0.113.1": true,
+		"64:ff9b::cb00:7101": true,  // NAT64 form of 203.0.113.1
+		"64:ff9b::cb00:7104": false, // NAT64 form of an excluded address
+		"203.0.113.9":        false,
+	} {
+		if got := s.IPInScope(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("IPInScope(%s) = %v, want %v", addr, got, want)
+		}
+	}
+	if got := Canonical(netip.MustParseAddr("64:ff9b::a00:1")); got != netip.MustParseAddr("10.0.0.1") {
+		t.Errorf("Canonical(64:ff9b::a00:1) = %s", got)
+	}
+}
+
 func TestExampleValidates(t *testing.T) {
 	data, err := json.Marshal(Example(now))
 	if err != nil {

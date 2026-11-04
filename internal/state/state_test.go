@@ -80,6 +80,20 @@ func TestFindingsAndHistory(t *testing.T) {
 	}
 }
 
+func TestReported(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if snap, err := s.LoadReported(); snap != nil || err != nil {
+		t.Fatalf("LoadReported before anything was reported = %v, %v", snap, err)
+	}
+	if err := s.SaveReported(&Snapshot{Findings: []match.Finding{{Key: "a"}}}); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := s.LoadReported()
+	if err != nil || len(snap.Findings) != 1 {
+		t.Fatalf("LoadReported = %+v, %v", snap, err)
+	}
+}
+
 func TestDiff(t *testing.T) {
 	prev := []match.Finding{{Key: "a"}, {Key: "b"}}
 	cur := []match.Finding{{Key: "b"}, {Key: "c"}}

@@ -31,8 +31,24 @@ func TestParseResponse(t *testing.T) {
 	}
 }
 
+func TestParseResponseClampsScores(t *testing.T) {
+	scores, err := ParseResponse(strings.NewReader(`{"data": [{"cve": "CVE-1", "epss": "-3", "percentile": "7"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := scores["CVE-1"]; s.EPSS != 0 || s.Percentile != 1 {
+		t.Errorf("got %+v, want scores clamped to 0–1", s)
+	}
+}
+
 func TestParseResponseErrors(t *testing.T) {
-	for _, doc := range []string{`{"status": "error", "data": []}`, `{"data": [{"cve": "x", "epss": "abc"}]}`, `<html>`} {
+	for _, doc := range []string{
+		`{"status": "error", "data": []}`,
+		`{"data": [{"cve": "x", "epss": "abc"}]}`,
+		`{"data": [{"cve": "x", "epss": "NaN"}]}`,
+		`{"data": [{"cve": "x", "epss": "+Inf"}]}`,
+		`<html>`,
+	} {
 		if _, err := ParseResponse(strings.NewReader(doc)); err == nil {
 			t.Errorf("ParseResponse(%q) succeeded", doc)
 		}

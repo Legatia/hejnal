@@ -27,6 +27,7 @@ type harness struct {
 	state    string
 	mu       sync.Mutex
 	messages []string
+	failHook bool // the webhook answers 503 once
 	hook     *httptest.Server
 }
 
@@ -43,8 +44,13 @@ func newHarness(t *testing.T) *harness {
 		var msg map[string]string
 		json.NewDecoder(r.Body).Decode(&msg)
 		h.mu.Lock()
+		defer h.mu.Unlock()
+		if h.failHook {
+			h.failHook = false
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		h.messages = append(h.messages, msg["text"])
-		h.mu.Unlock()
 	}))
 	t.Cleanup(h.hook.Close)
 
@@ -142,6 +148,23 @@ func TestRunEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(out, "New: 0 · Resolved: 0") {
 		t.Errorf("match summary:\n%s", out)
+	}
+}
+
+func TestFailedWebhookReportsAgain(t *testing.T) {
+	h := newHarness(t)
+	h.failHook = true
+	code, _, errOut := h.run(h.runArgs("-fail-on", "high")...)
+	if code != exitError || !strings.Contains(errOut, "503") {
+		t.Fatalf("exit %d, stderr:\n%s", code, errOut)
+	}
+	// The next run must deliver the findings the failed run could not.
+	code, _, errOut = h.run(h.runArgs("-fail-on", "high")...)
+	if code != exitFindings {
+		t.Fatalf("second run exit = %d, want %d\n%s", code, exitFindings, errOut)
+	}
+	if len(h.messages) != 1 || !strings.Contains(h.messages[0], "CVE-2026-119977") {
+		t.Errorf("webhook messages = %q", h.messages)
 	}
 }
 
