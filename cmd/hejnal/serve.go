@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 
 	"github.com/Legatia/hejnal/api"
@@ -54,10 +53,8 @@ func (a *app) cmdServe(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if !loopback(*addr) {
-		a.logf("listening on %s, which is not a loopback address; use TLS in front of the API so the token is not sent in clear text", *addr)
-	}
-	a.logf("serving the API on http://%s/v1/", *addr)
+	// Serve logs the address, and warns when it is reachable from other
+	// machines over plain HTTP.
 	return api.Serve(ctx, *addr, h, a.logf)
 }
 
@@ -100,17 +97,4 @@ func (a *app) cmdMCP(ctx context.Context, args []string) error {
 // to the next run without a restart.
 func (a *app) scopeLoader(path string) func() (*scope.Scope, error) {
 	return func() (*scope.Scope, error) { return a.loadScope(path) }
-}
-
-// loopback reports whether addr only listens on the local machine.
-func loopback(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return false
-	}
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }

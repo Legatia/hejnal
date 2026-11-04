@@ -30,22 +30,6 @@ func TestServeAllowRunsNeedsAScope(t *testing.T) {
 	}
 }
 
-func TestLoopback(t *testing.T) {
-	for addr, want := range map[string]bool{
-		"127.0.0.1:8080": true,
-		"[::1]:8080":     true,
-		"localhost:8080": true,
-		"0.0.0.0:8080":   false,
-		":8080":          false,
-		"10.0.0.5:8080":  false,
-		"nonsense":       false,
-	} {
-		if got := loopback(addr); got != want {
-			t.Errorf("loopback(%q) = %v, want %v", addr, got, want)
-		}
-	}
-}
-
 // TestMCPOverStdio drives `hejnal mcp` with a scripted assistant after a real
 // run, the way an MCP client starts it.
 func TestMCPOverStdio(t *testing.T) {
