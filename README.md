@@ -71,7 +71,7 @@ people's systems can be illegal.
 
 ## Install
 
-You need [Go](https://go.dev/dl/) 1.24 or newer.
+You need [Go](https://go.dev/dl/) 1.26 or newer.
 
 ```sh
 go install github.com/Legatia/hejnal/cmd/hejnal@latest

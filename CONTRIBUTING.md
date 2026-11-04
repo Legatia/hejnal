@@ -16,7 +16,7 @@ Hejnal must stay safe to point at production systems. We will not merge:
 
 ## Development
 
-You need Go 1.24 or newer.
+You need Go 1.26 or newer.
 
 ```sh
 go test -race ./...
