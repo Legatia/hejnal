@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/match"
@@ -156,6 +158,8 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	o.feedFlags(fs)
 	o.langFlag(fs)
 	fs.StringVar(&o.webhook, "webhook", "", "Slack-compatible webhook for new findings (or set HEJNAL_WEBHOOK)")
+	fs.StringVar(&o.teams, "teams-webhook", "", "Microsoft Teams Workflows webhook for new findings (or set HEJNAL_TEAMS_WEBHOOK)")
+	fs.StringVar(&o.emailTo, "email-to", "", "comma-separated addresses to email new findings to; SMTP settings come from HEJNAL_SMTP_* (or set HEJNAL_EMAIL_TO)")
 	fs.StringVar(&o.failOn, "fail-on", "none", "exit with status 2 when new findings reach this severity: critical, high, medium, low or none")
 	fs.StringVar(&o.out, "out", "", "where to write the fix list (default <state>/fixlist.md)")
 	if err := a.parse(fs, args); err != nil {
@@ -168,14 +172,9 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitError, err
 	}
-	if o.webhook == "" {
-		o.webhook = os.Getenv("HEJNAL_WEBHOOK")
-	}
-	hook := notify.Webhook{URL: o.webhook, Client: a.client, UserAgent: version.UserAgent()}
-	if o.webhook != "" {
-		if err := hook.Validate(); err != nil {
-			return exitError, err
-		}
+	notifiers, err := a.notifiers(o)
+	if err != nil {
+		return exitError, err
 	}
 	if o.out == "" {
 		o.out = filepath.Join(o.stateDir, "fixlist.md")
@@ -208,8 +207,16 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	fmt.Fprint(a.stdout, summary)
 	fmt.Fprintf(a.stdout, "Fix list written to %s.\n", o.out)
 
-	if o.webhook != "" && (ch.First || len(ch.Added) > 0) {
-		if err := hook.Send(ctx, summary); err != nil {
+	if len(notifiers) > 0 && (ch.First || len(ch.Added) > 0) {
+		title, lines := report.SummaryLines(snap.Findings, ch.Added, ch.Resolved, ch.First, m)
+		msg := notify.Message{Title: title, Lines: lines, FixList: fix.Bytes()}
+		var errs []error
+		for _, n := range notifiers {
+			if err := n.Notify(ctx, msg); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if err := errors.Join(errs...); err != nil {
 			// Leave the last report as it was, so the next run reports
 			// these findings again.
 			return exitError, fmt.Errorf("%w; the next run will report these findings again", err)
@@ -222,4 +229,58 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitFindings, nil
 	}
 	return exitOK, nil
+}
+
+// notifiers builds the configured notification channels. Secrets come from
+// the environment so they stay out of process lists and shell history.
+func (a *app) notifiers(o *options) ([]notify.Notifier, error) {
+	var out []notify.Notifier
+	if o.webhook == "" {
+		o.webhook = os.Getenv("HEJNAL_WEBHOOK")
+	}
+	if o.webhook != "" {
+		w := notify.Webhook{URL: o.webhook, Client: a.client, UserAgent: version.UserAgent()}
+		if err := w.Validate(); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	if o.teams == "" {
+		o.teams = os.Getenv("HEJNAL_TEAMS_WEBHOOK")
+	}
+	if o.teams != "" {
+		t := notify.Teams{URL: o.teams, Client: a.client, UserAgent: version.UserAgent()}
+		if err := t.Validate(); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	if o.emailTo == "" {
+		o.emailTo = os.Getenv("HEJNAL_EMAIL_TO")
+	}
+	if o.emailTo != "" {
+		e := notify.Email{
+			Host:     os.Getenv("HEJNAL_SMTP_HOST"),
+			Username: os.Getenv("HEJNAL_SMTP_USER"),
+			Password: os.Getenv("HEJNAL_SMTP_PASSWORD"),
+			From:     os.Getenv("HEJNAL_SMTP_FROM"),
+		}
+		if p := os.Getenv("HEJNAL_SMTP_PORT"); p != "" {
+			n, err := strconv.Atoi(p)
+			if err != nil || n < 1 || n > 65535 {
+				return nil, fmt.Errorf("HEJNAL_SMTP_PORT must be a port number")
+			}
+			e.Port = n
+		}
+		for _, to := range strings.Split(o.emailTo, ",") {
+			if to = strings.TrimSpace(to); to != "" {
+				e.To = append(e.To, to)
+			}
+		}
+		if err := e.Validate(); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
 }

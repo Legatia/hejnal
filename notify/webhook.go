@@ -27,21 +27,7 @@ type Webhook struct {
 
 // Validate checks the URL. Only HTTPS is allowed, except plain HTTP to the
 // local machine for testing.
-func (w Webhook) Validate() error {
-	u, err := url.Parse(strings.TrimSpace(w.URL))
-	if err != nil || u.Host == "" {
-		return errors.New("notify: the webhook URL is not valid")
-	}
-	switch u.Scheme {
-	case "https":
-		return nil
-	case "http":
-		if loopback(u.Hostname()) {
-			return nil
-		}
-	}
-	return errors.New("notify: the webhook URL must use https")
-}
+func (w Webhook) Validate() error { return validateWebhookURL(w.URL) }
 
 // Send posts text to the webhook.
 func (w Webhook) Send(ctx context.Context, text string) error {

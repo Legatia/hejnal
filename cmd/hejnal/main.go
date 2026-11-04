@@ -44,7 +44,7 @@ Usage:
   hejnal discover  [-scope scope.json] [flags]  find hosts and identify their software
   hejnal feeds     [flags]                      download the CISA KEV catalog
   hejnal match     [flags]                      match the last inventory against the catalog
-  hejnal report    fixlist|nis2 [flags]         print a report from the last run
+  hejnal report    fixlist|nis2|monthly [flags] print a report from the saved runs
   hejnal rules                                  list the products Hejnal recognises
   hejnal version
 
@@ -150,6 +150,8 @@ type options struct {
 	checks      bool
 	lang        string
 	webhook     string
+	teams       string
+	emailTo     string
 	failOn      string
 	concurrency int
 	timeout     time.Duration

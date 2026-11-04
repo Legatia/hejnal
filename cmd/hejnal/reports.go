@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/fingerprint"
@@ -20,11 +21,12 @@ func (a *app) cmdReport(args []string) error {
 		kind, args = args[0], args[1:]
 	}
 	o := &options{}
-	fs := a.flags("report", "fixlist|nis2 [flags]",
-		"Print a report from the last run:\n  fixlist  what to fix, most urgent first\n  nis2     a draft NIS2 early warning, for use if a system was compromised")
+	fs := a.flags("report", "fixlist|nis2|monthly [flags]",
+		"Print a report from the saved runs:\n  fixlist  what to fix, most urgent first\n  nis2     a draft NIS2 early warning, for use if a system was compromised\n  monthly  exposure, new and fixed items and time to fix for one month")
 	o.stateFlags(fs)
 	o.langFlag(fs)
 	fs.StringVar(&o.out, "o", "", "write to this file instead of standard output")
+	month := fs.String("month", "", "month for the monthly report, as YYYY-MM (default: this month)")
 	if kind == "" {
 		// Allow flags before the report name.
 		if err := fs.Parse(args); err != nil {
@@ -45,6 +47,14 @@ func (a *app) cmdReport(args []string) error {
 	if err := o.check(); err != nil {
 		return err
 	}
+	switch kind {
+	case "fixlist", "nis2", "monthly":
+	case "":
+		fs.Usage()
+		return errUsage
+	default:
+		return fmt.Errorf("unknown report %q: use fixlist, nis2 or monthly", kind)
+	}
 	store := state.Store{Dir: o.stateDir}
 	snap, err := store.LoadFindings()
 	if err != nil {
@@ -57,11 +67,18 @@ func (a *app) cmdReport(args []string) error {
 		err = report.FixList(&buf, snap.Findings, m)
 	case "nis2":
 		err = report.NIS2(&buf, snap.Findings, m)
-	case "":
-		fs.Usage()
-		return errUsage
-	default:
-		return fmt.Errorf("unknown report %q: use fixlist or nis2", kind)
+	case "monthly":
+		at := a.now().UTC()
+		if *month != "" {
+			if at, err = time.Parse("2006-01", *month); err != nil {
+				return fmt.Errorf("-month must look like 2026-11")
+			}
+		}
+		history, herr := store.History()
+		if herr != nil {
+			return herr
+		}
+		err = report.Monthly(&buf, history, at, m)
 	}
 	if err != nil {
 		return err

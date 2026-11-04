@@ -276,36 +276,47 @@ func mdCode(s string) string {
 }
 
 // Summary is a short chat message about a run: what is new, what was fixed
-// and what is still open.
+// and what is still open, in Slack's text format.
 func Summary(open, added, resolved []match.Finding, first bool, m Meta) string {
-	tr := newTranslator(m.Lang)
+	_, lines := SummaryLines(open, added, resolved, first, m)
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", tr("sum.title", chatEscape(m.Organization)))
+	fmt.Fprintf(&b, "*Hejnal* · %s\n", chatEscape(m.Organization))
+	for _, l := range lines {
+		b.WriteString(chatEscape(l) + "\n")
+	}
+	return b.String()
+}
+
+// SummaryLines is the run summary as a plain title and lines, for any
+// channel. Flaws the version check ruled out are left out.
+func SummaryLines(open, added, resolved []match.Finding, first bool, m Meta) (string, []string) {
+	tr := newTranslator(m.Lang)
+	title := "Hejnal · " + m.Organization
+	var lines []string
 	og := match.Groups(match.Active(open))
 	c := match.CountGroups(og)
 	if first {
-		fmt.Fprintf(&b, "%s\n", tr("sum.first", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
+		lines = append(lines, tr("sum.first", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
 	} else {
-		fmt.Fprintf(&b, "%s\n", tr("sum.counts", len(match.Groups(added)), len(match.Groups(resolved)), len(og),
+		lines = append(lines, tr("sum.counts", len(match.Groups(match.Active(added))), len(match.Groups(resolved)), len(og),
 			c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
 	}
-	list := match.Groups(added)
+	list := match.Groups(match.Active(added))
 	if first {
 		list = og
 	}
 	const maxLines = 10
 	for i, g := range list {
 		if i == maxLines {
-			fmt.Fprintf(&b, "%s\n", tr("sum.more", len(list)-maxLines))
+			lines = append(lines, tr("sum.more", len(list)-maxLines))
 			break
 		}
-		fmt.Fprintf(&b, "• [%s] %s\n", tr("sev.short."+string(g.Severity)), chatEscape(groupTitle(tr, g)))
+		lines = append(lines, fmt.Sprintf("• [%s] %s", tr("sev.short."+string(g.Severity)), groupTitle(tr, g)))
 	}
 	if len(og) > 0 {
-		b.WriteString(tr("sum.report"))
-		b.WriteString("\n")
+		lines = append(lines, tr("sum.report"))
 	}
-	return b.String()
+	return title, lines
 }
 
 // chatEscape escapes the characters Slack-style chat formats treat as markup.

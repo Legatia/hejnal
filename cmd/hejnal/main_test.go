@@ -131,6 +131,13 @@ func TestRunEndToEnd(t *testing.T) {
 	if code != exitOK || !strings.Contains(out, "Napraw teraz (krytyczne)") {
 		t.Errorf("fixlist report (exit %d):\n%s", code, out)
 	}
+	code, out, _ = h.run("report", "monthly", "-state", h.state, "-month", "2026-11")
+	if code != exitOK || !strings.Contains(out, "Hejnal monthly report, November 2026") || !strings.Contains(out, "Runs: 1") { // both runs share the fixed test clock
+		t.Errorf("monthly report (exit %d):\n%s", code, out)
+	}
+	if code, _, _ = h.run("report", "monthly", "-state", h.state, "-month", "Nov"); code != exitError {
+		t.Errorf("a malformed -month was accepted")
+	}
 	outFile := filepath.Join(h.dir, "fix.md")
 	if code, _, _ = h.run("report", "fixlist", "-state", h.state, "-o", outFile); code != exitOK {
 		t.Errorf("report -o exit = %d", code)
