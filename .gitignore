@@ -1,0 +1,18 @@
+# Build output
+/hejnal
+/dist/
+
+# Local state and caches written by hejnal
+.hejnal/
+fixlist*.md
+nis2-*.md
+
+# Real scope files often contain customer details; commit only examples
+scope.json
+!examples/scope.example.json
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
