@@ -30,7 +30,7 @@ func NIS2(w io.Writer, fs []match.Finding, m Meta) error {
 	fmt.Fprintf(&b, "\n## %s\n\n", tr("nis2.systems"))
 	var rows []match.Finding
 	for _, f := range fs {
-		if f.Kind == match.KindKEV && (f.Severity.Rank() >= match.High.Rank() || f.Forensics) {
+		if f.Kind == match.KindKEV && !f.RuledOut() && (f.Severity.Rank() >= match.High.Rank() || f.Forensics) {
 			rows = append(rows, f)
 		}
 	}

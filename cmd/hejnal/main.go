@@ -24,6 +24,7 @@ import (
 	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/epss"
 	"github.com/Legatia/hejnal/kev"
+	"github.com/Legatia/hejnal/nvd"
 	"github.com/Legatia/hejnal/report"
 	"github.com/Legatia/hejnal/version"
 )
@@ -74,6 +75,7 @@ type app struct {
 	kevURL         string
 	epssURL        string
 	ctURL          string
+	nvdURL         string
 
 	logMu sync.Mutex
 }
@@ -88,6 +90,7 @@ func newApp(stdout, stderr io.Writer) *app {
 		kevURL:  kev.DefaultURL,
 		epssURL: epss.DefaultAPI,
 		ctURL:   discover.CrtShURL,
+		nvdURL:  nvd.DefaultAPI,
 	}
 }
 
@@ -142,6 +145,7 @@ type options struct {
 	kevFile     string
 	offline     bool
 	noEPSS      bool
+	noNVD       bool
 	noCT        bool
 	lang        string
 	webhook     string
@@ -164,6 +168,7 @@ func (o *options) feedFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.kevFile, "kev-file", "", "read the KEV catalog from this file instead of downloading it")
 	fs.BoolVar(&o.offline, "offline", false, "do not download feeds; use the cached copies")
 	fs.BoolVar(&o.noEPSS, "no-epss", false, "do not use EPSS exploit-probability scores")
+	fs.BoolVar(&o.noNVD, "no-nvd", false, "do not compare versions with NVD's affected ranges")
 }
 
 func (o *options) scanFlags(fs *flag.FlagSet) {
@@ -199,6 +204,9 @@ func (a *app) engine(o *options) (*engine.Engine, error) {
 		Offline:     o.offline,
 		NoEPSS:      o.noEPSS,
 		NoCT:        o.noCT,
+		NoNVD:       o.noNVD,
+		NVDURL:      a.nvdURL,
+		NVDKey:      os.Getenv("HEJNAL_NVD_API_KEY"),
 		Concurrency: o.concurrency,
 		Timeout:     o.timeout,
 		HTTPClient:  a.client,

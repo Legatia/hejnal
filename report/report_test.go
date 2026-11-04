@@ -210,3 +210,43 @@ func TestPercent(t *testing.T) {
 		}
 	}
 }
+
+func TestFixListVersionVerdicts(t *testing.T) {
+	fs := []match.Finding{
+		{Key: "kev|w|443|CVE-2026-109618", Kind: match.KindKEV, Host: "w", Port: 443, TechID: "php", Technology: "PHP",
+			Version: "8.3.12", CVE: "CVE-2026-109618", Name: "PHP Memory Corruption Vulnerability", DateAdded: "2026-10-26",
+			Score: 95, Severity: match.Critical, Confidence: match.ConfidenceVersion},
+		{Key: "kev|w|443|CVE-2024-4577", Kind: match.KindKEV, Host: "w", Port: 443, TechID: "php", Technology: "PHP",
+			Version: "8.3.12", CVE: "CVE-2024-4577", DateAdded: "2024-06-12", Score: 20, Severity: match.Low,
+			Confidence: match.ConfidenceRuledOut},
+		{Key: "kev|j|443|CVE-2024-23897", Kind: match.KindKEV, Host: "j", Port: 443, TechID: "jenkins", Technology: "Jenkins",
+			Version: "2.462.3", CVE: "CVE-2024-23897", DateAdded: "2024-08-19", Score: 20, Severity: match.Low,
+			Confidence: match.ConfidenceRuledOut},
+		{Key: "kev|x|443|CVE-2025-0001", Kind: match.KindKEV, Host: "x", Port: 443, TechID: "php", Technology: "PHP",
+			Version: "8.3.7", CVE: "CVE-2025-0001", DateAdded: "2025-01-01", Score: 60, Severity: match.Medium,
+			Confidence: match.ConfidenceProduct, Condition: "microsoft windows"},
+	}
+	var b strings.Builder
+	if err := FixList(&b, fs, meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		"**Fix now: 1 · This week: 0 · This month: 1 · Later: 0**",
+		"Known exploited flaws in this product: 1.",
+		"version affected",
+		"**Ruled out by version:** CVE-2024-4577",
+		"Hejnal compared version `8.3.12` with the affected versions NVD lists",
+		"only on microsoft windows",
+		"## Probably fixed already",
+		"- Jenkins on j:443 (version `2.462.3`): CVE-2024-23897",
+		"not endorsed or certified by the NVD",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("fix list is missing %q\n%s", want, out)
+		}
+	}
+	if s := Summary(fs, fs, nil, true, meta("en")); strings.Contains(s, "CVE-2024-23897") || strings.Contains(s, "CVE-2024-4577") {
+		t.Errorf("summary mentions ruled-out flaws:\n%s", s)
+	}
+}

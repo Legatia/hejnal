@@ -207,3 +207,30 @@ func TestLoadRejectsBadRules(t *testing.T) {
 		}
 	}
 }
+
+func TestPackagedVersions(t *testing.T) {
+	e := engine(t)
+	cases := []struct {
+		header, value, id, version string
+		packaged                   bool
+	}{
+		{"X-Powered-By", "PHP/8.3.6-0ubuntu0.24.04.1", "php", "8.3.6", true},
+		{"X-Powered-By", "PHP/7.4.33-1+deb11u5", "php", "7.4.33", true},
+		{"X-Powered-By", "PHP/8.3.12", "php", "8.3.12", false},
+		{"Server", "Apache/2.4.62 (Debian)", "apache-httpd", "2.4.62", true},
+		{"Server", "nginx/1.24.0 (Ubuntu)", "nginx", "1.24.0", true},
+		{"Server", "nginx/1.27.2", "nginx", "1.27.2", false},
+	}
+	for _, c := range cases {
+		tech, ok := identify(e, header(c.header, c.value), "/", "")[c.id]
+		if !ok || tech.Version != c.version || tech.Packaged != c.packaged {
+			t.Errorf("%s = %+v, want version %s packaged %v", c.value, tech, c.version, c.packaged)
+		}
+	}
+	if got := e.CPEs("php"); len(got) != 1 || got[0] != "php:php" {
+		t.Errorf("CPEs(php) = %v", got)
+	}
+	if _, err := Load([]byte(`{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "cpe": ["Not A Name"]}]}`)); err == nil {
+		t.Error("Load accepted an invalid cpe name")
+	}
+}

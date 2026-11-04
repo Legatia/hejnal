@@ -46,7 +46,15 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 		b.WriteString(".\n\n")
 	}
 
-	groups := match.Groups(fs)
+	// Items whose flaws the version check all ruled out go to the end.
+	var groups, fixed []match.Group
+	for _, g := range match.Groups(fs) {
+		if g.Kind == match.KindKEV && len(match.Active(g.Findings)) == 0 {
+			fixed = append(fixed, g)
+		} else {
+			groups = append(groups, g)
+		}
+	}
 	c := match.CountGroups(groups)
 	fmt.Fprintf(&b, "**%s**\n\n", tr("fix.summary", c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
 	if len(groups) == 0 {
@@ -72,6 +80,14 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 			writeGroup(&b, tr, n, g)
 		}
 	}
+	if len(fixed) > 0 {
+		fmt.Fprintf(&b, "## %s\n\n%s\n\n", tr("fix.ruledout.title"), tr("fix.ruledout.intro"))
+		for _, g := range fixed {
+			fmt.Fprintf(&b, "- %s (%s): %s\n", tr("kev.title", mdEscape(g.Technology), hostPort(g.Host, g.Port)),
+				tr("label.version", mdCode(g.Version)), strings.Join(cveList(g.Findings), ", "))
+		}
+		b.WriteString("\n")
+	}
 	fmt.Fprintf(&b, "---\n\n%s\n", tr("fix.footer"))
 	_, err := io.WriteString(w, b.String())
 	return err
@@ -81,25 +97,47 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 	where := hostPort(g.Host, g.Port)
 	switch g.Kind {
 	case match.KindKEV:
+		active := match.Active(g.Findings)
+		var ruledOut []match.Finding
+		confirmed, packaged := false, false
+		for _, f := range g.Findings {
+			switch {
+			case f.RuledOut():
+				ruledOut = append(ruledOut, f)
+			case f.Confidence == match.ConfidenceVersion:
+				confirmed = true
+			}
+			packaged = packaged || f.Packaged
+		}
 		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("kev.title", mdEscape(g.Technology), where))
-		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("kev.why", len(g.Findings), g.Newest()))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("kev.why", len(active), newest(active)))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("kev.todo"))
 		if g.Forensics() {
 			fmt.Fprintf(b, "- **%s:** %s\n", tr("label.compromise"), tr("kev.forensic"))
 		}
 		writeSeen(b, tr, g, true)
 		fmt.Fprintf(b, "- **%s:**\n", tr("label.flaws"))
-		for i, f := range g.Findings {
+		for i, f := range active {
 			if i == maxFlaws {
-				fmt.Fprintf(b, "  - %s\n", tr("kev.more", len(g.Findings)-maxFlaws))
+				fmt.Fprintf(b, "  - %s\n", tr("kev.more", len(active)-maxFlaws))
 				break
 			}
 			fmt.Fprintf(b, "  - %s\n", flawLine(tr, f))
 		}
-		if links := groupLinks(g); len(links) > 0 {
+		if len(ruledOut) > 0 {
+			fmt.Fprintf(b, "- **%s:** %s\n", tr("label.ruledout"), strings.Join(cveList(ruledOut), ", "))
+		}
+		if links := groupLinks(active); len(links) > 0 {
 			fmt.Fprintf(b, "- **%s:** %s\n", tr("label.advisories"), strings.Join(links, " · "))
 		}
-		fmt.Fprintf(b, "\n> %s\n\n", tr("kev.confidence"))
+		note := tr("kev.confidence")
+		switch {
+		case confirmed:
+			note = tr("kev.confirmed", mdCode(g.Version))
+		case packaged:
+			note = tr("kev.packaged")
+		}
+		fmt.Fprintf(b, "\n> %s\n\n", note)
 	case match.KindTLSExpired, match.KindTLSExpiring:
 		f := g.Findings[0]
 		date := ""
@@ -148,15 +186,38 @@ func flawLine(tr translator, f match.Finding) string {
 	if f.Forensics {
 		parts = append(parts, tr("kev.forensicflag"))
 	}
+	if f.Confidence == match.ConfidenceVersion {
+		parts = append(parts, tr("kev.versionhit"))
+	}
+	if f.Condition != "" {
+		parts = append(parts, tr("kev.condition", mdEscape(f.Condition)))
+	}
 	return strings.Join(parts, " · ")
+}
+
+// newest returns the most recent date a flaw was added to KEV.
+func newest(fs []match.Finding) string {
+	n := ""
+	for _, f := range fs {
+		n = max(n, f.DateAdded)
+	}
+	return n
+}
+
+func cveList(fs []match.Finding) []string {
+	out := make([]string, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, f.CVE)
+	}
+	return out
 }
 
 // groupLinks picks advisory links for a group: vendor advisories first, and
 // none of CISA's US federal directive pages, which do not apply in the EU.
-func groupLinks(g match.Group) []string {
+func groupLinks(fs []match.Finding) []string {
 	var out []string
 	seen := map[string]bool{}
-	for i, f := range g.Findings {
+	for i, f := range fs {
 		if i == maxFlaws {
 			break
 		}
@@ -214,7 +275,7 @@ func Summary(open, added, resolved []match.Finding, first bool, m Meta) string {
 	tr := newTranslator(m.Lang)
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", tr("sum.title", chatEscape(m.Organization)))
-	og := match.Groups(open)
+	og := match.Groups(match.Active(open))
 	c := match.CountGroups(og)
 	if first {
 		fmt.Fprintf(&b, "%s\n", tr("sum.first", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))

@@ -34,7 +34,20 @@ type Rule struct {
 	Generator string            `json:"generator,omitempty"`
 	Body      []string          `json:"body,omitempty"`
 	Versions  []VersionRule     `json:"versions,omitempty"`
-	KEV       []KEVPattern      `json:"kev,omitempty"`
+	// Packaged marks versions from Linux distribution packages, which get
+	// security fixes without a new upstream version number.
+	Packaged []SourcePattern `json:"packaged,omitempty"`
+	KEV      []KEVPattern    `json:"kev,omitempty"`
+	// CPE lists the product's NVD names as vendor:product, used to compare
+	// the version seen with NVD's affected version ranges.
+	CPE []string `json:"cpe,omitempty"`
+}
+
+// SourcePattern matches a pattern against one part of a response. Source
+// is "header:<Name>", "title", "generator" or "body".
+type SourcePattern struct {
+	Source string `json:"source"`
+	Regex  string `json:"regex"`
 }
 
 // VersionRule extracts a version from a response part. Source is one of
@@ -78,7 +91,31 @@ type compiled struct {
 	generator *regexp.Regexp
 	body      []*regexp.Regexp
 	versions  []versionMatcher
+	packaged  []versionMatcher
 	kev       []kevMatcher
+}
+
+var cpeNameRE = regexp.MustCompile(`^[a-z0-9_.\-]+:[a-z0-9_.\-]+$`)
+
+// sourceMatcher compiles a pattern for one response part.
+func sourceMatcher(source, regex string, needGroup bool) (versionMatcher, error) {
+	re, err := ci(regex)
+	if err != nil {
+		return versionMatcher{}, err
+	}
+	if needGroup && re.NumSubexp() < 1 {
+		return versionMatcher{}, fmt.Errorf("version regex %q needs a capture group", regex)
+	}
+	vm := versionMatcher{source: source, re: re}
+	if name, ok := strings.CutPrefix(source, "header:"); ok {
+		vm.source, vm.header = "header", http.CanonicalHeaderKey(name)
+	}
+	switch vm.source {
+	case "header", "title", "generator", "body":
+	default:
+		return versionMatcher{}, fmt.Errorf("unknown source %q", source)
+	}
+	return vm, nil
 }
 
 // Engine holds compiled rules.
@@ -156,23 +193,23 @@ func compile(r Rule) (*compiled, error) {
 		c.body = append(c.body, re)
 	}
 	for _, v := range r.Versions {
-		re, err := ci(v.Regex)
+		vm, err := sourceMatcher(v.Source, v.Regex, true)
 		if err != nil {
 			return nil, err
 		}
-		if re.NumSubexp() < 1 {
-			return nil, fmt.Errorf("version regex %q needs a capture group", v.Regex)
-		}
-		vm := versionMatcher{source: v.Source, re: re}
-		if name, ok := strings.CutPrefix(v.Source, "header:"); ok {
-			vm.source, vm.header = "header", http.CanonicalHeaderKey(name)
-		}
-		switch vm.source {
-		case "header", "title", "generator", "body":
-		default:
-			return nil, fmt.Errorf("unknown version source %q", v.Source)
-		}
 		c.versions = append(c.versions, vm)
+	}
+	for _, p := range r.Packaged {
+		vm, err := sourceMatcher(p.Source, p.Regex, false)
+		if err != nil {
+			return nil, err
+		}
+		c.packaged = append(c.packaged, vm)
+	}
+	for _, name := range r.CPE {
+		if !cpeNameRE.MatchString(name) {
+			return nil, fmt.Errorf("cpe %q must be vendor:product in lower case", name)
+		}
 	}
 	for _, k := range r.KEV {
 		var m kevMatcher
@@ -251,14 +288,18 @@ func (e *Engine) Identify(r Response) []inventory.Technology {
 		if !ok {
 			continue
 		}
-		out = append(out, inventory.Technology{
+		t := inventory.Technology{
 			ID:       c.ID,
 			Name:     c.Name,
 			Version:  c.version(r),
 			Category: c.Category,
 			Admin:    c.Admin,
 			Evidence: ev,
-		})
+		}
+		if t.Version != "" {
+			t.Packaged = c.matchAny(c.packaged, r)
+		}
+		out = append(out, t)
 	}
 	return out
 }
@@ -299,26 +340,48 @@ func (c *compiled) match(r Response) (string, bool) {
 	return "", false
 }
 
+func (v versionMatcher) inputs(r Response) []string {
+	switch v.source {
+	case "header":
+		return r.Header.Values(v.header)
+	case "title":
+		return []string{r.Title}
+	case "generator":
+		return r.Generators
+	case "body":
+		return []string{r.Body}
+	}
+	return nil
+}
+
 func (c *compiled) version(r Response) string {
 	for _, v := range c.versions {
-		var inputs []string
-		switch v.source {
-		case "header":
-			inputs = r.Header.Values(v.header)
-		case "title":
-			inputs = []string{r.Title}
-		case "generator":
-			inputs = r.Generators
-		case "body":
-			inputs = []string{r.Body}
-		}
-		for _, in := range inputs {
+		for _, in := range v.inputs(r) {
 			if m := v.re.FindStringSubmatch(in); m != nil && m[1] != "" {
 				return strings.TrimSpace(m[1])
 			}
 		}
 	}
 	return ""
+}
+
+func (c *compiled) matchAny(ms []versionMatcher, r Response) bool {
+	for _, v := range ms {
+		for _, in := range v.inputs(r) {
+			if v.re.MatchString(in) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// CPEs returns the NVD vendor:product names of rule id.
+func (e *Engine) CPEs(id string) []string {
+	if c, ok := e.byID[id]; ok {
+		return c.CPE
+	}
+	return nil
 }
 
 // MatchesKEV reports whether a KEV entry belongs to the product identified by

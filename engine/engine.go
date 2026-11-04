@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Legatia/hejnal/discover"
@@ -19,6 +20,7 @@ import (
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/kev"
 	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/nvd"
 	"github.com/Legatia/hejnal/report"
 	"github.com/Legatia/hejnal/scope"
 	"github.com/Legatia/hejnal/state"
@@ -45,11 +47,16 @@ type Config struct {
 	KEVURL  string
 	EPSSURL string
 	CTURL   string
+	NVDURL  string
+	// NVDKey raises NVD's rate limit, so version checks finish sooner.
+	NVDKey string
 
 	// Offline never downloads feeds and uses cached copies only.
 	Offline bool
 	NoEPSS  bool
 	NoCT    bool
+	// NoNVD skips comparing versions with NVD's affected ranges.
+	NoNVD bool
 
 	Concurrency int
 	Timeout     time.Duration
@@ -59,6 +66,8 @@ type Config struct {
 	Resolver   discover.Resolver
 	Now        func() time.Time
 	Logf       func(format string, args ...any)
+
+	nvdPause time.Duration // shortens NVD pacing in tests
 }
 
 // Engine runs discovery and matching for one organisation's state directory.
@@ -212,6 +221,70 @@ func (e *Engine) epssScores(ctx context.Context, cves []string) map[string]epss.
 	return cache
 }
 
+// nvdBudget is how many NVD records one run fetches, without and with an
+// API key. The cache keeps them, so later runs complete the picture.
+const (
+	nvdBudget    = 20
+	nvdBudgetKey = 200
+)
+
+// nvdRecords returns NVD affected-version data for findings whose product
+// version is known and has an NVD name.
+func (e *Engine) nvdRecords(ctx context.Context, candidates []match.Finding) map[string]*nvd.Record {
+	if e.cfg.NoNVD {
+		return nil
+	}
+	var want []string
+	for _, f := range candidates {
+		if f.Kind == match.KindKEV && f.Version != "" && len(e.rules.CPEs(f.TechID)) > 0 {
+			want = append(want, f.CVE)
+		}
+	}
+	slices.Sort(want)
+	want = slices.Compact(want)
+	if len(want) == 0 {
+		return nil
+	}
+	cache := nvd.Cache{Dir: filepath.Join(e.cfg.CacheDir, "nvd")}
+	out := map[string]*nvd.Record{}
+	var fetch []string
+	for _, c := range want {
+		rec, ok := cache.Get(c)
+		if ok {
+			out[c] = rec
+		}
+		if !ok || nvd.Stale(rec, time.Now()) {
+			fetch = append(fetch, c)
+		}
+	}
+	if e.cfg.Offline || len(fetch) == 0 {
+		return out
+	}
+	budget := nvdBudget
+	if e.cfg.NVDKey != "" {
+		budget = nvdBudgetKey
+	}
+	client := &nvd.Client{HTTP: e.cfg.HTTPClient, BaseURL: e.cfg.NVDURL, APIKey: e.cfg.NVDKey, UserAgent: version.UserAgent(), Pause: e.cfg.nvdPause}
+	for i, c := range fetch {
+		if i == budget {
+			e.cfg.Logf("NVD: %d version checks left for the next runs; an NVD API key (HEJNAL_NVD_API_KEY) makes them faster", len(fetch)-i)
+			break
+		}
+		rec, err := client.Fetch(ctx, c)
+		if err != nil {
+			// Stop at the first failure: NVD is down, rate limiting or not
+			// reachable, and retrying every CVE would only add waiting.
+			e.cfg.Logf("NVD lookup failed (%v); continuing without version checks for the rest", err)
+			break
+		}
+		out[c] = rec
+		if err := cache.Put(rec); err != nil {
+			e.cfg.Logf("could not cache NVD data: %v", err)
+		}
+	}
+	return out
+}
+
 // Match matches an inventory against the catalog and saves the findings.
 func (e *Engine) Match(ctx context.Context, inv *inventory.Inventory) (*state.Snapshot, error) {
 	cat, err := e.Catalog(ctx)
@@ -228,7 +301,8 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 	now := e.cfg.Now()
 	candidates := match.Run(inv, cat, e.rules, match.Options{Now: now})
 	scores := e.epssScores(ctx, match.CVEs(candidates))
-	fs := match.Run(inv, cat, e.rules, match.Options{Now: now, EPSS: scores})
+	records := e.nvdRecords(ctx, candidates)
+	fs := match.Run(inv, cat, e.rules, match.Options{Now: now, EPSS: scores, NVD: records})
 	snap := &state.Snapshot{
 		Organization: inv.Organization,
 		GeneratedAt:  now.UTC(),
@@ -261,11 +335,12 @@ func (e *Engine) Changes(snap *state.Snapshot) (Changes, error) {
 	if err != nil {
 		return Changes{}, err
 	}
+	// Flaws the version check rules out are not news.
 	if prev == nil {
-		return Changes{Added: snap.Findings, First: true}, nil
+		return Changes{Added: match.Active(snap.Findings), First: true}, nil
 	}
 	added, resolved := state.Diff(prev.Findings, snap.Findings)
-	return Changes{Added: added, Resolved: resolved}, nil
+	return Changes{Added: match.Active(added), Resolved: resolved}, nil
 }
 
 // MarkReported records that people were told about snap. Call it only after

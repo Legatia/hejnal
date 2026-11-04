@@ -2,6 +2,7 @@ package match
 
 import (
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/Legatia/hejnal/fingerprint"
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/kev"
+	"github.com/Legatia/hejnal/nvd"
 )
 
 var now = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
@@ -224,5 +226,72 @@ func TestCVEs(t *testing.T) {
 	got := CVEs([]Finding{{CVE: "CVE-2"}, {CVE: "CVE-1"}, {CVE: "CVE-2"}, {}})
 	if len(got) != 2 || got[0] != "CVE-1" {
 		t.Errorf("CVEs = %v", got)
+	}
+}
+
+func loadNVD(t *testing.T, cves ...string) map[string]*nvd.Record {
+	t.Helper()
+	out := map[string]*nvd.Record{}
+	for _, c := range cves {
+		f, err := os.Open("../nvd/testdata/" + c + ".json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec, err := nvd.Parse(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out[c] = rec
+	}
+	return out
+}
+
+func TestVersionChecks(t *testing.T) {
+	cat, err := kev.Load("../testdata/kev_sample.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, _ := fingerprint.Default()
+	php := func(version string, packaged bool) *inventory.Inventory {
+		t := tech("php", "PHP", "language", version, false)
+		t.Packaged = packaged
+		return &inventory.Inventory{Assets: []inventory.Asset{{Host: "www.example.com", Services: []inventory.Service{
+			{Port: 443, Scheme: "https", URL: "https://www.example.com/", Technologies: []inventory.Technology{t}},
+		}}}}
+	}
+	records := loadNVD(t, "CVE-2026-109618", "CVE-2024-4577")
+
+	byCVE := func(fs []Finding) map[string]Finding {
+		m := map[string]Finding{}
+		for _, f := range fs {
+			m[f.CVE] = f
+		}
+		return m
+	}
+	got := byCVE(Run(php("8.3.12", false), cat, eng, Options{Now: now, NVD: records}))
+	if f := got["CVE-2026-109618"]; f.Confidence != ConfidenceVersion || f.Score != 95 || f.Severity != Critical {
+		t.Errorf("8.3.12 and CVE-2026-109618 = %s %d %s, want version-confirmed 95 critical", f.Confidence, f.Score, f.Severity)
+	}
+	if f := got["CVE-2024-4577"]; !f.RuledOut() || f.Score != ruledOutScore || f.Severity != Low {
+		t.Errorf("8.3.12 and CVE-2024-4577 = %s %d %s, want ruled out", f.Confidence, f.Score, f.Severity)
+	}
+	if f := got["CVE-2019-11043"]; f.Confidence != ConfidenceProduct {
+		t.Errorf("without NVD data CVE-2019-11043 should stay product-level, got %s", f.Confidence)
+	}
+	if n := len(Active(Run(php("8.3.12", false), cat, eng, Options{Now: now, NVD: records}))); n != 3 {
+		t.Errorf("Active() kept %d findings, want 3 (CVE-2024-4577 is ruled out)", n)
+	}
+
+	// The Windows-only flaw on an affected version: a condition, no upgrade.
+	got = byCVE(Run(php("8.3.7", false), cat, eng, Options{Now: now, NVD: records}))
+	if f := got["CVE-2024-4577"]; f.Confidence != ConfidenceProduct || f.Condition != "microsoft windows" {
+		t.Errorf("8.3.7 and CVE-2024-4577 = %s %q", f.Confidence, f.Condition)
+	}
+
+	// Distribution packages may carry backported fixes: not confirmed.
+	got = byCVE(Run(php("8.3.6", true), cat, eng, Options{Now: now, NVD: records}))
+	if f := got["CVE-2026-109618"]; f.Confidence != ConfidenceProduct || !f.Packaged {
+		t.Errorf("packaged 8.3.6 = %s packaged=%v, want product-level", f.Confidence, f.Packaged)
 	}
 }

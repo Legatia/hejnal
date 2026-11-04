@@ -79,7 +79,7 @@ func (h *harness) run(args ...string) (code int, stdout, stderr string) {
 
 func (h *harness) runArgs(extra ...string) []string {
 	return append([]string{"run", "-scope", h.scope, "-state", h.state, "-kev-file", kevSample,
-		"-no-epss", "-no-ct", "-timeout", "3s", "-webhook", h.hook.URL + "/hook"}, extra...)
+		"-no-epss", "-no-nvd", "-no-ct", "-timeout", "3s", "-webhook", h.hook.URL + "/hook"}, extra...)
 }
 
 func TestRunEndToEnd(t *testing.T) {
@@ -143,7 +143,7 @@ func TestRunEndToEnd(t *testing.T) {
 	if code, out, errOut = h.run("discover", "-scope", h.scope, "-state", h.state, "-no-ct"); code != exitOK {
 		t.Fatalf("discover exit = %d\n%s\n%s", code, out, errOut)
 	}
-	if code, out, errOut = h.run("match", "-state", h.state, "-kev-file", kevSample, "-no-epss"); code != exitOK {
+	if code, out, errOut = h.run("match", "-state", h.state, "-kev-file", kevSample, "-no-epss", "-no-nvd"); code != exitOK {
 		t.Fatalf("match exit = %d\n%s\n%s", code, out, errOut)
 	}
 	if !strings.Contains(out, "New: 0 · Resolved: 0") {

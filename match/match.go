@@ -17,6 +17,7 @@ import (
 	"github.com/Legatia/hejnal/fingerprint"
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/kev"
+	"github.com/Legatia/hejnal/nvd"
 )
 
 // Kind is the type of a finding.
@@ -35,9 +36,28 @@ const (
 	// ConfidenceProduct means the product was recognised but its version
 	// was not checked against the fix, so it may already be patched.
 	ConfidenceProduct = "product"
+	// ConfidenceVersion means the version seen is in NVD's affected range.
+	ConfidenceVersion = "version"
+	// ConfidenceRuledOut means the version seen is outside NVD's affected
+	// ranges, so the flaw is probably fixed already.
+	ConfidenceRuledOut = "ruled-out"
 	// ConfidenceObserved means Hejnal saw the problem directly.
 	ConfidenceObserved = "observed"
 )
+
+// RuledOut reports whether the version seen is outside the affected ranges.
+func (f Finding) RuledOut() bool { return f.Confidence == ConfidenceRuledOut }
+
+// Active returns the findings that are not ruled out.
+func Active(fs []Finding) []Finding {
+	var out []Finding
+	for _, f := range fs {
+		if !f.RuledOut() {
+			out = append(out, f)
+		}
+	}
+	return out
+}
 
 // Severity buckets a score into how soon to act.
 type Severity string
@@ -95,34 +115,40 @@ func ParseSeverity(v string) (Severity, error) {
 
 // Finding is one thing worth acting on.
 type Finding struct {
-	Key            string     `json:"key"`
-	Kind           Kind       `json:"kind"`
-	Host           string     `json:"host"`
-	Port           int        `json:"port"`
-	URL            string     `json:"url,omitempty"`
-	TechID         string     `json:"techId,omitempty"`
-	Technology     string     `json:"technology,omitempty"`
-	Version        string     `json:"version,omitempty"`
-	Category       string     `json:"category,omitempty"`
-	Evidence       string     `json:"evidence,omitempty"`
-	CVE            string     `json:"cve,omitempty"`
-	Vendor         string     `json:"vendor,omitempty"`
-	Product        string     `json:"product,omitempty"`
-	Name           string     `json:"name,omitempty"`
-	Description    string     `json:"description,omitempty"`
-	Action         string     `json:"action,omitempty"`
-	DateAdded      string     `json:"dateAdded,omitempty"`
-	DueDate        string     `json:"dueDate,omitempty"`
-	Ransomware     bool       `json:"ransomware,omitempty"`
-	Forensics      bool       `json:"forensics,omitempty"`
-	EPSS           float64    `json:"epss,omitempty"`
-	EPSSPercentile float64    `json:"epssPercentile,omitempty"`
-	Links          []string   `json:"links,omitempty"`
-	Subject        string     `json:"subject,omitempty"`
-	Expires        *time.Time `json:"expires,omitempty"`
-	Score          int        `json:"score"`
-	Severity       Severity   `json:"severity"`
-	Confidence     string     `json:"confidence"`
+	Key            string   `json:"key"`
+	Kind           Kind     `json:"kind"`
+	Host           string   `json:"host"`
+	Port           int      `json:"port"`
+	URL            string   `json:"url,omitempty"`
+	TechID         string   `json:"techId,omitempty"`
+	Technology     string   `json:"technology,omitempty"`
+	Version        string   `json:"version,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	Evidence       string   `json:"evidence,omitempty"`
+	CVE            string   `json:"cve,omitempty"`
+	Vendor         string   `json:"vendor,omitempty"`
+	Product        string   `json:"product,omitempty"`
+	Name           string   `json:"name,omitempty"`
+	Description    string   `json:"description,omitempty"`
+	Action         string   `json:"action,omitempty"`
+	DateAdded      string   `json:"dateAdded,omitempty"`
+	DueDate        string   `json:"dueDate,omitempty"`
+	Ransomware     bool     `json:"ransomware,omitempty"`
+	Forensics      bool     `json:"forensics,omitempty"`
+	EPSS           float64  `json:"epss,omitempty"`
+	EPSSPercentile float64  `json:"epssPercentile,omitempty"`
+	Links          []string `json:"links,omitempty"`
+	// Packaged marks a version from a Linux distribution package, which
+	// may contain backported fixes.
+	Packaged bool `json:"packaged,omitempty"`
+	// Condition names the platform the flaw needs according to NVD, such
+	// as "microsoft windows"; the version seen is affected only there.
+	Condition  string     `json:"condition,omitempty"`
+	Subject    string     `json:"subject,omitempty"`
+	Expires    *time.Time `json:"expires,omitempty"`
+	Score      int        `json:"score"`
+	Severity   Severity   `json:"severity"`
+	Confidence string     `json:"confidence"`
 }
 
 // Options tune matching.
@@ -132,6 +158,9 @@ type Options struct {
 	EPSS map[string]epss.Score
 	// ExpiryWindow flags certificates that expire within it. Default 21 days.
 	ExpiryWindow time.Duration
+	// NVD holds affected-version data by CVE, used when a product's
+	// version is known.
+	NVD map[string]*nvd.Record
 }
 
 // Run produces findings for an inventory, sorted most urgent first. cat may be
@@ -220,6 +249,8 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 						f.EPSS, f.EPSSPercentile = probability(e.EPSS), probability(e.Percentile)
 					}
 					f.Score = Score(v, t.Category, f.EPSS, opts.Now)
+					f.Packaged = t.Packaged
+					applyVersion(&f, opts.NVD[v.CVEID], eng.CPEs(t.ID))
 					f.Severity = SeverityFor(f.Score)
 					emit(f)
 				}
@@ -258,6 +289,35 @@ func Score(v kev.Vulnerability, category string, epssScore float64, now time.Tim
 	}
 	score += int(math.Round(probability(epssScore) * 10))
 	return max(0, min(100, score))
+}
+
+// ruledOutScore caps the score of flaws the version check rules out.
+const ruledOutScore = 20
+
+// applyVersion compares the version seen with NVD's affected ranges.
+func applyVersion(f *Finding, rec *nvd.Record, products []string) {
+	if rec == nil || f.Version == "" || len(products) == 0 {
+		return
+	}
+	verdict, platforms := rec.Check(products, f.Version)
+	switch verdict {
+	case nvd.Affected:
+		// Distribution packages often carry backported fixes under an old
+		// version number, so only upstream builds count as confirmed.
+		if !f.Packaged {
+			f.Confidence = ConfidenceVersion
+			f.Score = min(100, f.Score+10)
+		}
+	case nvd.AffectedOnPlatform:
+		names := make([]string, len(platforms))
+		for i, p := range platforms {
+			names[i] = strings.NewReplacer(":", " ", "_", " ").Replace(p)
+		}
+		f.Condition = strings.Join(names, " or ")
+	case nvd.NotAffected:
+		f.Confidence = ConfidenceRuledOut
+		f.Score = min(f.Score, ruledOutScore)
+	}
 }
 
 // probability keeps a value within 0–1, treating anything invalid as 0.

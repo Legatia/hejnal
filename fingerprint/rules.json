@@ -5,6 +5,8 @@
       "headers": {"X-Powered-By": "\\bPHP\\b"},
       "cookies": ["^PHPSESSID$"],
       "versions": [{"source": "header:X-Powered-By", "regex": "PHP/([0-9]+(?:\\.[0-9]+){1,2})"}],
+      "packaged": [{"source": "header:X-Powered-By", "regex": "ubuntu|[+~]deb|\\.el[0-9]|\\.fc[0-9]"}],
+      "cpe": ["php:php"],
       "kev": [{"vendor": "^PHP( Group)?$", "product": "^(PHP|FastCGI Process Manager.*)$"}]
     },
     {
@@ -16,12 +18,16 @@
       "id": "nginx", "name": "nginx", "category": "server",
       "headers": {"Server": "^nginx\\b"},
       "versions": [{"source": "header:Server", "regex": "nginx/([0-9]+(?:\\.[0-9]+)+)"}],
+      "packaged": [{"source": "header:Server", "regex": "\\((Debian|Ubuntu|Raspbian|Red Hat|CentOS|Rocky|AlmaLinux|Fedora|Amazon|SUSE|Oracle)"}],
+      "cpe": ["f5:nginx", "nginx:nginx"],
       "kev": [{"vendor": "^(F5|NGINX)$", "product": "nginx"}]
     },
     {
       "id": "apache-httpd", "name": "Apache HTTP Server", "category": "server",
       "headers": {"Server": "^Apache(/[0-9]|\\s|$)"},
       "versions": [{"source": "header:Server", "regex": "Apache/([0-9]+(?:\\.[0-9]+)+)"}],
+      "packaged": [{"source": "header:Server", "regex": "\\((Debian|Ubuntu|Raspbian|Red Hat|CentOS|Rocky|AlmaLinux|Fedora|Amazon|SUSE|Oracle)"}],
+      "cpe": ["apache:http_server"],
       "kev": [{"vendor": "^Apache$", "product": "^(HTTP Server|Apache)$"}]
     },
     {
@@ -36,6 +42,8 @@
       "title": "^Apache Tomcat(/[0-9.]+)?$",
       "body": ["<h3>Apache Tomcat/[0-9]"],
       "versions": [{"source": "title", "regex": "Apache Tomcat/([0-9]+(?:\\.[0-9]+)+)"}, {"source": "body", "regex": "<h3>Apache Tomcat/([0-9]+(?:\\.[0-9]+)+)"}],
+      "packaged": [{"source": "title", "regex": "\\((Debian|Ubuntu)\\)"}, {"source": "body", "regex": "Apache Tomcat/[0-9.]+ \\((Debian|Ubuntu)\\)"}],
+      "cpe": ["apache:tomcat"],
       "kev": [{"vendor": "^Apache$", "product": "^Tomcat$"}]
     },
     {
@@ -43,6 +51,7 @@
       "headers": {"Server": "WebLogic"},
       "body": ["From RFC 2068 Hypertext Transfer Protocol", "/console/login/LoginForm\\.jsp"],
       "versions": [{"source": "header:Server", "regex": "WebLogic(?: Server)? ([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["oracle:weblogic_server"],
       "kev": [{"vendor": "^Oracle$", "product": "WebLogic"}]
     },
     {
@@ -57,6 +66,7 @@
       "generator": "^WordPress",
       "body": ["/wp-includes/"],
       "versions": [{"source": "generator", "regex": "WordPress ([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["wordpress:wordpress"],
       "kev": [{"vendor": "^WordPress$", "product": "^(WordPress )?Core$"}]
     },
     {
@@ -89,6 +99,7 @@
       "headers": {"Liferay-Portal": ""},
       "body": ["Liferay\\.authToken", "/o/frontend-js-web/"],
       "versions": [{"source": "header:Liferay-Portal", "regex": "([0-9]+\\.[0-9]+(?:\\.[0-9]+)*)"}],
+      "cpe": ["liferay:liferay_portal"],
       "kev": [{"vendor": "^Liferay$", "product": ".*"}]
     },
     {
@@ -96,6 +107,7 @@
       "generator": "vBulletin",
       "body": ["vb_login_username"],
       "versions": [{"source": "generator", "regex": "vBulletin ([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["vbulletin:vbulletin"],
       "kev": [{"vendor": "^vBulletin$", "product": ".*"}]
     },
     {
@@ -120,6 +132,7 @@
       "headers": {"X-Jenkins": ""},
       "title": "\\[Jenkins\\]$",
       "versions": [{"source": "header:X-Jenkins", "regex": "([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["jenkins:jenkins"],
       "kev": [{"vendor": "^Jenkins$", "product": ".*"}]
     },
     {
@@ -127,6 +140,7 @@
       "title": "^Grafana$",
       "body": ["window\\.grafanaBootData"],
       "versions": [{"source": "body", "regex": "\"buildInfo\":\\{[^}]*\"version\":\"([0-9]+(?:\\.[0-9]+)+)\""}],
+      "cpe": ["grafana:grafana"],
       "kev": [{"vendor": "^Grafana Labs$", "product": "^Grafana$"}]
     },
     {
@@ -134,6 +148,7 @@
       "headers": {"kbn-name": "", "kbn-version": ""},
       "body": ["kbn-injected-metadata"],
       "versions": [{"source": "header:kbn-version", "regex": "([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["elastic:kibana"],
       "kev": [{"vendor": "^Elastic$", "product": "^Kibana$"}]
     },
     {
@@ -156,6 +171,7 @@
       "headers": {"X-Confluence-Request-Time": ""},
       "body": ["com-atlassian-confluence", "ajs-confluence-base-url"],
       "versions": [{"source": "body", "regex": "name=\"ajs-version-number\" content=\"([0-9]+(?:\\.[0-9]+)+)\""}],
+      "cpe": ["atlassian:confluence_data_center", "atlassian:confluence_server", "atlassian:confluence"],
       "kev": [
         {"vendor": "^Atlassian$", "product": "Confluence"},
         {"vendor": "^Atlassian$", "product": "^Multiple Products$", "text": "Confluence"}
@@ -165,6 +181,7 @@
       "id": "jira", "name": "Atlassian Jira", "category": "collaboration",
       "body": ["name=\"ajs-application-name\" content=\"JIRA\"", "jira\\.webresources"],
       "versions": [{"source": "body", "regex": "name=\"ajs-version-number\" content=\"([0-9]+(?:\\.[0-9]+)+)\""}],
+      "cpe": ["atlassian:jira_data_center", "atlassian:jira_server", "atlassian:jira", "atlassian:jira_software_data_center", "atlassian:jira_software_server"],
       "kev": [
         {"vendor": "^Atlassian$", "product": "Jira"},
         {"vendor": "^Atlassian$", "product": "^Multiple Products$", "text": "Jira"}
@@ -304,6 +321,7 @@
       "id": "screenconnect", "name": "ConnectWise ScreenConnect", "category": "remote-access",
       "headers": {"Server": "ScreenConnect"},
       "versions": [{"source": "header:Server", "regex": "ScreenConnect/([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["connectwise:screenconnect"],
       "kev": [{"vendor": "^ConnectWise$", "product": "ScreenConnect"}]
     },
     {
@@ -317,6 +335,7 @@
       "id": "webmin", "name": "Webmin", "category": "admin", "admin": true,
       "headers": {"Server": "MiniServ"},
       "versions": [{"source": "header:Server", "regex": "MiniServ/([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["webmin:webmin"],
       "kev": [{"vendor": "^Webmin$", "product": ".*"}]
     },
     {

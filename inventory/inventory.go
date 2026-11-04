@@ -11,6 +11,9 @@ type Technology struct {
 	Version  string `json:"version,omitempty"`
 	Category string `json:"category"`
 	Admin    bool   `json:"admin,omitempty"`
+	// Packaged is set for Linux distribution builds, which get security
+	// fixes without a new upstream version number.
+	Packaged bool   `json:"packaged,omitempty"`
 	Evidence string `json:"evidence"`
 }
 
