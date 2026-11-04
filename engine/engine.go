@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -109,7 +110,22 @@ func New(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	warnLoosePermissions(cfg.Logf, cfg.StateDir, cfg.CacheDir)
 	return &Engine{cfg: cfg, store: state.Store{Dir: cfg.StateDir}, rules: rules}, nil
+}
+
+// warnLoosePermissions warns about state or cache directories other users
+// can write to: Hejnal trusts what it finds there, such as cached NVD
+// records that can rule flaws out.
+func warnLoosePermissions(logf func(string, ...any), dirs ...string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	for _, dir := range dirs {
+		if st, err := os.Stat(dir); err == nil && st.IsDir() && st.Mode().Perm()&0o022 != 0 {
+			logf("warning: other users can write to %s, and Hejnal trusts what it finds there; run `chmod go-w %s`", dir, dir)
+		}
+	}
 }
 
 // Store returns the engine's state directory.
@@ -368,12 +384,15 @@ func (e *Engine) Changes(snap *state.Snapshot) (Changes, error) {
 	if err != nil {
 		return Changes{}, err
 	}
-	// Flaws the version check rules out are not news.
+	// Flaws the version check rules out are not news. Comparing only the
+	// active findings also announces a flaw that becomes active again, say
+	// when a server stops showing its version, and counts a flaw the
+	// version check now rules out as resolved.
 	if prev == nil {
 		return Changes{Added: match.Active(snap.Findings), First: true}, nil
 	}
-	added, resolved := state.Diff(prev.Findings, snap.Findings)
-	return Changes{Added: match.Active(added), Resolved: resolved}, nil
+	added, resolved := state.Diff(match.Active(prev.Findings), match.Active(snap.Findings))
+	return Changes{Added: added, Resolved: resolved}, nil
 }
 
 // MarkReported records that people were told about snap. Call it only after

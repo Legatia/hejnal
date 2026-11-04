@@ -43,7 +43,7 @@ func NIS2(w io.Writer, fs []match.Finding, m Meta) error {
 			if f.Forensics {
 				triage = tr("nis2.yes")
 			}
-			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", hostPort(f.Host, f.Port), mdEscape(f.Technology), f.CVE, f.DateAdded, triage)
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", hostPort(f.Host, f.Port), mdEscape(f.Technology), mdEscape(f.CVE), mdEscape(f.DateAdded), triage)
 		}
 	}
 

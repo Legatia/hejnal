@@ -193,7 +193,7 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 				fmt.Fprintf(b, "  - %s\n", tr("sum.more", len(g.Findings)-maxFlaws))
 				break
 			}
-			parts := []string{"**" + mdEscape(f.Name) + "**", tr("breach.date", f.BreachDate), tr("breach.accounts", f.Accounts)}
+			parts := []string{"**" + mdEscape(f.Name) + "**", tr("breach.date", mdEscape(f.BreachDate)), tr("breach.accounts", f.Accounts)}
 			if f.Passwords {
 				parts = append(parts, tr("breach.passwords"))
 			}
@@ -240,7 +240,7 @@ func writeSeen(b *strings.Builder, tr translator, g match.Group, withVersion boo
 }
 
 func flawLine(tr translator, f match.Finding) string {
-	parts := []string{"**" + f.CVE + "**: " + mdEscape(f.Name), tr("kev.added", f.DateAdded)}
+	parts := []string{"**" + mdEscape(f.CVE) + "**: " + mdEscape(f.Name), tr("kev.added", mdEscape(f.DateAdded))}
 	if f.EPSS > 0 {
 		parts = append(parts, "EPSS "+percent(f.EPSS))
 	}
@@ -271,7 +271,7 @@ func newest(fs []match.Finding) string {
 func cveList(fs []match.Finding) []string {
 	out := make([]string, 0, len(fs))
 	for _, f := range fs {
-		out = append(out, f.CVE)
+		out = append(out, mdEscape(f.CVE))
 	}
 	return out
 }
@@ -377,9 +377,11 @@ func SummaryLines(open, added, resolved []match.Finding, first bool, m Meta) (st
 	return title, lines
 }
 
-// chatEscape escapes the characters Slack-style chat formats treat as markup.
+// chatEscape escapes the characters Slack-style chat formats treat as
+// markup, and puts an invisible word joiner after every @ so text from
+// scanned systems cannot mention @channel or @here.
 func chatEscape(s string) string {
-	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "@", "@\u2060").Replace(s)
 }
 
 func groupTitle(tr translator, g match.Group) string {

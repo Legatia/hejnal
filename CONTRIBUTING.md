@@ -73,6 +73,9 @@ any redirects inside the scope:
   Hejnal compares a version it sees with NVD's affected version ranges. List
   every name NVD has used for the product, such as `f5:nginx` and
   `nginx:nginx`.
+- `editions` tells apart software editions that NVD lists separately, by the
+  form of the version. Jenkins, for example, maps `2.426.3` to its `lts`
+  edition and `2.441` to its weekly one (`-`).
 - `packaged` marks versions that come from a Linux distribution package.
   Distributions backport fixes without changing the version, so Hejnal never
   treats such a version as confirmed affected.

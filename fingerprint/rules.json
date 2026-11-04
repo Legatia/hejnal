@@ -133,6 +133,7 @@
       "title": "\\[Jenkins\\]$",
       "versions": [{"source": "header:X-Jenkins", "regex": "([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["jenkins:jenkins"],
+      "editions": [{"edition": "lts", "regex": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, {"edition": "-", "regex": "^[0-9]+\\.[0-9]+$"}],
       "kev": [{"vendor": "^Jenkins$", "product": ".*"}]
     },
     {

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // Teams posts messages to a Microsoft Teams channel through a Workflows
@@ -61,9 +60,9 @@ func (t Teams) Notify(ctx context.Context, m Message) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
-	body := []textBlock{{Type: "TextBlock", Text: m.Title, Wrap: true, Weight: "Bolder", Size: "Medium"}}
+	body := []textBlock{{Type: "TextBlock", Text: teamsEscape(m.Title), Wrap: true, Weight: "Bolder", Size: "Medium"}}
 	for _, l := range m.Lines {
-		body = append(body, textBlock{Type: "TextBlock", Text: l, Wrap: true, Spacing: "Small"})
+		body = append(body, textBlock{Type: "TextBlock", Text: teamsEscape(l), Wrap: true, Spacing: "Small"})
 	}
 	payload, err := json.Marshal(card{
 		Type: "message",
@@ -88,11 +87,7 @@ func (t Teams) Notify(ctx context.Context, m Message) error {
 	if t.UserAgent != "" {
 		req.Header.Set("User-Agent", t.UserAgent)
 	}
-	client := t.Client
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
-	}
-	resp, err := client.Do(req)
+	resp, err := noRedirects(t.Client).Do(req)
 	if err != nil {
 		var ue *url.Error
 		if errors.As(err, &ue) {
@@ -103,7 +98,7 @@ func (t Teams) Notify(ctx context.Context, m Message) error {
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("notify: Teams returned %s", resp.Status)
+		return statusError("Teams", resp)
 	}
 	return nil
 }

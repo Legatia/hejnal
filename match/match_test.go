@@ -312,3 +312,31 @@ func TestExposedFiles(t *testing.T) {
 		t.Errorf("finding = %+v", fs[0])
 	}
 }
+
+func TestVersionChecksUseTheEdition(t *testing.T) {
+	cat, err := kev.Load("../testdata/kev_sample.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, _ := fingerprint.Default()
+	records := loadNVD(t, "CVE-2024-23897")
+	jenkins := func(version string) Finding {
+		inv := &inventory.Inventory{Assets: []inventory.Asset{{Host: "ci.example.com", Services: []inventory.Service{
+			{Port: 443, Scheme: "https", URL: "https://ci.example.com/", Technologies: []inventory.Technology{tech("jenkins", "Jenkins", "devops", version, true)}},
+		}}}}
+		for _, f := range Run(inv, cat, eng, Options{Now: now, NVD: records}) {
+			if f.CVE == "CVE-2024-23897" {
+				return f
+			}
+		}
+		t.Fatalf("Jenkins %s: no finding for CVE-2024-23897", version)
+		return Finding{}
+	}
+	// 2.426.3 is the fixed LTS release, which the weekly range would cover.
+	if f := jenkins("2.426.3"); !f.RuledOut() {
+		t.Errorf("LTS 2.426.3 = %s, want ruled out", f.Confidence)
+	}
+	if f := jenkins("2.441"); f.Confidence != ConfidenceVersion {
+		t.Errorf("weekly 2.441 = %s, want version-confirmed", f.Confidence)
+	}
+}

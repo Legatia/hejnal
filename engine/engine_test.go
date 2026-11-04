@@ -147,3 +147,36 @@ func TestMatchIncludesSavedLeaks(t *testing.T) {
 		t.Errorf("the critical secret should come first, got %+v", snap.Findings[0])
 	}
 }
+
+func TestChangesComparesActiveFindings(t *testing.T) {
+	e, err := New(Config{StateDir: t.TempDir(), NoEPSS: true, NoCT: true, NoNVD: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruledOut := match.Finding{Key: "kev|w|443|CVE-2021-41773", Kind: match.KindKEV, Host: "w", Port: 443, CVE: "CVE-2021-41773",
+		Version: "2.4.62", Score: 20, Severity: match.Low, Confidence: match.ConfidenceRuledOut}
+	if err := e.MarkReported(&state.Snapshot{Findings: []match.Finding{ruledOut}}); err != nil {
+		t.Fatal(err)
+	}
+	// The server stops showing its version, so the flaw is active again.
+	active := ruledOut
+	active.Version, active.Score, active.Severity, active.Confidence = "", 80, match.High, match.ConfidenceProduct
+	ch, err := e.Changes(&state.Snapshot{Findings: []match.Finding{active}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Added) != 1 || len(ch.Resolved) != 0 {
+		t.Errorf("flaw active again: added %d, resolved %d; want 1 and 0", len(ch.Added), len(ch.Resolved))
+	}
+	// And the other way round: ruled out after an update counts as resolved.
+	if err := e.MarkReported(&state.Snapshot{Findings: []match.Finding{active}}); err != nil {
+		t.Fatal(err)
+	}
+	ch, err = e.Changes(&state.Snapshot{Findings: []match.Finding{ruledOut}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Added) != 0 || len(ch.Resolved) != 1 {
+		t.Errorf("flaw ruled out: added %d, resolved %d; want 0 and 1", len(ch.Added), len(ch.Resolved))
+	}
+}

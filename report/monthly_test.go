@@ -68,3 +68,19 @@ func TestMonthly(t *testing.T) {
 		t.Errorf("empty month:\n%s", b.String())
 	}
 }
+
+func TestMonthlyIgnoresRunsThatReachedNothing(t *testing.T) {
+	stays := kevFinding("b.example.com", "CVE-2019-11043", match.Medium)
+	outage := snap("2026-11-29", 0) // reached no services: everything looks fixed
+	history := []*state.Snapshot{snap("2026-11-02", 5, stays), snap("2026-11-20", 5, stays), outage}
+	var b strings.Builder
+	if err := Monthly(&b, history, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{"Items fixed: 0", "Still open: 1", "1 runs reached none of your services", "Runs: 2"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("monthly report is missing %q\n%s", want, out)
+		}
+	}
+}

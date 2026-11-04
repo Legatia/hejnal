@@ -234,3 +234,48 @@ func TestPackagedVersions(t *testing.T) {
 		t.Error("Load accepted an invalid cpe name")
 	}
 }
+
+func TestVersionQualifiersAreKept(t *testing.T) {
+	e := engine(t)
+	cases := []struct {
+		header, value, id, version string
+	}{
+		// A milestone build is not the release with the same number.
+		{"X-Jenkins", "2.462.3-rc1", "jenkins", "2.462.3-rc1"},
+		{"Server", "nginx/1.27.2-dev", "nginx", "1.27.2-dev"},
+		// Distribution suffixes start with a digit and stay out.
+		{"X-Powered-By", "PHP/8.3.6-0ubuntu0.24.04.1", "php", "8.3.6"},
+		{"Server", "Apache/2.4.62 (Debian)", "apache-httpd", "2.4.62"},
+	}
+	for _, c := range cases {
+		tech, ok := identify(e, header(c.header, c.value), "/", "")[c.id]
+		if !ok || tech.Version != c.version {
+			t.Errorf("%s: %s = %+v, want version %q", c.header, c.value, tech, c.version)
+		}
+	}
+	page := `<html><head><title>Apache Tomcat/10.1.0-M17</title></head><body><h3>Apache Tomcat/10.1.0-M17</h3></body></html>`
+	if tech, ok := identify(e, header(), "/", page)["tomcat"]; !ok || tech.Version != "10.1.0-M17" {
+		t.Errorf("tomcat = %+v, %v; want version 10.1.0-M17", tech, ok)
+	}
+}
+
+func TestEditions(t *testing.T) {
+	e := engine(t)
+	for _, c := range []struct{ id, version, want string }{
+		{"jenkins", "2.426.3", "lts"},
+		{"jenkins", "2.441", "-"},
+		{"jenkins", "2.441-rc1", ""},
+		{"php", "8.3.12", ""},
+		{"no-such-rule", "1.0", ""},
+	} {
+		if got := e.Edition(c.id, c.version); got != c.want {
+			t.Errorf("Edition(%s, %s) = %q, want %q", c.id, c.version, got, c.want)
+		}
+	}
+	if _, err := Load([]byte(`{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "editions": [{"edition": "LTS!", "regex": "x"}]}]}`)); err == nil {
+		t.Error("Load accepted an invalid edition name")
+	}
+	if _, err := Load([]byte(`{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "editions": [{"edition": "lts", "regex": "("}]}]}`)); err == nil {
+		t.Error("Load accepted an invalid edition regex")
+	}
+}

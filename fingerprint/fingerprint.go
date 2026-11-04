@@ -41,6 +41,16 @@ type Rule struct {
 	// CPE lists the product's NVD names as vendor:product, used to compare
 	// the version seen with NVD's affected version ranges.
 	CPE []string `json:"cpe,omitempty"`
+	// Editions tell the product's software editions apart by the form of
+	// the version, for products whose NVD entries are split by edition,
+	// such as Jenkins' LTS and weekly lines.
+	Editions []EditionRule `json:"editions,omitempty"`
+}
+
+// EditionRule names the NVD software edition of versions that match Regex.
+type EditionRule struct {
+	Edition string `json:"edition"`
+	Regex   string `json:"regex"`
 }
 
 // SourcePattern matches a pattern against one part of a response. Source
@@ -84,6 +94,7 @@ type kevMatcher struct {
 
 type compiled struct {
 	Rule
+	editions  []compiledEdition
 	headers   []headerMatcher
 	cookies   []*regexp.Regexp
 	path      *regexp.Regexp
@@ -96,6 +107,19 @@ type compiled struct {
 }
 
 var cpeNameRE = regexp.MustCompile(`^[a-z0-9_.\-]+:[a-z0-9_.\-]+$`)
+
+var editionNameRE = regexp.MustCompile(`^[a-z0-9_.\-]+$`)
+
+type compiledEdition struct {
+	name string
+	re   *regexp.Regexp
+}
+
+// qualifierRE matches a qualifier written straight after a version, such as
+// "-M17", "-rc1" or "-dev". The qualifier is kept with the version: a
+// pre-release is compared as one, and an unknown qualifier makes the
+// version unusable for version checks rather than mistaken for a release.
+var qualifierRE = regexp.MustCompile(`^[-_~+]?[A-Za-z][A-Za-z0-9.]*`)
 
 // sourceMatcher compiles a pattern for one response part.
 func sourceMatcher(source, regex string, needGroup bool) (versionMatcher, error) {
@@ -210,6 +234,16 @@ func compile(r Rule) (*compiled, error) {
 		if !cpeNameRE.MatchString(name) {
 			return nil, fmt.Errorf("cpe %q must be vendor:product in lower case", name)
 		}
+	}
+	for _, ed := range r.Editions {
+		if !editionNameRE.MatchString(ed.Edition) {
+			return nil, fmt.Errorf("edition %q must be lower case", ed.Edition)
+		}
+		re, err := regexp.Compile(ed.Regex)
+		if err != nil {
+			return nil, fmt.Errorf("edition %q: %w", ed.Edition, err)
+		}
+		c.editions = append(c.editions, compiledEdition{name: ed.Edition, re: re})
 	}
 	for _, k := range r.KEV {
 		var m kevMatcher
@@ -357,8 +391,14 @@ func (v versionMatcher) inputs(r Response) []string {
 func (c *compiled) version(r Response) string {
 	for _, v := range c.versions {
 		for _, in := range v.inputs(r) {
-			if m := v.re.FindStringSubmatch(in); m != nil && m[1] != "" {
-				return strings.TrimSpace(m[1])
+			m := v.re.FindStringSubmatchIndex(in)
+			if m == nil || m[2] < 0 || m[3] <= m[2] {
+				continue
+			}
+			ver := in[m[2]:m[3]]
+			ver += qualifierRE.FindString(in[m[3]:])
+			if ver = strings.TrimSpace(ver); ver != "" {
+				return ver
 			}
 		}
 	}
@@ -382,6 +422,21 @@ func (e *Engine) CPEs(id string) []string {
 		return c.CPE
 	}
 	return nil
+}
+
+// Edition returns the NVD software edition of version for rule id, or ""
+// when the rule does not tell editions apart or none matches.
+func (e *Engine) Edition(id, version string) string {
+	c, ok := e.byID[id]
+	if !ok {
+		return ""
+	}
+	for _, ed := range c.editions {
+		if ed.re.MatchString(version) {
+			return ed.name
+		}
+	}
+	return ""
 }
 
 // MatchesKEV reports whether a KEV entry belongs to the product identified by

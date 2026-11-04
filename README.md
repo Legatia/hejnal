@@ -329,7 +329,7 @@ recorded:
 | Affected | Marks the flaw "version affected" and raises its score by 10. |
 | Affected only on a platform | NVD says the flaw needs a platform Hejnal cannot see, such as Windows for CVE-2024-4577. The finding says so; the score stays. |
 | Ruled out | The version is outside every affected range. The flaw drops to low, is left out of alerts and moves to "Probably fixed already". |
-| Unknown | NVD has not analysed the flaw yet (common in the first days), or the version cannot be compared. Nothing changes. |
+| Unknown | NVD has not analysed the flaw yet (common in the first days), or Hejnal cannot be sure: the server shows only part of the version (`Apache/2.4`), NVD lists pre-release builds of that number separately, or a range cannot be read. Nothing changes. |
 
 Versions from Linux distribution packages (for example PHP from Ubuntu, or
 Apache reporting `(Debian)`) are never confirmed this way, because

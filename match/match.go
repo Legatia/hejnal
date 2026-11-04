@@ -289,7 +289,7 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 					}
 					f.Score = Score(v, t.Category, f.EPSS, opts.Now)
 					f.Packaged = t.Packaged
-					applyVersion(&f, opts.NVD[v.CVEID], eng.CPEs(t.ID))
+					applyVersion(&f, opts.NVD[v.CVEID], eng.CPEs(t.ID), eng.Edition(t.ID, t.Version))
 					f.Severity = SeverityFor(f.Score)
 					emit(f)
 				}
@@ -334,11 +334,12 @@ func Score(v kev.Vulnerability, category string, epssScore float64, now time.Tim
 const ruledOutScore = 20
 
 // applyVersion compares the version seen with NVD's affected ranges.
-func applyVersion(f *Finding, rec *nvd.Record, products []string) {
+// edition is the product's NVD software edition, when the rule can tell.
+func applyVersion(f *Finding, rec *nvd.Record, products []string, edition string) {
 	if rec == nil || f.Version == "" || len(products) == 0 {
 		return
 	}
-	verdict, platforms := rec.Check(products, f.Version)
+	verdict, platforms := rec.Check(products, f.Version, edition)
 	switch verdict {
 	case nvd.Affected:
 		// Distribution packages often carry backported fixes under an old

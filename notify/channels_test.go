@@ -193,3 +193,58 @@ func TestEmailValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestHostileTextIsDefused(t *testing.T) {
+	hostile := Message{Title: "Hejnal", Lines: []string{"secret in docs/@channel [Rotate here](https://evil.example/aws).env <!here>"}}
+	var got map[string]any
+	teams := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&got)
+	}))
+	defer teams.Close()
+	if err := (Teams{URL: teams.URL, Client: teams.Client()}).Notify(context.Background(), hostile); err != nil {
+		t.Fatal(err)
+	}
+	card, _ := json.Marshal(got)
+	text := string(card)
+	for _, bad := range []string{"](https://", "@channel", "<!here>"} {
+		if strings.Contains(text, bad) {
+			t.Errorf("Teams card still contains %q: %s", bad, text)
+		}
+	}
+
+	var posted map[string]string
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&posted)
+	}))
+	defer hook.Close()
+	if err := (Webhook{URL: hook.URL, Client: hook.Client()}).Notify(context.Background(), hostile); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"@channel", "<!here>"} {
+		if strings.Contains(posted["text"], bad) {
+			t.Errorf("chat message still contains %q: %q", bad, posted["text"])
+		}
+	}
+}
+
+func TestChannelsRefuseRedirects(t *testing.T) {
+	var reached bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
+	defer elsewhere.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirecting.Close()
+	for _, n := range []Notifier{
+		Webhook{URL: redirecting.URL, Client: redirecting.Client()},
+		Teams{URL: redirecting.URL, Client: redirecting.Client()},
+	} {
+		err := n.Notify(context.Background(), msg)
+		if err == nil || !strings.Contains(err.Error(), "redirect") {
+			t.Errorf("%s: error = %v, want a redirect error", n.Name(), err)
+		}
+	}
+	if reached {
+		t.Error("a message followed a redirect")
+	}
+}

@@ -32,12 +32,15 @@ func TestParseResponse(t *testing.T) {
 }
 
 func TestParseResponseClampsScores(t *testing.T) {
-	scores, err := ParseResponse(strings.NewReader(`{"data": [{"cve": "CVE-1", "epss": "-3", "percentile": "7"}]}`))
+	scores, err := ParseResponse(strings.NewReader(`{"data": [{"cve": "CVE-2026-0003", "epss": "-3", "percentile": "7", "date": "2026-11-03](https://evil.example)"}, {"cve": "CVE-1](x)", "epss": "0.5"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s := scores["CVE-1"]; s.EPSS != 0 || s.Percentile != 1 {
-		t.Errorf("got %+v, want scores clamped to 0–1", s)
+	if s := scores["CVE-2026-0003"]; s.EPSS != 0 || s.Percentile != 1 || s.Date != "" {
+		t.Errorf("got %+v, want scores clamped to 0–1 and the malformed date cleared", s)
+	}
+	if len(scores) != 1 {
+		t.Errorf("an entry with an invalid CVE ID was kept: %v", scores)
 	}
 }
 

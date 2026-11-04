@@ -34,6 +34,24 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 	end := start.AddDate(0, 1, 0)
 	snaps := slices.Clone(history)
 	sort.SliceStable(snaps, func(i, j int) bool { return snaps[i].GeneratedAt.Before(snaps[j].GeneratedAt) })
+	// A run that reached no services, during an outage or when the scanner
+	// was blocked, would make everything look fixed. Leave such runs out
+	// unless no run of the month reached anything.
+	unreachable := 0
+	reached := slices.ContainsFunc(snaps, func(s *state.Snapshot) bool {
+		return s.Services > 0 && !s.GeneratedAt.Before(start) && s.GeneratedAt.Before(end)
+	})
+	if reached {
+		kept := snaps[:0]
+		for _, s := range snaps {
+			if s.Services > 0 {
+				kept = append(kept, s)
+			} else if !s.GeneratedAt.Before(start) && s.GeneratedAt.Before(end) {
+				unreachable++
+			}
+		}
+		snaps = kept
+	}
 
 	var before *state.Snapshot
 	var in []*state.Snapshot
@@ -111,6 +129,9 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 	}
 
 	fmt.Fprintf(&b, "%s\n\n", tr("mon.period", start.Format("2006-01-02"), end.AddDate(0, 0, -1).Format("2006-01-02"), len(in)))
+	if unreachable > 0 {
+		fmt.Fprintf(&b, "> %s\n\n", tr("mon.unreachable", unreachable))
+	}
 
 	fmt.Fprintf(&b, "## %s\n\n", tr("mon.exposure"))
 	fmt.Fprintf(&b, "| | %s | %s |\n|---|---|---|\n", tr("mon.start"), tr("mon.end"))

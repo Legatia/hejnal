@@ -123,3 +123,28 @@ func TestFetch(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRejectsMalformedFields(t *testing.T) {
+	feed := `{"catalogVersion": "2026.11.03](https://evil.example)", "vulnerabilities": [
+		{"cveID": "CVE-2026-0001](https://evil.example)", "vendorProject": "X", "product": "Y", "dateAdded": "2026-11-01"},
+		{"cveID": "cve-2026-0002", "vendorProject": "X", "product": "Y", "dateAdded": "2026-11-01<img src=x>", "dueDate": "2026-11-22",
+		 "notes": "https://vendor.example/advisory ; https://evil.example/a><img/src=x/onerror=alert(1)> ; javascript:alert(1) ; https://user:pw@vendor.example/x"}
+	]}`
+	c, err := Parse(strings.NewReader(feed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.CatalogVersion != "" {
+		t.Errorf("catalog version = %q", c.CatalogVersion)
+	}
+	if len(c.Vulnerabilities) != 1 {
+		t.Fatalf("got %d entries, want the one with a valid CVE ID", len(c.Vulnerabilities))
+	}
+	v := c.Vulnerabilities[0]
+	if v.CVEID != "CVE-2026-0002" || v.DateAdded != "" || v.DueDate != "2026-11-22" {
+		t.Errorf("entry = %+v", v)
+	}
+	if links := v.Links(); len(links) != 1 || links[0] != "https://vendor.example/advisory" {
+		t.Errorf("links = %q", links)
+	}
+}

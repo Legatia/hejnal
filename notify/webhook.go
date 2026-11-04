@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // Webhook posts messages to a Slack-compatible incoming webhook (Slack,
@@ -46,11 +45,7 @@ func (w Webhook) Send(ctx context.Context, text string) error {
 	if w.UserAgent != "" {
 		req.Header.Set("User-Agent", w.UserAgent)
 	}
-	client := w.Client
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
-	}
-	resp, err := client.Do(req)
+	resp, err := noRedirects(w.Client).Do(req)
 	if err != nil {
 		var ue *url.Error
 		if errors.As(err, &ue) {
@@ -61,7 +56,7 @@ func (w Webhook) Send(ctx context.Context, text string) error {
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("notify: webhook returned %s", resp.Status)
+		return statusError("the webhook", resp)
 	}
 	return nil
 }

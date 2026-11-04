@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -54,6 +55,12 @@ func (f *flexFloat) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// The API's CVE IDs and dates appear in reports, so they must look right.
+var (
+	cveRE  = regexp.MustCompile(`^CVE-[0-9]{4}-[0-9]{4,}$`)
+	dateRE = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
+)
+
 type apiResponse struct {
 	Status string `json:"status"`
 	Data   []struct {
@@ -76,7 +83,14 @@ func ParseResponse(r io.Reader) (map[string]Score, error) {
 	out := make(map[string]Score, len(resp.Data))
 	for _, d := range resp.Data {
 		cve := strings.ToUpper(strings.TrimSpace(d.CVE))
-		out[cve] = Score{CVE: cve, EPSS: float64(d.EPSS), Percentile: float64(d.Percentile), Date: d.Date}
+		if !cveRE.MatchString(cve) {
+			continue
+		}
+		date := strings.TrimSpace(d.Date)
+		if !dateRE.MatchString(date) {
+			date = ""
+		}
+		out[cve] = Score{CVE: cve, EPSS: float64(d.EPSS), Percentile: float64(d.Percentile), Date: date}
 	}
 	return out, nil
 }

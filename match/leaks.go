@@ -65,8 +65,8 @@ func Breaches(sums []leaks.DomainSummary, now time.Time) []Finding {
 				Host:        d.Domain,
 				TechID:      b.Name,
 				Name:        b.Title,
-				BreachDate:  b.BreachDate,
-				DateAdded:   b.AddedDate,
+				BreachDate:  validDate(b.BreachDate),
+				DateAdded:   validDate(b.AddedDate),
 				Description: strings.Join(b.DataClasses, ", "),
 				Accounts:    b.Accounts,
 				Passwords:   b.Passwords,
@@ -78,6 +78,15 @@ func Breaches(sums []leaks.DomainSummary, now time.Time) []Finding {
 	}
 	Sort(out)
 	return out
+}
+
+// validDate returns a YYYY-MM-DD date, or "" for anything else, so breach
+// data cannot inject text where reports expect a date.
+func validDate(s string) string {
+	if _, err := time.Parse("2006-01-02", s); err != nil {
+		return ""
+	}
+	return s
 }
 
 // withinYear reports whether a YYYY-MM-DD date is less than a year before now.

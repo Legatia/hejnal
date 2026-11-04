@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -46,26 +48,52 @@ type Vulnerability struct {
 	CWEs                       []string `json:"cwes"`
 }
 
+var (
+	cveRE     = regexp.MustCompile(`^CVE-[0-9]{4}-[0-9]{4,}$`)
+	dateRE    = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
+	versionRE = regexp.MustCompile(`^[0-9A-Za-z._-]{1,32}$`)
+)
+
 // Parse decodes a catalog and normalises its text fields. CISA's data
 // contains stray and non-breaking spaces in vendor and product names.
+// Fields that end up in reports as they are must have the expected form:
+// entries without a valid CVE ID are dropped, and malformed dates and
+// catalog versions are cleared, so a tampered feed cannot inject Markdown.
 func Parse(r io.Reader) (*Catalog, error) {
 	var c Catalog
 	if err := json.NewDecoder(io.LimitReader(r, maxFeedBytes)).Decode(&c); err != nil {
 		return nil, fmt.Errorf("kev: decode: %w", err)
 	}
-	if len(c.Vulnerabilities) == 0 {
-		return nil, errors.New("kev: catalog has no vulnerabilities")
+	if !versionRE.MatchString(c.CatalogVersion) {
+		c.CatalogVersion = ""
 	}
-	for i := range c.Vulnerabilities {
-		v := &c.Vulnerabilities[i]
+	vulns := c.Vulnerabilities[:0]
+	for _, v := range c.Vulnerabilities {
 		v.CVEID = strings.ToUpper(strings.TrimSpace(v.CVEID))
+		if !cveRE.MatchString(v.CVEID) {
+			continue
+		}
 		v.VendorProject = squash(v.VendorProject)
 		v.Product = squash(v.Product)
 		v.VulnerabilityName = squash(v.VulnerabilityName)
-		v.DateAdded = strings.TrimSpace(v.DateAdded)
-		v.DueDate = strings.TrimSpace(v.DueDate)
+		v.DateAdded = date(v.DateAdded)
+		v.DueDate = date(v.DueDate)
+		vulns = append(vulns, v)
+	}
+	c.Vulnerabilities = vulns
+	if len(c.Vulnerabilities) == 0 {
+		return nil, errors.New("kev: catalog has no vulnerabilities")
 	}
 	return &c, nil
+}
+
+// date returns a YYYY-MM-DD date, or "" for anything else.
+func date(s string) string {
+	s = strings.TrimSpace(s)
+	if !dateRE.MatchString(s) {
+		return ""
+	}
+	return s
 }
 
 // Load reads a catalog from a local file.
@@ -128,12 +156,14 @@ func (v Vulnerability) Added() (time.Time, bool) {
 }
 
 // Links returns the advisory URLs from the notes field, leaving out CISA's
-// generic directive pages so vendor advisories come first.
+// generic directive pages so vendor advisories come first. Only plain http
+// and https URLs are returned, without characters that could break out of
+// a Markdown link.
 func (v Vulnerability) Links() []string {
 	var vendor, cisa []string
 	for _, part := range strings.FieldsFunc(v.Notes, func(r rune) bool { return r == ';' || r == ' ' }) {
 		u := strings.TrimSpace(part)
-		if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+		if !safeURL(u) {
 			continue
 		}
 		if strings.Contains(u, "cisa.gov/news-events/directives") {
@@ -143,6 +173,19 @@ func (v Vulnerability) Links() []string {
 		vendor = append(vendor, u)
 	}
 	return append(vendor, cisa...)
+}
+
+func safeURL(s string) bool {
+	if len(s) > 512 || strings.ContainsAny(s, "<>\"'`\\{}|^ ") {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x21 || r > 0x7e {
+			return false
+		}
+	}
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil
 }
 
 func squash(s string) string {

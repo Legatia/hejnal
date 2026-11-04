@@ -11,10 +11,13 @@ package nvd
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -39,7 +42,11 @@ type Match struct {
 	// Version is set when the entry names one exact version.
 	Version string `json:"version,omitempty"`
 	// Update qualifies an exact version, such as "milestone1".
-	Update         string `json:"update,omitempty"`
+	Update string `json:"update,omitempty"`
+	// Edition limits the entry to one software edition of the product,
+	// such as "lts" for Jenkins' long-term support line or "-" for its
+	// weekly line.
+	Edition        string `json:"edition,omitempty"`
 	StartIncluding string `json:"startIncluding,omitempty"`
 	StartExcluding string `json:"startExcluding,omitempty"`
 	EndIncluding   string `json:"endIncluding,omitempty"`
@@ -105,6 +112,10 @@ func Parse(r io.Reader) (*Record, error) {
 		var platforms []string
 		if strings.EqualFold(cfg.Operator, "AND") {
 			for _, n := range cfg.Nodes {
+				if n.Negate {
+					// "Not on this platform" is not a platform the flaw needs.
+					continue
+				}
 				for _, m := range n.CPEMatch {
 					if !m.Vulnerable {
 						if c, ok := parseCPE(m.Criteria); ok {
@@ -143,6 +154,9 @@ func Parse(r io.Reader) (*Record, error) {
 						mt.Update = c.update
 					}
 				}
+				if c.edition != "*" && c.edition != "" {
+					mt.Edition = c.edition
+				}
 				rec.Matches = append(rec.Matches, mt)
 			}
 		}
@@ -150,7 +164,7 @@ func Parse(r io.Reader) (*Record, error) {
 	return rec, nil
 }
 
-type cpe struct{ vendor, product, version, update string }
+type cpe struct{ vendor, product, version, update, edition string }
 
 // parseCPE splits a CPE 2.3 formatted string, honouring backslash escapes.
 func parseCPE(s string) (cpe, bool) {
@@ -175,12 +189,17 @@ func parseCPE(s string) (cpe, bool) {
 	if len(fields) < 7 || fields[0] != "cpe" || fields[1] != "2.3" {
 		return cpe{}, false
 	}
-	return cpe{
+	c := cpe{
 		vendor:  strings.ToLower(fields[3]),
 		product: strings.ToLower(fields[4]),
 		version: strings.ToLower(fields[5]),
 		update:  strings.ToLower(fields[6]),
-	}, true
+	}
+	// The tenth component is the software edition.
+	if len(fields) > 9 {
+		c.edition = strings.ToLower(fields[9])
+	}
+	return c, true
 }
 
 // Verdict is the answer to "is this version affected?".
@@ -206,8 +225,17 @@ func (v Verdict) String() string {
 }
 
 // Check decides whether version of any of the products (vendor:product
-// names) is affected. For AffectedOnPlatform it also returns the platforms.
-func (r *Record) Check(products []string, version string) (Verdict, []string) {
+// names) is affected. edition is the product's software edition when it is
+// known, such as "lts", and empty otherwise. For AffectedOnPlatform it also
+// returns the platforms.
+//
+// Check answers NotAffected only when every entry for the product could be
+// evaluated and none covers the version. A shortened version ("2.4" from a
+// server that hides its patch level), an entry it cannot parse, a
+// pre-release entry with the same number, or an edition it cannot tell
+// apart all make the answer Unknown instead, so guesswork never rules out a
+// vulnerable system.
+func (r *Record) Check(products []string, version, edition string) (Verdict, []string) {
 	if r == nil || version == "" {
 		return Unknown, nil
 	}
@@ -215,33 +243,35 @@ func (r *Record) Check(products []string, version string) (Verdict, []string) {
 	if !ok {
 		return Unknown, nil
 	}
-	applicable, affected := false, false
+	applicable, affected, uncertain := false, false, false
 	var platforms []string
+	// Entries limited to an edition, when the edition seen is unknown: the
+	// editions listed and those whose entries cover the version.
+	editions, editionsHit := map[string]bool{}, map[string]bool{}
 	for _, m := range r.Matches {
 		if !slices.Contains(products, m.Vendor+":"+m.Product) {
 			continue
 		}
-		hit := false
-		switch {
-		case m.Version != "":
-			if m.Update != "" {
-				continue // a pre-release or patch qualifier Hejnal cannot see
-			}
-			exact, ok := ParseVersion(m.Version)
-			if !ok {
-				continue
-			}
-			applicable = true
-			hit = v.Compare(exact) == 0
-		default:
-			in, ok := inRange(v, m)
-			if !ok {
-				continue
-			}
-			applicable = true
-			hit = in
+		if m.Edition != "" && edition != "" && m.Edition != edition {
+			continue // another edition's entry
 		}
-		if !hit {
+		applicable = true
+		res := m.covers(v)
+		switch {
+		case res == maybe:
+			uncertain = true
+			continue
+		case m.Edition != "" && edition == "":
+			editions[m.Edition] = true
+			if res == yes {
+				if len(m.Platforms) > 0 {
+					uncertain = true
+				} else {
+					editionsHit[m.Edition] = true
+				}
+			}
+			continue
+		case res == no:
 			continue
 		}
 		if len(m.Platforms) > 0 {
@@ -250,9 +280,18 @@ func (r *Record) Check(products []string, version string) (Verdict, []string) {
 			affected = true
 		}
 	}
+	if len(editionsHit) > 0 {
+		if len(editionsHit) == len(editions) {
+			affected = true // affected whichever edition it is
+		} else {
+			uncertain = true
+		}
+	}
 	switch {
 	case affected:
 		return Affected, nil
+	case uncertain:
+		return Unknown, nil
 	case len(platforms) > 0:
 		slices.Sort(platforms)
 		return AffectedOnPlatform, slices.Compact(platforms)
@@ -262,19 +301,39 @@ func (r *Record) Check(products []string, version string) (Verdict, []string) {
 	return Unknown, nil
 }
 
-// inRange reports whether v is inside the match's range. ok is false when a
-// bound cannot be parsed. A match with no bounds at all covers every version.
-func inRange(v Version, m Match) (in, ok bool) {
-	check := func(bound string, accept func(int) bool) (bool, bool) {
-		if bound == "" {
-			return true, true
-		}
-		b, ok := ParseVersion(bound)
+// tri is a three-valued answer.
+type tri int
+
+const (
+	no tri = iota
+	yes
+	maybe
+)
+
+// covers reports whether the entry covers version v.
+func (m Match) covers(v Version) tri {
+	if m.Version != "" {
+		exact, ok := ParseVersion(m.Version)
 		if !ok {
-			return false, false
+			return maybe
 		}
-		return accept(v.Compare(b)), true
+		if m.Update != "" {
+			// A qualified build, such as 10.1.0 milestone 17. Hejnal cannot
+			// tell it from the version it saw when the numbers are the same.
+			if v.compareNumbers(exact).has(0) {
+				return maybe
+			}
+			return no
+		}
+		switch o := v.compare(exact); {
+		case o == equal:
+			return yes
+		case !o.has(0):
+			return no
+		}
+		return maybe
 	}
+	result := yes
 	for _, c := range []struct {
 		bound  string
 		accept func(int) bool
@@ -284,15 +343,61 @@ func inRange(v Version, m Match) (in, ok bool) {
 		{m.EndIncluding, func(c int) bool { return c <= 0 }},
 		{m.EndExcluding, func(c int) bool { return c < 0 }},
 	} {
-		in, ok := check(c.bound, c.accept)
-		if !ok {
-			return false, false
+		if c.bound == "" {
+			continue
 		}
-		if !in {
-			return false, true
+		b, ok := ParseVersion(c.bound)
+		if !ok {
+			return maybe
+		}
+		switch o := v.compare(b); {
+		case !o.any(c.accept):
+			return no
+		case !o.all(c.accept):
+			result = maybe
 		}
 	}
-	return true, true
+	return result
+}
+
+// outcome is the set of possible results of comparing two versions: a
+// shortened version can be less than, equal to or greater than a bound.
+type outcome uint8
+
+const (
+	less outcome = 1 << iota
+	equal
+	greater
+)
+
+func outcomeOf(c int) outcome {
+	switch {
+	case c < 0:
+		return less
+	case c > 0:
+		return greater
+	}
+	return equal
+}
+
+func (o outcome) has(c int) bool { return o&outcomeOf(c) != 0 }
+
+func (o outcome) all(accept func(int) bool) bool {
+	for _, c := range []int{-1, 0, 1} {
+		if o.has(c) && !accept(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func (o outcome) any(accept func(int) bool) bool {
+	for _, c := range []int{-1, 0, 1} {
+		if o.has(c) && accept(c) {
+			return true
+		}
+	}
+	return false
 }
 
 // Version is a dotted numeric version with an optional pre-release suffix.
@@ -304,7 +409,7 @@ type Version struct {
 var versionRE = regexp.MustCompile(`^v?([0-9]+(?:\.[0-9]+)*)(?:[-_.~+]?((?:alpha|beta|rc|preview|pre|dev|snapshot|milestone|m|a|b)[0-9.]*))?$`)
 
 // ParseVersion reads versions such as "8.3.12", "6.8", "2.462.3" or
-// "10.1.0-rc1". Missing components count as zero, so "6.8" equals "6.8.0".
+// "10.1.0-rc1".
 func ParseVersion(s string) (Version, bool) {
 	m := versionRE.FindStringSubmatch(strings.ToLower(strings.TrimSpace(s)))
 	if m == nil {
@@ -325,36 +430,117 @@ func ParseVersion(s string) (Version, bool) {
 	return v, true
 }
 
-// Compare returns -1, 0 or 1. A pre-release sorts before its release.
+// Compare returns -1, 0 or 1, counting missing components as zero, so
+// "6.8" equals "6.8.0". A pre-release sorts before its release.
 func (v Version) Compare(o Version) int {
-	for i := 0; i < max(len(v.nums), len(o.nums)); i++ {
-		a, b := 0, 0
-		if i < len(v.nums) {
-			a = v.nums[i]
+	if c := compareNums(v.nums, o.nums); c != 0 {
+		return c
+	}
+	return comparePre(v.pre, o.pre)
+}
+
+// compare is Compare for a version seen on a system. A version without a
+// pre-release that has fewer components than the other, such as "2.4"
+// against "2.4.49", stands for any version that starts that way, so the
+// result may be any of several.
+func (v Version) compare(b Version) outcome {
+	n := min(len(v.nums), len(b.nums))
+	if c := compareNums(v.nums[:n], b.nums[:n]); c != 0 {
+		return outcomeOf(c)
+	}
+	if len(v.nums) < len(b.nums) && v.pre == "" {
+		zeros := !slices.ContainsFunc(b.nums[n:], func(x int) bool { return x != 0 })
+		if zeros && b.pre == "" {
+			// "2.4" against "2.4.0": every 2.4.x is at least 2.4.0.
+			return equal | greater
 		}
-		if i < len(o.nums) {
-			b = o.nums[i]
+		return less | equal | greater
+	}
+	return outcomeOf(v.Compare(b))
+}
+
+// compareNumbers is compare without the pre-release suffixes.
+func (v Version) compareNumbers(b Version) outcome {
+	v.pre, b.pre = "", ""
+	return v.compare(b)
+}
+
+func compareNums(a, b []int) int {
+	for i := 0; i < max(len(a), len(b)); i++ {
+		x, y := 0, 0
+		if i < len(a) {
+			x = a[i]
 		}
-		if a != b {
-			if a < b {
+		if i < len(b) {
+			y = b[i]
+		}
+		if x != y {
+			if x < y {
 				return -1
 			}
 			return 1
 		}
 	}
+	return 0
+}
+
+// preStages orders pre-release labels: development builds first, then
+// alpha, beta, milestone, preview and release candidate.
+var preStages = map[string]int{
+	"dev": 0, "snapshot": 0,
+	"alpha": 1, "a": 1,
+	"beta": 2, "b": 2,
+	"milestone": 3, "m": 3,
+	"pre": 4, "preview": 4,
+	"rc": 5,
+}
+
+// comparePre compares pre-release suffixes by stage, then by number, so rc9
+// comes before rc10. No suffix, a release, comes last.
+func comparePre(a, b string) int {
 	switch {
-	case v.pre == o.pre:
+	case a == b:
 		return 0
-	case v.pre == "":
+	case a == "":
 		return 1
-	case o.pre == "":
+	case b == "":
 		return -1
 	}
-	return strings.Compare(v.pre, o.pre)
+	sa, na := splitPre(a)
+	sb, nb := splitPre(b)
+	if sa != sb {
+		if sa < sb {
+			return -1
+		}
+		return 1
+	}
+	return compareNums(na, nb)
+}
+
+func splitPre(p string) (stage int, nums []int) {
+	i := strings.IndexFunc(p, func(r rune) bool { return r < 'a' || r > 'z' })
+	if i < 0 {
+		i = len(p)
+	}
+	stage = preStages[p[:i]]
+	for _, f := range strings.Split(p[i:], ".") {
+		if f == "" {
+			continue
+		}
+		n := 0
+		for _, d := range f {
+			if n < 1e8 {
+				n = n*10 + int(d-'0')
+			}
+		}
+		nums = append(nums, n)
+	}
+	return stage, nums
 }
 
 // Client fetches CVE records from the NVD API, pacing requests to stay
-// within NVD's public rate limits.
+// within NVD's public rate limits. All clients in a process that use the
+// same API address and key share one pace.
 type Client struct {
 	HTTP      *http.Client
 	BaseURL   string
@@ -362,9 +548,6 @@ type Client struct {
 	UserAgent string
 	// Pause overrides the pause between requests (for tests).
 	Pause time.Duration
-
-	mu   sync.Mutex
-	last time.Time
 }
 
 // Interval is the pause between requests: NVD allows 5 requests per 30
@@ -379,30 +562,66 @@ func (c *Client) Interval() time.Duration {
 	return 6500 * time.Millisecond
 }
 
+// pacer hands out request slots at least one interval apart.
+type pacer struct {
+	mu   sync.Mutex
+	next time.Time
+}
+
+var pacers sync.Map // API address and key → *pacer
+
+func (c *Client) pacer(base string) *pacer {
+	key := base + "\x00"
+	if c.APIKey != "" {
+		sum := sha256.Sum256([]byte(c.APIKey))
+		key += hex.EncodeToString(sum[:8])
+	}
+	p, _ := pacers.LoadOrStore(key, &pacer{})
+	return p.(*pacer)
+}
+
+// wait reserves the next request slot and waits for it.
+func (c *Client) wait(ctx context.Context, base string) error {
+	p := c.pacer(base)
+	p.mu.Lock()
+	slot := time.Now()
+	if p.next.After(slot) {
+		slot = p.next
+	}
+	p.next = slot.Add(c.Interval())
+	p.mu.Unlock()
+	d := time.Until(slot)
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 // Fetch downloads one CVE record.
 func (c *Client) Fetch(ctx context.Context, cve string) (*Record, error) {
-	c.mu.Lock()
-	wait := time.Until(c.last.Add(c.Interval()))
-	c.mu.Unlock()
-	if wait > 0 {
-		t := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			return nil, ctx.Err()
-		case <-t.C:
-		}
+	cve = strings.ToUpper(strings.TrimSpace(cve))
+	if !cveRE.MatchString(cve) {
+		return nil, fmt.Errorf("nvd: invalid CVE id %q", cve)
 	}
-	c.mu.Lock()
-	c.last = time.Now()
-	c.mu.Unlock()
-
 	base := c.BaseURL
 	if base == "" {
 		base = DefaultAPI
 	}
 	u, err := url.Parse(base)
-	if err != nil {
+	if err != nil || u.Host == "" {
+		return nil, fmt.Errorf("nvd: invalid API address %q", base)
+	}
+	if c.APIKey != "" && u.Scheme != "https" && !loopback(u.Hostname()) {
+		return nil, errors.New("nvd: the API key is only sent over https")
+	}
+	if err := c.wait(ctx, base); err != nil {
 		return nil, err
 	}
 	q := u.Query()
@@ -418,10 +637,13 @@ func (c *Client) Fetch(ctx context.Context, cve string) (*Record, error) {
 	if c.APIKey != "" {
 		req.Header.Set("apiKey", c.APIKey)
 	}
-	client := c.HTTP
-	if client == nil {
-		client = &http.Client{Timeout: time.Minute}
+	client := http.Client{Timeout: time.Minute}
+	if c.HTTP != nil {
+		client = *c.HTTP
 	}
+	// NVD's API does not redirect, and following a redirect would carry the
+	// API key to wherever it points.
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("nvd: %w", err)
@@ -430,7 +652,7 @@ func (c *Client) Fetch(ctx context.Context, cve string) (*Record, error) {
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
-		return &Record{CVE: strings.ToUpper(cve), Fetched: time.Now().UTC()}, nil
+		return &Record{CVE: cve, Fetched: time.Now().UTC()}, nil
 	case http.StatusForbidden, http.StatusTooManyRequests:
 		return nil, fmt.Errorf("nvd: rate limited (%s); an API key raises the limit", resp.Status)
 	default:
@@ -439,13 +661,24 @@ func (c *Client) Fetch(ctx context.Context, cve string) (*Record, error) {
 	rec, err := Parse(resp.Body)
 	if errors.Is(err, ErrNotFound) {
 		// Not in NVD yet: remember that, so it is asked again later.
-		rec, err = &Record{CVE: strings.ToUpper(cve)}, nil
+		rec, err = &Record{CVE: cve}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	if rec.CVE != cve {
+		return nil, fmt.Errorf("nvd: asked for %s but the answer is about %s", cve, rec.CVE)
+	}
 	rec.Fetched = time.Now().UTC()
 	return rec, nil
+}
+
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Cache keeps fetched records on disk, one file per CVE.
@@ -474,7 +707,7 @@ func (c Cache) Get(cve string) (*Record, bool) {
 		return nil, false
 	}
 	var rec Record
-	if json.Unmarshal(data, &rec) != nil || rec.CVE == "" {
+	if json.Unmarshal(data, &rec) != nil || !strings.EqualFold(rec.CVE, cve) {
 		return nil, false
 	}
 	return &rec, true
@@ -509,9 +742,13 @@ func (c Cache) Put(rec *Record) error {
 }
 
 // Stale reports whether a cached record should be fetched again: records
-// without analysis after a day, analysed ones after a week.
+// without analysis after a day, analysed ones after a week, and any record
+// dated in the future.
 func Stale(rec *Record, now time.Time) bool {
 	age := now.Sub(rec.Fetched)
+	if age < -time.Hour {
+		return true
+	}
 	if len(rec.Matches) == 0 {
 		return age > 24*time.Hour
 	}
