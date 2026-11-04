@@ -10,10 +10,8 @@ permissions:
 
 jobs:
   test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -26,6 +24,7 @@ jobs:
 
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,6 +42,14 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
+      # Releases are built for these systems from Linux, so check that the
+      # code, including tests and platform-specific files, compiles for them.
+      - name: go vet for macOS and Windows
+        run: |
+          for target in darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            echo "== $target"
+            GOOS="${target%/*}" GOARCH="${target#*/}" go vet ./...
+          done
       - name: Fingerprint rules are valid JSON
         run: python3 -m json.tool fingerprint/rules.json > /dev/null
       - name: govulncheck
