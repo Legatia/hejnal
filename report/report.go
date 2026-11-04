@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Legatia/hejnal/internal/match"
+	"github.com/Legatia/hejnal/match"
 )
 
 // Meta describes the run a report is about.

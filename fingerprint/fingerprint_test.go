@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Legatia/hejnal/internal/inventory"
+	"github.com/Legatia/hejnal/inventory"
 )
 
 func engine(t *testing.T) *Engine {

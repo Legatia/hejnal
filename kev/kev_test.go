@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const sample = "../../testdata/kev_sample.json"
+const sample = "../testdata/kev_sample.json"
 
 func find(t *testing.T, c *Catalog, id string) Vulnerability {
 	t.Helper()

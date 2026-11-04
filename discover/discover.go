@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Legatia/hejnal/internal/fingerprint"
-	"github.com/Legatia/hejnal/internal/inventory"
-	"github.com/Legatia/hejnal/internal/scope"
+	"github.com/Legatia/hejnal/fingerprint"
+	"github.com/Legatia/hejnal/inventory"
+	"github.com/Legatia/hejnal/scope"
 )
 
 // Sources record how a host was found.

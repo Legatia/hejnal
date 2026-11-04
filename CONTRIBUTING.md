@@ -29,7 +29,7 @@ local test servers.
 
 ## Adding a product
 
-Rules live in [`internal/fingerprint/rules.json`](internal/fingerprint/rules.json).
+Rules live in [`fingerprint/rules.json`](fingerprint/rules.json).
 A rule recognises a product from the response to one ordinary `GET /`, after
 any redirects inside the scope:
 
@@ -68,7 +68,7 @@ any redirects inside the scope:
 
 Check your rule against the real catalog before opening a pull request. Every
 entry it maps to should be a flaw in this product. Add a test case to
-`internal/fingerprint/fingerprint_test.go` with a realistic response.
+`fingerprint/fingerprint_test.go` with a realistic response.
 
 ## Commits and pull requests
 

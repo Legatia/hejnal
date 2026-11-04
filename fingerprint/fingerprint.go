@@ -15,7 +15,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Legatia/hejnal/internal/inventory"
+	"github.com/Legatia/hejnal/inventory"
 )
 
 //go:embed rules.json

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Legatia/hejnal/internal/epss"
-	"github.com/Legatia/hejnal/internal/fingerprint"
-	"github.com/Legatia/hejnal/internal/inventory"
-	"github.com/Legatia/hejnal/internal/kev"
+	"github.com/Legatia/hejnal/epss"
+	"github.com/Legatia/hejnal/fingerprint"
+	"github.com/Legatia/hejnal/inventory"
+	"github.com/Legatia/hejnal/kev"
 )
 
 var now = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
@@ -48,7 +48,7 @@ func sampleInventory() *inventory.Inventory {
 
 func run(t *testing.T, scores map[string]epss.Score) []Finding {
 	t.Helper()
-	cat, err := kev.Load("../../testdata/kev_sample.json")
+	cat, err := kev.Load("../testdata/kev_sample.json")
 	if err != nil {
 		t.Fatal(err)
 	}

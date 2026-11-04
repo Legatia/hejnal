@@ -44,7 +44,7 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: Fingerprint rules are valid JSON
-        run: python3 -m json.tool internal/fingerprint/rules.json > /dev/null
+        run: python3 -m json.tool fingerprint/rules.json > /dev/null
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Build

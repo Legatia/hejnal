@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Legatia/hejnal/internal/match"
+	"github.com/Legatia/hejnal/match"
 )
 
 // NIS2 writes a draft early warning under NIS2 Article 23, pre-filled with the

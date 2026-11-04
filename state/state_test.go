@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Legatia/hejnal/internal/inventory"
-	"github.com/Legatia/hejnal/internal/match"
+	"github.com/Legatia/hejnal/inventory"
+	"github.com/Legatia/hejnal/match"
 )
 
 func TestInventoryRoundTrip(t *testing.T) {

@@ -17,8 +17,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/Legatia/hejnal/internal/fingerprint"
-	"github.com/Legatia/hejnal/internal/inventory"
+	"github.com/Legatia/hejnal/fingerprint"
+	"github.com/Legatia/hejnal/inventory"
 )
 
 const (

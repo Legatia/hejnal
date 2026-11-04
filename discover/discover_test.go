@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Legatia/hejnal/internal/fingerprint"
-	"github.com/Legatia/hejnal/internal/inventory"
-	"github.com/Legatia/hejnal/internal/scope"
+	"github.com/Legatia/hejnal/fingerprint"
+	"github.com/Legatia/hejnal/inventory"
+	"github.com/Legatia/hejnal/scope"
 )
 
 var testNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)

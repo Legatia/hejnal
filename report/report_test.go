@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Legatia/hejnal/internal/match"
+	"github.com/Legatia/hejnal/match"
 )
 
 var now = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)

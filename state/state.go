@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Legatia/hejnal/internal/inventory"
-	"github.com/Legatia/hejnal/internal/match"
+	"github.com/Legatia/hejnal/inventory"
+	"github.com/Legatia/hejnal/match"
 )
 
 const (
@@ -39,10 +39,14 @@ type Store struct {
 
 // Snapshot is the result of one match run.
 type Snapshot struct {
-	Organization string          `json:"organization"`
-	GeneratedAt  time.Time       `json:"generatedAt"`
-	KEVVersion   string          `json:"kevVersion,omitempty"`
-	EPSSDate     string          `json:"epssDate,omitempty"`
+	Organization string    `json:"organization"`
+	GeneratedAt  time.Time `json:"generatedAt"`
+	KEVVersion   string    `json:"kevVersion,omitempty"`
+	EPSSDate     string    `json:"epssDate,omitempty"`
+	// Inventory size at the time, for trend reports.
+	Assets       int             `json:"assets"`
+	Services     int             `json:"services"`
+	Technologies int             `json:"technologies"`
 	Findings     []match.Finding `json:"findings"`
 }
 
@@ -86,6 +90,34 @@ func (s Store) LoadFindings() (*Snapshot, error) {
 		return nil, err
 	}
 	return &snap, nil
+}
+
+// History returns the saved snapshots, oldest first.
+func (s Store) History() ([]*Snapshot, error) {
+	dir := filepath.Join(s.Dir, historyDir)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "findings-") && strings.HasSuffix(e.Name(), ".json") {
+			names = append(names, e.Name())
+		}
+	}
+	slices.Sort(names)
+	out := make([]*Snapshot, 0, len(names))
+	for _, n := range names {
+		var snap Snapshot
+		if err := readJSON(filepath.Join(dir, n), &snap); err != nil {
+			return nil, err
+		}
+		out = append(out, &snap)
+	}
+	return out, nil
 }
 
 // SaveReported records the findings people were last told about, on screen
