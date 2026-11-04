@@ -78,8 +78,11 @@ type Options struct {
 	WebPorts []int
 	// MaxHosts caps how many hosts one run looks at.
 	MaxHosts int
-	Now      func() time.Time
-	Logf     func(format string, args ...any)
+	// Checks turns on the opt-in checks: a few more GET requests to fixed
+	// paths, for exposed files and product versions.
+	Checks bool
+	Now    func() time.Time
+	Logf   func(format string, args ...any)
 }
 
 type target struct {

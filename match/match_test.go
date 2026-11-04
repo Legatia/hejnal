@@ -295,3 +295,20 @@ func TestVersionChecks(t *testing.T) {
 		t.Errorf("packaged 8.3.6 = %s packaged=%v, want product-level", f.Confidence, f.Packaged)
 	}
 }
+
+func TestExposedFiles(t *testing.T) {
+	inv := &inventory.Inventory{Assets: []inventory.Asset{{Host: "shop.example.com", Services: []inventory.Service{{
+		Port: 443, Scheme: "https", URL: "https://shop.example.com/",
+		Exposures: []inventory.Exposure{
+			{Kind: "env", Path: "/.env", Evidence: "an environment file with 3 or more settings (contents not stored)"},
+			{Kind: "git", Path: "/.git/HEAD", Evidence: "the repository's HEAD file is readable"},
+		},
+	}}}}}
+	fs := Run(inv, nil, nil, Options{Now: now})
+	if len(fs) != 2 || fs[0].TechID != "env" || fs[0].Severity != Critical || fs[1].Severity != High {
+		t.Fatalf("findings = %+v", fs)
+	}
+	if fs[0].URL != "https://shop.example.com/.env" || fs[0].Kind != KindExposedFile {
+		t.Errorf("finding = %+v", fs[0])
+	}
+}

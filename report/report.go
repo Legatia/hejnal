@@ -151,6 +151,12 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 		fmt.Fprintf(b, "### %d. %s\n\n", n, tr(prefix+".title", where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr(prefix+".why", mdCode(f.Subject), date))
 		fmt.Fprintf(b, "- **%s:** %s\n\n", tr("label.todo"), tr("tls.todo"))
+	case match.KindExposedFile:
+		f := g.Findings[0]
+		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("file.title."+f.TechID, where))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("file.why."+f.TechID))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("file.todo."+f.TechID))
+		fmt.Fprintf(b, "- **%s:** %s (%s)\n\n", tr("label.seen"), mdCode(f.URL), mdEscape(f.Evidence))
 	case match.KindAdminExposed:
 		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("admin.title", mdEscape(g.Technology), where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("admin.why"))
@@ -326,6 +332,8 @@ func groupTitle(tr translator, g match.Group) string {
 		return tr("tlss.title", where)
 	case match.KindAdminExposed:
 		return tr("admin.title", g.Technology, where)
+	case match.KindExposedFile:
+		return tr("file.title."+g.TechID, where)
 	}
 	return where
 }

@@ -37,6 +37,16 @@ type Service struct {
 	Banner       string       `json:"banner,omitempty"`
 	TLS          *TLSInfo     `json:"tls,omitempty"`
 	Technologies []Technology `json:"technologies,omitempty"`
+	// Exposures are files found readable by the opt-in checks.
+	Exposures []Exposure `json:"exposures,omitempty"`
+}
+
+// Exposure is a file that should not be public, found by an opt-in check.
+// Evidence describes it without its contents.
+type Exposure struct {
+	Kind     string `json:"kind"`
+	Path     string `json:"path"`
+	Evidence string `json:"evidence"`
 }
 
 // Asset is one host and what it exposes.

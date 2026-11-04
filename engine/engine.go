@@ -57,6 +57,8 @@ type Config struct {
 	NoCT    bool
 	// NoNVD skips comparing versions with NVD's affected ranges.
 	NoNVD bool
+	// Checks turns on the opt-in checks for exposed files and versions.
+	Checks bool
 
 	Concurrency int
 	Timeout     time.Duration
@@ -125,6 +127,7 @@ func (e *Engine) Discover(ctx context.Context, s *scope.Scope) (*inventory.Inven
 		Concurrency: e.cfg.Concurrency,
 		Timeout:     e.cfg.Timeout,
 		UserAgent:   version.UserAgent(),
+		Checks:      e.cfg.Checks,
 		Now:         e.cfg.Now,
 		Logf:        e.cfg.Logf,
 	}

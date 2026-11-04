@@ -26,8 +26,10 @@ const (
 	maxRedirects = 5
 	bannerWait   = 2 * time.Second
 	maxSANs      = 50
-	// probeBudget, times the timeout, bounds one port check end to end.
-	probeBudget = 5
+	// probeBudget, times the timeout, bounds one port check end to end;
+	// checksBudget is added when the opt-in checks are on.
+	probeBudget  = 5
+	checksBudget = 4
 )
 
 // tlsHint matches the error pages servers send when plain HTTP reaches a TLS
@@ -110,7 +112,11 @@ func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) 
 // probe checks one port. It returns nil when the port is closed. However a
 // server behaves, the whole check ends within a fixed time.
 func (w *webClient) probe(ctx context.Context, host string, port int) *inventory.Service {
-	ctx, cancel := context.WithTimeout(ctx, probeBudget*w.r.opts.Timeout)
+	budget := probeBudget * w.r.opts.Timeout
+	if w.r.opts.Checks {
+		budget += checksBudget * w.r.opts.Timeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	c, err := w.dial(ctx, "tcp", addr)
@@ -119,7 +125,7 @@ func (w *webClient) probe(ctx context.Context, host string, port int) *inventory
 	}
 	c.Close()
 
-	var fallback *inventory.Service
+	var found, fallback *inventory.Service
 	for _, scheme := range schemesFor(port) {
 		svc, wrongScheme, err := w.fetch(ctx, host, port, scheme)
 		if err != nil {
@@ -129,10 +135,17 @@ func (w *webClient) probe(ctx context.Context, host string, port int) *inventory
 			fallback = svc
 			continue
 		}
-		return svc
+		found = svc
+		break
 	}
-	if fallback != nil {
-		return fallback
+	if found == nil {
+		found = fallback
+	}
+	if found != nil {
+		if w.r.opts.Checks {
+			w.runChecks(ctx, host, port, found)
+		}
+		return found
 	}
 	return &inventory.Service{Port: port, Scheme: "tcp", Banner: w.banner(ctx, addr)}
 }

@@ -29,7 +29,13 @@ const (
 	KindTLSExpired   Kind = "tls-expired"   // certificate has expired
 	KindTLSExpiring  Kind = "tls-expiring"  // certificate expires soon
 	KindAdminExposed Kind = "admin-exposed" // admin interface reachable
+	KindExposedFile  Kind = "exposed-file"  // a file that should not be public, found by -checks
 )
+
+// exposureScores rates exposed files: environment files usually hold
+// passwords and keys, a .git directory gives away source code and often
+// credentials, and a server status page shows live requests.
+var exposureScores = map[string]int{"env": 90, "git": 75, "server-status": 50}
 
 // Confidence says how sure Hejnal is.
 const (
@@ -204,6 +210,24 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 		for _, s := range a.Services {
 			if f, ok := tlsFinding(a.Host, s, opts); ok {
 				emit(f)
+			}
+			for _, x := range s.Exposures {
+				score, ok := exposureScores[x.Kind]
+				if !ok {
+					score = 50
+				}
+				emit(Finding{
+					Key:        fmt.Sprintf("%s|%s|%d|%s", KindExposedFile, a.Host, s.Port, x.Kind),
+					Kind:       KindExposedFile,
+					Host:       a.Host,
+					Port:       s.Port,
+					URL:        strings.TrimSuffix(s.URL, "/") + x.Path,
+					TechID:     x.Kind,
+					Evidence:   x.Evidence,
+					Score:      score,
+					Severity:   SeverityFor(score),
+					Confidence: ConfidenceObserved,
+				})
 			}
 			host, port, where := origin(a.Host, s)
 			for _, t := range s.Technologies {

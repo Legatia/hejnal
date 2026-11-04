@@ -147,6 +147,7 @@ type options struct {
 	noEPSS      bool
 	noNVD       bool
 	noCT        bool
+	checks      bool
 	lang        string
 	webhook     string
 	failOn      string
@@ -176,6 +177,7 @@ func (o *options) scanFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&o.noCT, "no-ct", false, "do not look up subdomains in certificate transparency logs")
 	fs.IntVar(&o.concurrency, "concurrency", 16, "parallel connections")
 	fs.DurationVar(&o.timeout, "timeout", 8*time.Second, "timeout for each connection and response")
+	fs.BoolVar(&o.checks, "checks", false, "also check fixed paths for exposed files (.git, .env, server-status) and product versions")
 }
 
 func (o *options) langFlag(fs *flag.FlagSet) {
@@ -205,6 +207,7 @@ func (a *app) engine(o *options) (*engine.Engine, error) {
 		NoEPSS:      o.noEPSS,
 		NoCT:        o.noCT,
 		NoNVD:       o.noNVD,
+		Checks:      o.checks,
 		NVDURL:      a.nvdURL,
 		NVDKey:      os.Getenv("HEJNAL_NVD_API_KEY"),
 		Concurrency: o.concurrency,
