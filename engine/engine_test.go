@@ -12,8 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Legatia/hejnal/inventory"
+	"github.com/Legatia/hejnal/leaks"
 	"github.com/Legatia/hejnal/match"
 	"github.com/Legatia/hejnal/scope"
+	"github.com/Legatia/hejnal/state"
 )
 
 var testNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
@@ -109,5 +112,38 @@ func TestRunWithVersionChecks(t *testing.T) {
 func TestNewRequiresStateDir(t *testing.T) {
 	if _, err := New(Config{}); err == nil {
 		t.Error("New accepted an empty state directory")
+	}
+}
+
+func TestMatchIncludesSavedLeaks(t *testing.T) {
+	dir := t.TempDir()
+	e, err := New(Config{StateDir: dir, KEVFile: "../testdata/kev_sample.json", NoEPSS: true, NoCT: true, NoNVD: true,
+		Now: func() time.Time { return testNow }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := e.Store()
+	if err := store.SaveLeakScan(&state.LeakScan{ScannedAt: testNow, Leaks: []leaks.Leak{{RuleID: "aws-access-key-id",
+		Description: "AWS access key ID", Severity: "critical", File: "web/deploy.sh", Line: 7,
+		Redacted: "AKIA… (20 chars)", Fingerprint: "0011223344556677"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBreachCheck(&state.BreachCheck{CheckedAt: testNow, Domains: []leaks.DomainSummary{{Domain: "example.com",
+		Accounts: 1, Breaches: []leaks.DomainBreach{{Name: "Adobe", Title: "Adobe", BreachDate: "2013-10-04", Accounts: 1, Passwords: true}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := e.Match(context.Background(), &inventory.Inventory{Organization: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[match.Kind]int{}
+	for _, f := range snap.Findings {
+		kinds[f.Kind]++
+	}
+	if kinds[match.KindSecret] != 1 || kinds[match.KindBreach] != 1 {
+		t.Errorf("finding kinds = %v", kinds)
+	}
+	if snap.Findings[0].Kind != match.KindSecret {
+		t.Errorf("the critical secret should come first, got %+v", snap.Findings[0])
 	}
 }

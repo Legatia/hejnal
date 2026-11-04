@@ -22,7 +22,7 @@ import (
 var testNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 
 const (
-	testToken = "3f9a1c0d5e7b2a4c6d8e0f1a3b5c7d9e"
+	testToken = "3f9a1c0d5e7b2a4c6d8e0f1a3b5c7d9e" // hejnal:allow (test token)
 	kevSample = "../testdata/kev_sample.json"
 )
 

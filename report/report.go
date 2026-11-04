@@ -199,7 +199,7 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 			}
 			fmt.Fprintf(b, "  - %s\n", strings.Join(parts, " · "))
 		}
-		b.WriteString("\n")
+		fmt.Fprintf(b, "- **%s:** %s\n\n", tr("label.source"), tr("breach.source"))
 	}
 }
 

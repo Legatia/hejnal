@@ -306,6 +306,14 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 	scores := e.epssScores(ctx, match.CVEs(candidates))
 	records := e.nvdRecords(ctx, candidates)
 	fs := match.Run(inv, cat, e.rules, match.Options{Now: now, EPSS: scores, NVD: records})
+	leaked, err := e.leakFindings(now)
+	if err != nil {
+		return nil, err
+	}
+	if len(leaked) > 0 {
+		fs = append(fs, leaked...)
+		match.Sort(fs)
+	}
 	snap := &state.Snapshot{
 		Organization: inv.Organization,
 		GeneratedAt:  now.UTC(),
@@ -330,6 +338,28 @@ type Changes struct {
 	Resolved []match.Finding
 	// First is true before anything was reported.
 	First bool
+}
+
+// leakFindings returns findings from the saved secret scan and breach check,
+// which `hejnal leaks` writes. They stay until the next scan or check
+// replaces them.
+func (e *Engine) leakFindings(now time.Time) ([]match.Finding, error) {
+	var out []match.Finding
+	scan, err := e.store.LoadLeakScan()
+	if err != nil {
+		return nil, err
+	}
+	if scan != nil {
+		out = append(out, match.Secrets(scan.Leaks)...)
+	}
+	check, err := e.store.LoadBreachCheck()
+	if err != nil {
+		return nil, err
+	}
+	if check != nil {
+		out = append(out, match.Breaches(check.Domains, now)...)
+	}
+	return out, nil
 }
 
 // Changes returns what is new and what was fixed since the last report.

@@ -282,6 +282,7 @@ func TestFixListSecretsAndBreaches(t *testing.T) {
 		"appear in 2 data breaches, 1 of which exposed passwords",
 		"  - **Adobe** · breached 2013-10-04 · 5 accounts · passwords exposed\n",
 		"  - **Spam &lt;list&gt;** · breached 2020-01-01 · 40 accounts\n",
+		"- **Source:** [Have I Been Pwned](https://haveibeenpwned.com/) (CC BY 4.0)\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("fix list is missing %q\n%s", want, out)

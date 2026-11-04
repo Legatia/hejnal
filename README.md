@@ -45,8 +45,9 @@ the city of an attack.
 It also flags expired or expiring TLS certificates and admin interfaces it can
 reach, such as Jenkins, phpMyAdmin or a vCenter login. With `-checks` it also
 looks for exposed `.git` directories, `.env` files and server status pages.
-A REST API and an MCP server make the results available to other tools and to
-AI assistants.
+`hejnal leaks` finds secrets in your source code and accounts on your domains
+in known data breaches. A REST API and an MCP server make the results
+available to other tools and to AI assistants.
 
 See an [example fix list](examples/fix-list.en.md) (and [in
 Polish](examples/fix-list.pl.md)).
@@ -194,6 +195,9 @@ A free [NVD API key](https://nvd.nist.gov/developers/request-an-api-key) in
 Exit status: `0` when done, `1` on errors, `2` when `-fail-on` is set and new
 findings reach that severity.
 
+To include leaked secrets and breached accounts, see
+[below](#leaked-secrets-and-breached-accounts).
+
 ### Commands
 
 | Command | What it does |
@@ -204,6 +208,7 @@ findings reach that severity.
 | `hejnal feeds` | Downloads the KEV catalog into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
 | `hejnal report fixlist\|nis2\|monthly` | Prints a report from the saved runs. |
+| `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
 | `hejnal serve` | Serves the results over a REST API. |
 | `hejnal mcp` | Serves the results to AI assistants over MCP. |
 | `hejnal rules` | Lists the products Hejnal recognises. |
@@ -224,6 +229,7 @@ change it):
 | `reported.json` | The findings people were last told about, used to tell what is new. |
 | `history/` | Findings from earlier runs; the last 200 are kept. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
+| `leaks.json`, `breaches.json` | Saved secret scans (secrets partly hidden) and breach counts, included in the next run. |
 | `cache/kev.json`, `cache/epss.json`, `cache/nvd/` | Downloaded feeds. KEV is refreshed after 6 hours, EPSS scores when they are more than two days old, NVD records after a week (a day while NVD has not analysed a flaw yet). |
 
 ### Offline and air-gapped use
@@ -232,6 +238,40 @@ Download the catalog on a connected machine with `hejnal feeds`. Copy
 `.hejnal/cache/kev.json` across, then run with `-offline` (or point
 `-kev-file` at the copy). Discovery still needs network access to your own
 systems, of course.
+
+## Leaked secrets and breached accounts
+
+Attackers do not always need a flaw. A cloud key committed to a repository, or
+a password reused from a breached website, works just as well.
+
+`hejnal leaks scan` looks for secrets in source code: cloud and API keys,
+access tokens, private keys, passwords in URLs and password assignments. Add
+`-history` to check every commit too, because a secret deleted from the code
+stays in the Git history.
+
+```sh
+hejnal leaks scan -history ~/code/website ~/code/backend
+```
+
+Secrets are shown partly hidden, such as `ghp_ab… (40 chars)`, and never
+stored or printed in full. The command exits with status 2 when it finds a
+secret of high severity or above (`-fail-on` changes the level), so it can
+gate a CI pipeline. Mark a line that holds a harmless example with
+`hejnal:allow`. With `-save`, the result is kept in the state directory, so
+the fix list, notifications and monthly report include it. Each saved scan
+replaces the previous one, so pass all your repositories in one command.
+
+`hejnal leaks breaches` asks [Have I Been Pwned](https://haveibeenpwned.com/)
+which accounts on the scope's domains appear in known data breaches. It needs
+an HIBP API key with a domain search subscription in `HEJNAL_HIBP_API_KEY`,
+and each domain verified in your HIBP dashboard. Hejnal keeps only how many
+accounts each breach exposed. `-accounts` prints which accounts, without
+storing them, because they are personal data.
+
+```cron
+HEJNAL_HIBP_API_KEY=your-hibp-key
+10 7 * * *  cd /srv/hejnal && hejnal leaks breaches > /dev/null; hejnal leaks scan -save -fail-on none /srv/repos/* > /dev/null; hejnal run -lang pl
+```
 
 ## API and AI assistants
 
@@ -342,6 +382,8 @@ Hejnal is licensed under the [Apache License 2.0](LICENSE).
 It uses the CISA Known Exploited Vulnerabilities catalog (public domain, CC0),
 EPSS scores from [FIRST](https://www.first.org/epss/), affected-version data
 from NVD and certificate transparency search from [crt.sh](https://crt.sh/).
+`hejnal leaks breaches` uses [Have I Been Pwned](https://haveibeenpwned.com/)
+(CC BY 4.0).
 
 This product uses the NVD API but is not endorsed or certified by the NVD.
 
@@ -360,6 +402,9 @@ naprawić najpierw.
 - **Porównuje** je z katalogiem CISA KEV, czyli listą podatności aktywnie
   wykorzystywanych przez atakujących. Gdy produkt pokazuje wersję, sprawdza
   w NVD, czy ta wersja jest podatna.
+- **Szuka wycieków:** sekretów w kodzie źródłowym (klucze API, tokeny, klucze
+  prywatne) i kont z Twoich domen w znanych wyciekach danych (Have I Been
+  Pwned).
 - **Pisze** listę poprawek po polsku lub angielsku, wysyła powiadomienia na
   Slacka, Microsoft Teams lub e-mailem, przygotowuje raport miesięczny i
   projekt wczesnego ostrzeżenia NIS2 (zgłoszenie do właściwego CSIRT, zwykle
@@ -377,6 +422,7 @@ hejnal init
 hejnal run -scope scope.json -lang pl
 hejnal report fixlist -lang pl
 hejnal report monthly -lang pl
+hejnal leaks scan -history ~/kod/serwis
 ```
 
 Sprawdzaj wyłącznie systemy, które należą do Ciebie, albo takie, na których

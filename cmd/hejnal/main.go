@@ -45,6 +45,7 @@ Usage:
   hejnal feeds     [flags]                      download the CISA KEV catalog
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    fixlist|nis2|monthly [flags] print a report from the saved runs
+  hejnal leaks     scan|breaches [flags]        find secrets in code and breached accounts
   hejnal serve     [-addr host:port] [flags]    serve the results over a REST API
   hejnal mcp       [flags]                      serve the results to AI assistants over MCP
   hejnal rules                                  list the products Hejnal recognises
@@ -53,7 +54,8 @@ Usage:
 Run "hejnal <command> -h" for the flags of a command.
 
 Exit status: 0 when done, 1 on errors, 2 when "run -fail-on" finds new
-problems at or above the given severity.
+problems, or "leaks scan -fail-on" finds secrets, at or above the given
+severity.
 
 Only check systems you own or have written permission to test.
 `
@@ -78,6 +80,7 @@ type app struct {
 	epssURL        string
 	ctURL          string
 	nvdURL         string
+	hibpURL        string // empty uses Have I Been Pwned's API
 
 	logMu sync.Mutex
 }
@@ -117,6 +120,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		err = a.cmdMatch(ctx, rest)
 	case "report":
 		err = a.cmdReport(rest)
+	case "leaks":
+		code, err = a.cmdLeaks(ctx, rest)
 	case "serve":
 		err = a.cmdServe(ctx, rest)
 	case "mcp":
