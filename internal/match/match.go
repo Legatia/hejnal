@@ -1,0 +1,440 @@
+// Package match turns an inventory into findings: products with flaws that
+// attackers are exploiting now, and hygiene problems visible from outside.
+package match
+
+import (
+	"cmp"
+	"fmt"
+	"math"
+	"net"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Legatia/hejnal/internal/epss"
+	"github.com/Legatia/hejnal/internal/fingerprint"
+	"github.com/Legatia/hejnal/internal/inventory"
+	"github.com/Legatia/hejnal/internal/kev"
+)
+
+// Kind is the type of a finding.
+type Kind string
+
+// Finding kinds.
+const (
+	KindKEV          Kind = "kev"           // product with a known exploited flaw
+	KindTLSExpired   Kind = "tls-expired"   // certificate has expired
+	KindTLSExpiring  Kind = "tls-expiring"  // certificate expires soon
+	KindAdminExposed Kind = "admin-exposed" // admin interface reachable
+)
+
+// Confidence says how sure Hejnal is.
+const (
+	// ConfidenceProduct means the product was recognised but its version
+	// was not checked against the fix, so it may already be patched.
+	ConfidenceProduct = "product"
+	// ConfidenceObserved means Hejnal saw the problem directly.
+	ConfidenceObserved = "observed"
+)
+
+// Severity buckets a score into how soon to act.
+type Severity string
+
+// Severities, most urgent first.
+const (
+	Critical Severity = "critical"
+	High     Severity = "high"
+	Medium   Severity = "medium"
+	Low      Severity = "low"
+)
+
+// Severities lists the buckets from most to least urgent.
+var Severities = []Severity{Critical, High, Medium, Low}
+
+// SeverityFor maps a 0–100 score to a severity.
+func SeverityFor(score int) Severity {
+	switch {
+	case score >= 85:
+		return Critical
+	case score >= 70:
+		return High
+	case score >= 50:
+		return Medium
+	}
+	return Low
+}
+
+// Rank orders severities; higher is more urgent. Unknown values rank 0.
+func (s Severity) Rank() int {
+	switch s {
+	case Critical:
+		return 4
+	case High:
+		return 3
+	case Medium:
+		return 2
+	case Low:
+		return 1
+	}
+	return 0
+}
+
+// ParseSeverity reads a severity name. "none" returns "" with no error.
+func ParseSeverity(v string) (Severity, error) {
+	s := Severity(strings.ToLower(strings.TrimSpace(v)))
+	if s == "none" || s == "" {
+		return "", nil
+	}
+	if s.Rank() == 0 {
+		return "", fmt.Errorf("unknown severity %q: use critical, high, medium, low or none", v)
+	}
+	return s, nil
+}
+
+// Finding is one thing worth acting on.
+type Finding struct {
+	Key            string     `json:"key"`
+	Kind           Kind       `json:"kind"`
+	Host           string     `json:"host"`
+	Port           int        `json:"port"`
+	URL            string     `json:"url,omitempty"`
+	TechID         string     `json:"techId,omitempty"`
+	Technology     string     `json:"technology,omitempty"`
+	Version        string     `json:"version,omitempty"`
+	Category       string     `json:"category,omitempty"`
+	Evidence       string     `json:"evidence,omitempty"`
+	CVE            string     `json:"cve,omitempty"`
+	Vendor         string     `json:"vendor,omitempty"`
+	Product        string     `json:"product,omitempty"`
+	Name           string     `json:"name,omitempty"`
+	Description    string     `json:"description,omitempty"`
+	Action         string     `json:"action,omitempty"`
+	DateAdded      string     `json:"dateAdded,omitempty"`
+	DueDate        string     `json:"dueDate,omitempty"`
+	Ransomware     bool       `json:"ransomware,omitempty"`
+	Forensics      bool       `json:"forensics,omitempty"`
+	EPSS           float64    `json:"epss,omitempty"`
+	EPSSPercentile float64    `json:"epssPercentile,omitempty"`
+	Links          []string   `json:"links,omitempty"`
+	Subject        string     `json:"subject,omitempty"`
+	Expires        *time.Time `json:"expires,omitempty"`
+	Score          int        `json:"score"`
+	Severity       Severity   `json:"severity"`
+	Confidence     string     `json:"confidence"`
+}
+
+// Options tune matching.
+type Options struct {
+	Now time.Time
+	// EPSS scores by CVE, if available.
+	EPSS map[string]epss.Score
+	// ExpiryWindow flags certificates that expire within it. Default 21 days.
+	ExpiryWindow time.Duration
+}
+
+// Run produces findings for an inventory, sorted most urgent first. cat may be
+// nil, in which case only hygiene findings are produced.
+func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, opts Options) []Finding {
+	if opts.Now.IsZero() {
+		opts.Now = time.Now()
+	}
+	if opts.ExpiryWindow <= 0 {
+		opts.ExpiryWindow = 21 * 24 * time.Hour
+	}
+	out := []Finding{}
+	seen := map[string]bool{}
+	emit := func(f Finding) {
+		if seen[f.Key] {
+			return
+		}
+		seen[f.Key] = true
+		out = append(out, f)
+	}
+
+	kevIndex := map[string][]int{}
+	kevFor := func(id string) []int {
+		if cat == nil || eng == nil || !eng.HasKEV(id) {
+			return nil
+		}
+		if idx, ok := kevIndex[id]; ok {
+			return idx
+		}
+		var idx []int
+		for i, v := range cat.Vulnerabilities {
+			if eng.MatchesKEV(id, v.VendorProject, v.Product, v.VulnerabilityName+" "+v.ShortDescription) {
+				idx = append(idx, i)
+			}
+		}
+		kevIndex[id] = idx
+		return idx
+	}
+
+	for _, a := range inv.Assets {
+		for _, s := range a.Services {
+			if f, ok := tlsFinding(a.Host, s, opts); ok {
+				emit(f)
+			}
+			host, port, where := origin(a.Host, s)
+			for _, t := range s.Technologies {
+				base := Finding{
+					Host:       host,
+					Port:       port,
+					URL:        where,
+					TechID:     t.ID,
+					Technology: t.Name,
+					Version:    t.Version,
+					Category:   t.Category,
+					Evidence:   t.Evidence,
+				}
+				if t.Admin {
+					f := base
+					f.Kind = KindAdminExposed
+					f.Key = fmt.Sprintf("%s|%s|%d|%s", f.Kind, host, port, t.ID)
+					f.Score = 55
+					f.Severity = SeverityFor(f.Score)
+					f.Confidence = ConfidenceObserved
+					emit(f)
+				}
+				for _, i := range kevFor(t.ID) {
+					v := cat.Vulnerabilities[i]
+					f := base
+					f.Kind = KindKEV
+					// One finding per flaw and service, even if two rules
+					// recognise the same product.
+					f.Key = fmt.Sprintf("%s|%s|%d|%s", f.Kind, host, port, v.CVEID)
+					f.CVE = v.CVEID
+					f.Vendor = v.VendorProject
+					f.Product = v.Product
+					f.Name = v.VulnerabilityName
+					f.Description = v.ShortDescription
+					f.Action = v.RequiredAction
+					f.DateAdded = v.DateAdded
+					f.DueDate = v.DueDate
+					f.Ransomware = v.Ransomware()
+					f.Forensics = v.Forensics()
+					f.Links = v.Links()
+					f.Confidence = ConfidenceProduct
+					if e, ok := opts.EPSS[v.CVEID]; ok {
+						f.EPSS, f.EPSSPercentile = e.EPSS, e.Percentile
+					}
+					f.Score = Score(v, t.Category, f.EPSS, opts.Now)
+					f.Severity = SeverityFor(f.Score)
+					emit(f)
+				}
+			}
+		}
+	}
+	Sort(out)
+	return out
+}
+
+// Score rates a known exploited flaw on a product from 0 to 100. Recently
+// added flaws matter most, because that is when attackers scan for them at
+// scale; edge devices, ransomware use, CISA's call for forensic triage and
+// the EPSS probability raise the score.
+func Score(v kev.Vulnerability, category string, epssScore float64, now time.Time) int {
+	score := 60
+	if added, ok := v.Added(); ok {
+		age := now.Sub(added)
+		switch {
+		case age <= 30*24*time.Hour:
+			score += 20
+		case age <= 90*24*time.Hour:
+			score += 10
+		case age > 365*24*time.Hour:
+			score -= 20
+		}
+	}
+	if category == "edge" || category == "remote-access" {
+		score += 10
+	}
+	if v.Ransomware() {
+		score += 10
+	}
+	if v.Forensics() {
+		score += 5
+	}
+	score += int(math.Round(epssScore * 10))
+	return max(0, min(100, score))
+}
+
+func tlsFinding(host string, s inventory.Service, opts Options) (Finding, bool) {
+	if s.TLS == nil || s.TLS.NotAfter.IsZero() {
+		return Finding{}, false
+	}
+	expires := s.TLS.NotAfter
+	f := Finding{
+		Host:       host,
+		Port:       s.Port,
+		URL:        s.URL,
+		Subject:    s.TLS.Subject,
+		Expires:    &expires,
+		Confidence: ConfidenceObserved,
+	}
+	switch left := expires.Sub(opts.Now); {
+	case left < 0:
+		f.Kind, f.Score = KindTLSExpired, 70
+	case left < opts.ExpiryWindow:
+		f.Kind, f.Score = KindTLSExpiring, 50
+	default:
+		return Finding{}, false
+	}
+	f.Key = fmt.Sprintf("%s|%s|%d", f.Kind, host, s.Port)
+	f.Severity = SeverityFor(f.Score)
+	return f, true
+}
+
+// origin returns where a service's software actually answered: the host and
+// port of the final URL after redirects, so http→https redirects do not
+// produce the same finding twice.
+func origin(host string, s inventory.Service) (string, int, string) {
+	raw := s.FinalURL
+	if raw == "" {
+		raw = s.URL
+	}
+	u, err := url.Parse(raw)
+	if raw == "" || err != nil || u.Hostname() == "" {
+		return host, s.Port, raw
+	}
+	port := 0
+	if p := u.Port(); p != "" {
+		port, _ = strconv.Atoi(p)
+	} else if u.Scheme == "https" {
+		port = 443
+	} else if u.Scheme == "http" {
+		port = 80
+	}
+	if port == 0 {
+		port = s.Port
+	}
+	h := strings.ToLower(u.Hostname())
+	if ip := net.ParseIP(h); ip != nil {
+		h = ip.String()
+	}
+	return h, port, raw
+}
+
+// Sort orders findings most urgent first, then newest flaw first.
+func Sort(fs []Finding) {
+	slices.SortStableFunc(fs, func(a, b Finding) int {
+		if c := cmp.Compare(b.Score, a.Score); c != 0 {
+			return c
+		}
+		if c := strings.Compare(b.DateAdded, a.DateAdded); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.Host, b.Host); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.Port, b.Port); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Key, b.Key)
+	})
+}
+
+// Group is one item to fix: all known exploited flaws of one product on one
+// service, or a single hygiene finding.
+type Group struct {
+	Kind       Kind
+	Host       string
+	Port       int
+	URL        string
+	TechID     string
+	Technology string
+	Version    string
+	Category   string
+	Evidence   string
+	Score      int
+	Severity   Severity
+	Findings   []Finding
+}
+
+// Forensics reports whether CISA asks for forensic triage of any flaw in the
+// group.
+func (g Group) Forensics() bool {
+	return slices.ContainsFunc(g.Findings, func(f Finding) bool { return f.Forensics })
+}
+
+// Newest returns the most recent date a flaw in the group was added to KEV.
+func (g Group) Newest() string {
+	newest := ""
+	for _, f := range g.Findings {
+		newest = max(newest, f.DateAdded)
+	}
+	return newest
+}
+
+// Groups collects findings into items to fix, most urgent first.
+func Groups(fs []Finding) []Group {
+	sorted := slices.Clone(fs)
+	Sort(sorted)
+	idx := map[string]int{}
+	var out []Group
+	for _, f := range sorted {
+		k := f.Key
+		if f.Kind == KindKEV {
+			k = fmt.Sprintf("%s|%s|%d|%s", f.Kind, f.Host, f.Port, f.TechID)
+		}
+		i, ok := idx[k]
+		if !ok {
+			i = len(out)
+			idx[k] = i
+			out = append(out, Group{
+				Kind:       f.Kind,
+				Host:       f.Host,
+				Port:       f.Port,
+				URL:        f.URL,
+				TechID:     f.TechID,
+				Technology: f.Technology,
+				Version:    f.Version,
+				Category:   f.Category,
+				Evidence:   f.Evidence,
+				Score:      f.Score,
+				Severity:   f.Severity,
+			})
+		}
+		out[i].Findings = append(out[i].Findings, f)
+	}
+	slices.SortStableFunc(out, func(a, b Group) int {
+		if c := cmp.Compare(b.Score, a.Score); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.Host, b.Host); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Port, b.Port)
+	})
+	return out
+}
+
+// CountGroups returns how many groups fall in each severity.
+func CountGroups(gs []Group) map[Severity]int {
+	c := map[Severity]int{}
+	for _, g := range gs {
+		c[g.Severity]++
+	}
+	return c
+}
+
+// AtLeast reports whether any finding is at or above the given severity.
+func AtLeast(fs []Finding, s Severity) bool {
+	if s == "" {
+		return false
+	}
+	return slices.ContainsFunc(fs, func(f Finding) bool { return f.Severity.Rank() >= s.Rank() })
+}
+
+// CVEs lists the distinct CVE IDs in the findings.
+func CVEs(fs []Finding) []string {
+	var out []string
+	for _, f := range fs {
+		if f.CVE != "" {
+			out = append(out, f.CVE)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}

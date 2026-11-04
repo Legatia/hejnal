@@ -1,0 +1,195 @@
+package report
+
+import (
+	"fmt"
+	"slices"
+)
+
+// Languages are the report languages Hejnal ships.
+var Languages = []string{"en", "pl"}
+
+// ValidLang reports whether lang is supported.
+func ValidLang(lang string) bool { return slices.Contains(Languages, lang) }
+
+var messages = map[string]map[string]string{
+	"en": {
+		"fix.title":          "Hejnal fix list",
+		"fix.meta":           "Generated %s · Hosts: %d · Services: %d · Products recognised: %d",
+		"fix.feeds":          "Sources: CISA Known Exploited Vulnerabilities catalog %s",
+		"fix.feeds.epss":     ", FIRST EPSS scores of %s",
+		"fix.summary":        "Fix now: %d · This week: %d · This month: %d · Later: %d",
+		"fix.none":           "Nothing to fix. Hejnal found no products with flaws that attackers are known to exploit, and no certificate or admin-interface problems.",
+		"fix.empty":          "Hejnal reached no services. Check the scope and that this machine can reach your systems.",
+		"sev.critical":       "Fix now (critical)",
+		"sev.high":           "This week (high)",
+		"sev.medium":         "This month (medium)",
+		"sev.low":            "Later (low)",
+		"sev.short.critical": "critical",
+		"sev.short.high":     "high",
+		"sev.short.medium":   "medium",
+		"sev.short.low":      "low",
+		"label.why":          "Why",
+		"label.todo":         "What to do",
+		"label.seen":         "Seen at",
+		"label.flaws":        "Flaws",
+		"label.advisories":   "Advisories",
+		"label.compromise":   "Check for compromise",
+		"label.version":      "version %s",
+		"label.noversion":    "version not shown",
+		"kev.title":          "%s on %s",
+		"kev.why":            "Known exploited flaws in this product: %d. The newest was added to CISA's catalog on %s.",
+		"kev.todo":           "Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.",
+		"kev.forensic":       "CISA asks for forensic triage for at least one of these flaws. Updating is not enough if the system was exposed before the fix: look for signs of compromise, such as unknown accounts, files or connections.",
+		"kev.added":          "added %s",
+		"kev.ransomware":     "used in ransomware campaigns",
+		"kev.forensicflag":   "forensic triage",
+		"kev.more":           "…and %d more (full list in findings.json)",
+		"kev.confidence":     "Hejnal recognised the product but did not verify its version, so it may already be patched. Close this item once you have confirmed the installed version includes the fix.",
+		"tlsx.title":         "Expired TLS certificate on %s",
+		"tlsx.why":           "The certificate for %s expired on %s. Visitors see security warnings and learn to click through them.",
+		"tlss.title":         "TLS certificate expiring soon on %s",
+		"tlss.why":           "The certificate for %s expires on %s.",
+		"tls.todo":           "Renew the certificate and turn on automatic renewal.",
+		"admin.title":        "%s admin interface reachable on %s",
+		"admin.why":          "Hejnal reached this admin interface from where it ran. Exposed admin panels are a common way in for attackers.",
+		"admin.todo":         "If it is reachable from the internet, move it behind a VPN or an IP allow-list and require multi-factor sign-in.",
+		"fix.footer":         "Hejnal only looks at what any visitor can see: one ordinary request per web service. It never logs in or tries exploits, so it can miss flaws and it does not confirm versions. Data: CISA Known Exploited Vulnerabilities catalog (CC0) and FIRST EPSS.",
+		"sum.title":          "*Hejnal* · %s",
+		"sum.counts":         "New: %d · Resolved: %d · Open: %d (critical %d · high %d · medium %d · low %d)",
+		"sum.first":          "First check · Open: %d (critical %d · high %d · medium %d · low %d)",
+		"sum.more":           "…and %d more",
+		"sum.report":         "Full list: hejnal report fixlist",
+		"nis2.title":         "NIS2 early warning: draft",
+		"nis2.intro":         "Draft prepared by Hejnal on %s for %s. It is a starting point, not legal advice. A matching flaw is not an incident by itself: use this only if you find signs that a system was compromised or a service was disrupted.",
+		"nis2.deadlines":     "Deadlines (NIS2 Article 23)",
+		"nis2.d24":           "**Early warning:** within 24 hours of becoming aware of a significant incident.",
+		"nis2.d72":           "**Incident notification:** within 72 hours, with an initial assessment of severity and impact and indicators of compromise where available.",
+		"nis2.d1m":           "**Final report:** within one month of the incident notification.",
+		"nis2.pl":            "**In Poland:** report to the competent CSIRT (CSIRT NASK, CSIRT GOV or CSIRT MON), usually through the S46 system. Check which CSIRT and sector authority apply to your organisation.",
+		"nis2.form":          "Early warning (fill in)",
+		"nis2.entity":        "Entity",
+		"nis2.contact":       "Contact",
+		"nis2.contact.v":     "[name, phone, email]",
+		"nis2.aware":         "When we became aware",
+		"nis2.aware.v":       "[date and time]",
+		"nis2.what":          "What happened",
+		"nis2.what.v":        "[short description]",
+		"nis2.malicious":     "Suspected unlawful or malicious act",
+		"nis2.malicious.v":   "[yes / no / unknown]. Exploitation of a known exploited flaw is a malicious act.",
+		"nis2.crossborder":   "Possible cross-border impact",
+		"nis2.crossborder.v": "[yes / no / unknown]",
+		"nis2.services":      "Services affected",
+		"nis2.services.v":    "[which services and users]",
+		"nis2.systems":       "Systems and flaws that may be involved",
+		"nis2.th":            "| System | Product | Flaw | Added to CISA KEV | Forensic triage |",
+		"nis2.yes":           "yes",
+		"nis2.no":            "no",
+		"nis2.nosystems":     "The latest Hejnal run found no critical or high-severity flaws. List the affected systems yourself.",
+		"nis2.next":          "For the 72-hour notification",
+		"nis2.c1":            "Severity and impact assessment",
+		"nis2.c2":            "Indicators of compromise (IP addresses, files, accounts)",
+		"nis2.c3":            "Containment steps taken (updated, isolated, passwords and keys changed)",
+		"nis2.c4":            "Whether personal data was affected: a GDPR breach notification to the data protection authority (UODO in Poland) within 72 hours is a separate duty",
+	},
+	"pl": {
+		"fix.title":          "Lista poprawek Hejnal",
+		"fix.meta":           "Wygenerowano %s · Hosty: %d · Usługi: %d · Rozpoznane produkty: %d",
+		"fix.feeds":          "Źródła: katalog CISA Known Exploited Vulnerabilities %s",
+		"fix.feeds.epss":     ", oceny FIRST EPSS z %s",
+		"fix.summary":        "Napraw teraz: %d · W tym tygodniu: %d · W tym miesiącu: %d · Później: %d",
+		"fix.none":           "Nic do naprawy. Hejnal nie znalazł produktów z podatnościami wykorzystywanymi przez atakujących ani problemów z certyfikatami czy panelami administracyjnymi.",
+		"fix.empty":          "Hejnal nie dotarł do żadnej usługi. Sprawdź zakres i to, czy ta maszyna ma dostęp do Twoich systemów.",
+		"sev.critical":       "Napraw teraz (krytyczne)",
+		"sev.high":           "W tym tygodniu (wysokie)",
+		"sev.medium":         "W tym miesiącu (średnie)",
+		"sev.low":            "Później (niskie)",
+		"sev.short.critical": "krytyczne",
+		"sev.short.high":     "wysokie",
+		"sev.short.medium":   "średnie",
+		"sev.short.low":      "niskie",
+		"label.why":          "Dlaczego",
+		"label.todo":         "Co zrobić",
+		"label.seen":         "Wykryto pod adresem",
+		"label.flaws":        "Podatności",
+		"label.advisories":   "Biuletyny",
+		"label.compromise":   "Sprawdź, czy nie doszło do włamania",
+		"label.version":      "wersja %s",
+		"label.noversion":    "wersja nieujawniona",
+		"kev.title":          "%s na %s",
+		"kev.why":            "Znane, aktywnie wykorzystywane podatności w tym produkcie: %d. Najnowszą CISA dodała do katalogu %s.",
+		"kev.todo":           "Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.",
+		"kev.forensic":       "Dla co najmniej jednej z tych podatności CISA zaleca analizę powłamaniową. Sama aktualizacja nie wystarczy, jeśli system był wystawiony przed poprawką: poszukaj śladów włamania, takich jak nieznane konta, pliki lub połączenia.",
+		"kev.added":          "dodana %s",
+		"kev.ransomware":     "wykorzystywana w kampaniach ransomware",
+		"kev.forensicflag":   "analiza powłamaniowa",
+		"kev.more":           "…oraz kolejne: %d (pełna lista w findings.json)",
+		"kev.confidence":     "Hejnal rozpoznał produkt, ale nie zweryfikował jego wersji, więc może on być już załatany. Zamknij ten punkt, gdy potwierdzisz, że zainstalowana wersja zawiera poprawkę.",
+		"tlsx.title":         "Wygasły certyfikat TLS na %s",
+		"tlsx.why":           "Certyfikat dla %s wygasł %s. Odwiedzający widzą ostrzeżenia bezpieczeństwa i uczą się je ignorować.",
+		"tlss.title":         "Certyfikat TLS wkrótce wygaśnie na %s",
+		"tlss.why":           "Certyfikat dla %s wygasa %s.",
+		"tls.todo":           "Odnów certyfikat i włącz automatyczne odnawianie.",
+		"admin.title":        "Panel administracyjny %s dostępny na %s",
+		"admin.why":          "Hejnal dotarł do tego panelu administracyjnego z miejsca, w którym działał. Wystawione panele administracyjne to częsta droga ataku.",
+		"admin.todo":         "Jeśli jest dostępny z internetu, ukryj go za VPN lub listą dozwolonych adresów IP i wymagaj logowania wieloskładnikowego.",
+		"fix.footer":         "Hejnal sprawdza tylko to, co widzi każdy odwiedzający: jedno zwykłe zapytanie na usługę WWW. Nigdy się nie loguje ani nie próbuje exploitów, więc może przeoczyć podatności i nie potwierdza wersji. Dane: katalog CISA Known Exploited Vulnerabilities (CC0) i FIRST EPSS.",
+		"sum.title":          "*Hejnal* · %s",
+		"sum.counts":         "Nowe: %d · Rozwiązane: %d · Otwarte: %d (krytyczne %d · wysokie %d · średnie %d · niskie %d)",
+		"sum.first":          "Pierwsze sprawdzenie · Otwarte: %d (krytyczne %d · wysokie %d · średnie %d · niskie %d)",
+		"sum.more":           "…oraz kolejne: %d",
+		"sum.report":         "Pełna lista: hejnal report fixlist -lang pl",
+		"nis2.title":         "NIS2: wczesne ostrzeżenie (projekt)",
+		"nis2.intro":         "Projekt przygotowany przez Hejnal %s dla: %s. To punkt wyjścia, nie porada prawna. Sama podatność nie jest incydentem: użyj tego tylko wtedy, gdy znajdziesz ślady włamania lub zakłócenia usługi.",
+		"nis2.deadlines":     "Terminy (art. 23 dyrektywy NIS 2)",
+		"nis2.d24":           "**Wczesne ostrzeżenie:** w ciągu 24 godzin od wykrycia poważnego incydentu.",
+		"nis2.d72":           "**Zgłoszenie incydentu:** w ciągu 72 godzin, ze wstępną oceną powagi i skutków oraz wskaźnikami naruszenia, jeśli są dostępne.",
+		"nis2.d1m":           "**Sprawozdanie końcowe:** w ciągu miesiąca od zgłoszenia incydentu.",
+		"nis2.pl":            "**W Polsce:** zgłoszenie trafia do właściwego CSIRT (CSIRT NASK, CSIRT GOV lub CSIRT MON), zwykle przez system S46. Sprawdź, który CSIRT i organ sektorowy są właściwe dla Twojej organizacji.",
+		"nis2.form":          "Wczesne ostrzeżenie (do uzupełnienia)",
+		"nis2.entity":        "Podmiot",
+		"nis2.contact":       "Osoba kontaktowa",
+		"nis2.contact.v":     "[imię i nazwisko, telefon, e-mail]",
+		"nis2.aware":         "Kiedy wykryto incydent",
+		"nis2.aware.v":       "[data i godzina]",
+		"nis2.what":          "Co się stało",
+		"nis2.what.v":        "[krótki opis]",
+		"nis2.malicious":     "Podejrzenie działania bezprawnego lub złośliwego",
+		"nis2.malicious.v":   "[tak / nie / nie wiadomo]. Wykorzystanie znanej podatności to działanie złośliwe.",
+		"nis2.crossborder":   "Możliwe skutki transgraniczne",
+		"nis2.crossborder.v": "[tak / nie / nie wiadomo]",
+		"nis2.services":      "Dotknięte usługi",
+		"nis2.services.v":    "[które usługi i których użytkowników]",
+		"nis2.systems":       "Systemy i podatności, których może to dotyczyć",
+		"nis2.th":            "| System | Produkt | Podatność | Dodana do CISA KEV | Analiza powłamaniowa |",
+		"nis2.yes":           "tak",
+		"nis2.no":            "nie",
+		"nis2.nosystems":     "Ostatnie sprawdzenie Hejnal nie wykazało krytycznych ani wysokich podatności. Wpisz dotknięte systemy samodzielnie.",
+		"nis2.next":          "Do zgłoszenia 72-godzinnego",
+		"nis2.c1":            "Ocena powagi i skutków",
+		"nis2.c2":            "Wskaźniki naruszenia (adresy IP, pliki, konta)",
+		"nis2.c3":            "Podjęte działania (aktualizacja, izolacja, zmiana haseł i kluczy)",
+		"nis2.c4":            "Czy naruszono dane osobowe: zgłoszenie do UODO w ciągu 72 godzin na podstawie RODO to osobny obowiązek",
+	},
+}
+
+type translator func(key string, args ...any) string
+
+func newTranslator(lang string) translator {
+	table, ok := messages[lang]
+	if !ok {
+		table = messages["en"]
+	}
+	return func(key string, args ...any) string {
+		msg, ok := table[key]
+		if !ok {
+			msg, ok = messages["en"][key]
+		}
+		if !ok {
+			return key
+		}
+		if len(args) == 0 {
+			return msg
+		}
+		return fmt.Sprintf(msg, args...)
+	}
+}
