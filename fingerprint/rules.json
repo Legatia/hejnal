@@ -34,7 +34,10 @@
       "id": "iis", "name": "Microsoft IIS", "category": "server",
       "headers": {"Server": "Microsoft-IIS"},
       "versions": [{"source": "header:Server", "regex": "Microsoft-IIS/([0-9]+(?:\\.[0-9]+)*)"}],
-      "kev": [{"vendor": "^Microsoft$", "product": "^Internet Information Services"}]
+      "kev": [
+        {"vendor": "^Microsoft$", "product": "^Internet Information Services"},
+        {"vendor": "^Microsoft$", "product": "^(HTTP\\.sys|HTTP Protocol Stack)$"}
+      ]
     },
     {
       "id": "tomcat", "name": "Apache Tomcat", "category": "server",
@@ -49,10 +52,14 @@
     {
       "id": "weblogic", "name": "Oracle WebLogic Server", "category": "server",
       "headers": {"Server": "WebLogic"},
-      "body": ["From RFC 2068 Hypertext Transfer Protocol", "/console/login/LoginForm\\.jsp"],
+      "body": ["From RFC 2068 (?:<i>)?Hypertext Transfer Protocol", "/console/login/LoginForm\\.jsp"],
       "versions": [{"source": "header:Server", "regex": "WebLogic(?: Server)? ([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["oracle:weblogic_server"],
-      "kev": [{"vendor": "^Oracle$", "product": "WebLogic"}]
+      "kev": [
+        {"vendor": "^Oracle$", "product": "WebLogic"},
+        {"vendor": "^Oracle$", "product": "^Fusion Middleware$", "text": "WebLogic|\\bWLS\\b"},
+        {"vendor": "^Oracle$", "product": "^Multiple Products$", "text": "WebLogic|\\bT3\\b|IIOP"}
+      ]
     },
     {
       "id": "coldfusion", "name": "Adobe ColdFusion", "category": "server",
@@ -224,7 +231,7 @@
     {
       "id": "fortinet-fortigate", "name": "Fortinet FortiGate SSL VPN", "category": "edge",
       "path": "^/remote/(login|logincheck)",
-      "body": ["fgt_lang", "ftnt-fortinet-grid", "/remote/login"],
+      "body": ["fgt_lang", "/remote/login"],
       "kev": [
         {"vendor": "^Fortinet$", "product": "FortiOS|FortiProxy|FortiGate"},
         {"vendor": "^Fortinet$", "product": "^Multiple Products$", "text": "FortiOS|FortiProxy"}
@@ -272,6 +279,7 @@
       "id": "checkpoint", "name": "Check Point Security Gateway", "category": "edge",
       "title": "^Check Point SSL Network Extender",
       "body": ["/sslvpn/Login/Login"],
+      "banners": ["^220[ -]Check Point FireWall-1 Secure FTP server"],
       "kev": [
         {"vendor": "^Check Point$", "product": "Security Gateway|Quantum"},
         {"vendor": "^Check Point$", "product": "^Multiple Products$", "text": "Security Gateway|Spark Firewall|Quantum"}
@@ -290,6 +298,7 @@
     {
       "id": "zyxel", "name": "Zyxel firewall", "category": "edge",
       "body": ["zyFunction"],
+      "banners": ["^220[ -].*\\bFTP Server \\(ZyWALL"],
       "kev": [
         {"vendor": "^Zyxel$", "product": "Firewall"},
         {"vendor": "^Zyxel$", "product": "^Multiple Products$", "text": "firewall"}
@@ -309,6 +318,7 @@
     {
       "id": "moveit", "name": "Progress MOVEit Transfer", "category": "file-transfer",
       "body": ["moveitisapi", "/human\\.aspx"],
+      "banners": ["^SSH-2\\.0-MOVEit Transfer SFTP"],
       "kev": [{"vendor": "^Progress$", "product": "MOVEit"}]
     },
     {
@@ -358,11 +368,12 @@
     {
       "id": "qnap", "name": "QNAP NAS", "category": "storage", "admin": true,
       "body": ["/cgi-bin/QTS\\.cgi"],
-      "kev": [{"vendor": "^QNAP$", "product": "QTS|QuTS|Network.Attached Storage|\\bNAS\\b|Photo Station"}]
+      "kev": [{"vendor": "^QNAP( Systems)?$", "product": "QTS|QuTS|Network.Attached Storage|\\bNAS\\b|Photo Station|Helpdesk"}]
     },
     {
       "id": "synology", "name": "Synology DiskStation", "category": "storage", "admin": true,
       "body": ["SYNO\\.SDS"],
+      "banners": ["^220[ -]DiskStation FTP server ready"],
       "kev": [{"vendor": "^Synology$", "product": ".*"}]
     },
     {
@@ -374,6 +385,947 @@
       "id": "openfire", "name": "Openfire", "category": "chat", "admin": true,
       "title": "^Openfire Admin Console",
       "kev": [{"vendor": "^Ignite Realtime$", "product": "Openfire"}]
+    },
+    {
+      "id": "fortinet-fortiweb", "name": "Fortinet FortiWeb", "category": "edge", "admin": true,
+      "title": "^FortiWeb - [A-Za-z0-9][A-Za-z0-9._-]*$",
+      "body": ["'FortiWeb - ' ?\\+ ?deviceState\\.admin\\.hostname"],
+      "cpe": ["fortinet:fortiweb"],
+      "kev": [
+        {"vendor": "^Fortinet$", "product": "^FortiWeb$"},
+        {"vendor": "^Fortinet$", "product": "^Multiple Products$", "text": "\\bFortiWeb\\b"}
+      ]
+    },
+    {
+      "id": "fortinet-fortimanager", "name": "Fortinet FortiManager", "category": "security", "admin": true,
+      "title": "^FortiManager-[A-Za-z0-9_-]+$",
+      "cpe": ["fortinet:fortimanager"],
+      "kev": [
+        {"vendor": "^Fortinet$", "product": "^FortiManager$"},
+        {"vendor": "^Fortinet$", "product": "^Multiple Products$", "text": "\\bFortiManager\\b"}
+      ]
+    },
+    {
+      "id": "fortinet-fortimail", "name": "Fortinet FortiMail", "category": "mail",
+      "path": "^/m/webmail/",
+      "body": ["<script[^>]*>\\s*((window|top|self|document)\\.)?location(\\.href)?\\s*=\\s*[\"']/m/webmail/", "src=[\"'][^\"']*fml-admin-login-[0-9]+\\.js"],
+      "cpe": ["fortinet:fortimail"],
+      "kev": [
+        {"vendor": "^Fortinet$", "product": "^FortiMail$"},
+        {"vendor": "^Fortinet$", "product": "^Multiple Products$", "text": "\\bFortiMail\\b"}
+      ]
+    },
+    {
+      "id": "fortinet-fortisandbox", "name": "Fortinet FortiSandbox", "category": "security", "admin": true,
+      "headers": {"X-FortiSandbox-Version": ""},
+      "versions": [{"source": "header:X-FortiSandbox-Version", "regex": "^\\s*([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["fortinet:fortisandbox"],
+      "kev": [{"vendor": "^Fortinet$", "product": "^FortiSandbox$"}]
+    },
+    {
+      "id": "fortinet-forticlient-ems", "name": "Fortinet FortiClient EMS", "category": "security", "admin": true,
+      "body": ["FortiClient Endpoint Management Server[\\s\\S]*\\\\u0022VERSION_FULL\\\\u0022|\\\\u0022VERSION_FULL\\\\u0022[\\s\\S]*FortiClient Endpoint Management Server"],
+      "cpe": ["fortinet:forticlientems", "fortinet:forticlient_enterprise_management_server"],
+      "kev": [{"vendor": "^Fortinet$", "product": "^FortiClient EMS$"}]
+    },
+    {
+      "id": "ivanti-csa", "name": "Ivanti Cloud Services Appliance", "category": "edge",
+      "title": "^(Ivanti|LANDesk)(\\(R\\)|®)? Cloud Services Appliance$",
+      "cpe": ["ivanti:endpoint_manager_cloud_services_appliance", "ivanti:cloud_services_appliance"],
+      "kev": [{"vendor": "^Ivanti$", "product": "Cloud Services? Appliance"}]
+    },
+    {
+      "id": "ivanti-sentry", "name": "Ivanti Sentry (MobileIron Sentry)", "category": "edge", "admin": true,
+      "body": [">\\s*(Note:\\s*)?Requires a local Sentry administrative user"],
+      "cpe": ["ivanti:mobileiron_sentry", "ivanti:standalone_sentry"],
+      "kev": [{"vendor": "^Ivanti$", "product": "^Sentry$"}]
+    },
+    {
+      "id": "ivanti-vtm", "name": "Ivanti Virtual Traffic Manager", "category": "edge", "admin": true,
+      "path": "^/apps/zxtm/",
+      "title": "^Login \\((Virtual|Stingray|Zeus) Traffic Manager( Appliance)? :: [^()]*\\)$",
+      "body": ["(url=|location(\\.href)?\\s*=\\s*[\"']|action=[\"'])[^\"'\\s>]*/apps/zxtm/login\\.cgi"],
+      "cpe": ["ivanti:virtual_traffic_manager"],
+      "kev": [{"vendor": "^Ivanti$", "product": "^Virtual Traffic Manager$"}]
+    },
+    {
+      "id": "cisco-ios-xe-webui", "name": "Cisco IOS XE (web UI)", "category": "network", "admin": true,
+      "body": ["^\\s*<script>\\s*window\\.onload\\s*=\\s*function\\s*\\(\\)\\s*\\{\\s*url\\s*=\\s*'/webui/?';\\s*window\\.location\\.href\\s*=\\s*url;?\\s*\\}\\s*</script>"],
+      "cpe": ["cisco:ios_xe"],
+      "kev": [{"vendor": "^Cisco$", "product": "\\bXE\\b"}]
+    },
+    {
+      "id": "cisco-ise", "name": "Cisco Identity Services Engine", "category": "security", "admin": true,
+      "title": "^Identity Services Engine$",
+      "body": ["document\\.title\\s*=\\s*['\"]Identity Services Engine['\"]", "[?&]_isever=[0-9]{6,}"],
+      "cpe": ["cisco:identity_services_engine"],
+      "kev": [{"vendor": "^Cisco$", "product": "^Identity Services Engine"}]
+    },
+    {
+      "id": "cisco-secure-email-gateway", "name": "Cisco Secure Email Gateway (ESA)", "category": "mail", "admin": true,
+      "title": "^Cisco (IronPort |Email Security (Virtual )?Appliance |Secure Email Gateway (Virtual )?)[CX][0-9]{2,4}V? \\([^()]*\\) - Login$",
+      "cpe": ["cisco:asyncos"],
+      "kev": [
+        {"vendor": "^Cisco$", "product": "^Secure Email Gateway$"},
+        {"vendor": "^Cisco$", "product": "^Multiple Products$", "text": "Secure Email Gateway"}
+      ]
+    },
+    {
+      "id": "cisco-fmc", "name": "Cisco Secure Firewall Management Center", "category": "security", "admin": true,
+      "body": ["(Firepower|Secure Firewall) Management Center[\\s\\S]*[\"']/img/cisco-icon\\.svg[\"']|[\"']/img/cisco-icon\\.svg[\"'][\\s\\S]*(Firepower|Secure Firewall) Management Center"],
+      "cpe": ["cisco:secure_firewall_management_center", "cisco:firepower_management_center"],
+      "kev": [{"vendor": "^Cisco$", "product": "^Secure Firewall Management Center"}]
+    },
+    {
+      "id": "cisco-sdwan-manager", "name": "Cisco Catalyst SD-WAN Manager (vManage)", "category": "network", "admin": true,
+      "title": "^Cisco vManage$",
+      "cpe": ["cisco:catalyst_sd-wan_manager"],
+      "kev": [{"vendor": "^Cisco$", "product": "^(Catalyst )?SD-WAN( Manager| Manger| Controller and Manager)?$"}]
+    },
+    {
+      "id": "cisco-hyperflex", "name": "Cisco HyperFlex HX", "category": "virtualization", "admin": true,
+      "title": "^(Hyperflex Installer|Cisco HyperFlex Connect)$",
+      "cpe": ["cisco:hyperflex_hx_data_platform"],
+      "kev": [{"vendor": "^Cisco$", "product": "^HyperFlex HX$"}]
+    },
+    {
+      "id": "cisco-acs", "name": "Cisco Secure Access Control System", "category": "security", "admin": true,
+      "path": "^/acsadmin/",
+      "body": ["<meta[^>]+content=\"0;\\s*url=/acsadmin", "<a[^>]+href=\"/acsadmin\"[^>]*>\\s*Launch ACS"],
+      "cpe": ["cisco:secure_access_control_system"],
+      "kev": [{"vendor": "^Cisco$", "product": "^Secure Access Control System"}]
+    },
+    {
+      "id": "cisco-dcnm", "name": "Cisco Prime Data Center Network Manager", "category": "network", "admin": true,
+      "body": ["Data Center Network Manager[\\s\\S]*class=\"productVersion\"|class=\"productVersion\"[\\s\\S]*Data Center Network Manager"],
+      "cpe": ["cisco:prime_data_center_network_manager"],
+      "kev": [{"vendor": "^Cisco$", "product": "Data Center Network Manager"}]
+    },
+    {
+      "id": "juniper-jweb", "name": "Juniper J-Web (Junos OS)", "category": "network", "admin": true,
+      "title": "^(Log In - )?Juniper Web Device Manager$",
+      "body": ["var modelphpStr\\s*="],
+      "cpe": ["juniper:junos"],
+      "kev": [{"vendor": "^Juniper$", "product": "^Junos OS$", "text": "J-Web|\\bPHP"}]
+    },
+    {
+      "id": "array-ag", "name": "Array Networks AG/vxAG SSL VPN", "category": "edge",
+      "cookies": ["^ANsession[0-9]+$"],
+      "path": "^/prx/000/http/",
+      "body": ["(action|src|href)=[\"']/prx/000/http/", "src=[\"'][^\"']*\\ban_util\\.js"],
+      "cpe": ["arraynetworks:arrayos_ag"],
+      "kev": [{"vendor": "^Array Networks\\s*$", "product": "ArrayOS"}]
+    },
+    {
+      "id": "versa-director", "name": "Versa Director", "category": "network", "admin": true,
+      "cookies": ["^VD-CSRF-TOKEN$"],
+      "cpe": ["versa-networks:versa_director"],
+      "kev": [{"vendor": "^Versa$", "product": "^Director$"}]
+    },
+    {
+      "id": "versa-concerto", "name": "Versa Concerto", "category": "network", "admin": true,
+      "headers": {"EECP-CSRF-TOKEN": ""},
+      "cookies": ["^EECP-CSRF-TOKEN$"],
+      "cpe": ["versa-networks:concerto"],
+      "kev": [{"vendor": "^Versa$", "product": "^Concerto$"}]
+    },
+    {
+      "id": "aviatrix-controller", "name": "Aviatrix Controller", "category": "network", "admin": true,
+      "title": "^Aviatrix (Cloud )?Controller$",
+      "cpe": ["aviatrix:controller"],
+      "kev": [{"vendor": "^Aviatrix$", "product": "Controller"}]
+    },
+    {
+      "id": "fatpipe", "name": "FatPipe WARP/IPVPN/MPVPN", "category": "edge", "admin": true,
+      "title": "^FatPipe (WARP|IPVPN|MPVPN)( \\| Log in| Remote Configuration)$",
+      "cpe": ["fatpipeinc:warp_firmware", "fatpipeinc:ipvpn_firmware", "fatpipeinc:mpvpn_firmware"],
+      "kev": [{"vendor": "^FatPipe$", "product": "WARP|IPVPN|MPVPN"}]
+    },
+    {
+      "id": "sophos-utm", "name": "Sophos SG UTM WebAdmin", "category": "edge", "admin": true,
+      "body": ["src=[\"']?wfe/asg/js/(app_selector|_variables_from_backend)\\.js"],
+      "cpe": ["sophos:unified_threat_management"],
+      "kev": [{"vendor": "^Sophos$", "product": "^SG UTM$"}]
+    },
+    {
+      "id": "sophos-web-appliance", "name": "Sophos Web Appliance", "category": "security", "admin": true,
+      "title": "^Sophos Web Appliance$",
+      "body": ["login_swa\\.jpg"],
+      "cpe": ["sophos:web_appliance"],
+      "kev": [{"vendor": "^Sophos$", "product": "^Web Appliance$"}]
+    },
+    {
+      "id": "barracuda-esg", "name": "Barracuda Email Security Gateway", "category": "mail", "admin": true,
+      "title": "^Barracuda (Email Security Gateway|Spam (&|and) Virus Firewall|Spam Firewall): Welcome$",
+      "kev": [{"vendor": "^Barracuda Networks$", "product": "^Email Security Gateway"}]
+    },
+    {
+      "id": "sonicwall-email-security", "name": "SonicWall Email Security", "category": "mail", "admin": true,
+      "body": ["class=\"logonTitle\">\\s*Email Security Login\\s*<"],
+      "versions": [{"source": "body", "regex": "class=\"lefthand\">\\s*([0-9]+(?:\\.[0-9]+){2,})"}],
+      "cpe": ["sonicwall:email_security", "sonicwall:email_security_virtual_appliance"],
+      "kev": [{"vendor": "^SonicWall$", "product": "Email Security"}]
+    },
+    {
+      "id": "symantec-messaging-gateway", "name": "Symantec Messaging Gateway", "category": "mail", "admin": true,
+      "path": "^/brightmail/",
+      "body": ["action=[\"']/brightmail/(viewLogin|login)\\.do"],
+      "cpe": ["symantec:message_gateway"],
+      "kev": [{"vendor": "^Symantec$", "product": "Messaging Gateway"}]
+    },
+    {
+      "id": "kemp-loadmaster", "name": "Progress Kemp LoadMaster", "category": "edge", "admin": true,
+      "title": "^Kemp Login Screen$",
+      "cpe": ["progress:loadmaster"],
+      "kev": [{"vendor": "^Progress$", "product": "^(Kemp )?LoadMaster$"}]
+    },
+    {
+      "id": "citrix-storefront", "name": "Citrix StoreFront", "category": "remote-access",
+      "path": "^/Citrix/StoreWeb/",
+      "body": ["<script[^>]*>\\s*(<!--)?\\s*(window\\.)?location(\\.href)?\\s*=\\s*[\"']/Citrix/StoreWeb"],
+      "cpe": ["citrix:storefront_server"],
+      "kev": [{"vendor": "^Citrix$", "product": "^StoreFront Server$"}]
+    },
+    {
+      "id": "citrix-sharefile", "name": "Citrix ShareFile StorageZones Controller", "category": "file-transfer",
+      "title": "^ShareFile Storage Server$",
+      "cpe": ["citrix:sharefile_storagezones_controller", "citrix:sharefile_storage_zones_controller"],
+      "kev": [{"vendor": "^Citrix$", "product": "^(ShareFile|Content Collaboration)$"}]
+    },
+    {
+      "id": "sap-netweaver-java", "name": "SAP NetWeaver Application Server Java", "category": "business",
+      "headers": {"Server": "SAP NetWeaver Application Server.*AS Java|^SAP J2EE Engine"},
+      "cookies": ["^saplb_"],
+      "path": "^/(irj/portal|webdynpro/(dispatcher|resources)/sap\\.com/)",
+      "body": ["/logon_ui_resources/", "/irj/portalapps/com\\.sap\\.", "/webdynpro/resources/sap\\.com/", "['\\\"(=]\\s*/sap/monitoring/SystemInfo"],
+      "kev": [
+        {"vendor": "^SAP$", "product": "^NetWeaver$"},
+        {"vendor": "^SAP$", "product": "^Multiple Products$", "text": "NetWeaver Application Server Java"}
+      ]
+    },
+    {
+      "id": "sap-netweaver-abap", "name": "SAP NetWeaver Application Server ABAP", "category": "business",
+      "headers": {"Server": "SAP NetWeaver Application Server.*ABAP|^SAP Web Application Server", "sap-server": ""},
+      "cookies": ["^sap-usercontext$", "^SAP_SESSIONID_"],
+      "path": "^/sap(\\([^/]*\\))?/(bc|public)/",
+      "body": ["name\\s*=\\s*[\"\\']sap-system-login", "['\\\"(=]\\s*/sap/public/bc/(ur|icons|themes)/"],
+      "kev": [{"vendor": "^SAP$", "product": "^Multiple Products$", "text": "NetWeaver Application Server ABAP|ABAP Platform"}]
+    },
+    {
+      "id": "sap-commerce", "name": "SAP Commerce (Hybris) storefront", "category": "cms",
+      "cookies": ["^acceleratorSecureGUID$"],
+      "body": ["ACC\\.config\\.(encodedContextPath|commonResourcePath|themeResourcePath)\\s*=", "['\\\"(=]\\s*(/[A-Za-z0-9_-]+)?/_ui/(responsive|desktop)/common/", "['\\\"(=]\\s*(/[A-Za-z0-9_-]+)?/medias/[^\"\\'\\s]*\\?context=bWFzdGVy"],
+      "kev": [{"vendor": "^SAP$", "product": "Commerce Cloud|Hybris"}]
+    },
+    {
+      "id": "sap-crm", "name": "SAP CRM WebClient UI", "category": "business",
+      "path": "^/sap(\\([^/]*\\))?/bc/bsp/sap/crm_ui_(start|frame)/",
+      "kev": [{"vendor": "^SAP$", "product": "Customer Relationship Management"}]
+    },
+    {
+      "id": "oracle-ebs", "name": "Oracle E-Business Suite", "category": "business",
+      "path": "^/OA_HTML/",
+      "body": ["['\\\"(=]\\s*/OA_HTML/(AppsLogin|AppsLocalLogin\\.jsp|OA\\.jsp|RF\\.jsp|cabo/)"],
+      "kev": [{"vendor": "^Oracle$", "product": "E-Business Suite"}]
+    },
+    {
+      "id": "oracle-peoplesoft", "name": "Oracle PeopleSoft", "category": "business",
+      "path": "^/ps[pc]/[^/]+/",
+      "title": "^Oracle PeopleSoft Sign-in$",
+      "cookies": ["-PORTAL-PSJSESSIONID$", "^PS_LOGINLIST$", "^PS_TOKEN$", "^PS_LASTSITE$", "^PS_DEVICEFEATURES$", "^SignOnDefault$"],
+      "body": ["HTTP-EQUIV=.Refresh. CONTENT=.1;[^>]*signon\\.html"],
+      "kev": [{"vendor": "^Oracle$", "product": "PeopleSoft"}]
+    },
+    {
+      "id": "oracle-access-manager", "name": "Oracle Access Manager", "category": "security",
+      "path": "^/oam/(server|pages)/",
+      "title": "^Login - Oracle Access Management( [0-9]+[a-z]*)?$",
+      "cookies": ["^OAM_REQ", "^OAM_ID$"],
+      "body": ["['\\\"(=]\\s*/oam/(pages/(images|css|js)/|server/auth_cred_submit)"],
+      "kev": [{"vendor": "^Oracle$", "product": "^Fusion Middleware$", "text": "Access Manager"}]
+    },
+    {
+      "id": "oracle-identity-manager", "name": "Oracle Identity Manager", "category": "security",
+      "path": "^/(identity|sysadmin)/faces/(signin|home)",
+      "kev": [{"vendor": "^Oracle$", "product": "^Fusion Middleware$", "text": "Identity Manager"}]
+    },
+    {
+      "id": "oracle-bi-publisher", "name": "Oracle BI Publisher", "category": "business",
+      "path": "^/xmlpserver/",
+      "kev": [{"vendor": "^Oracle$", "product": "BI Publisher"}]
+    },
+    {
+      "id": "oracle-obiee", "name": "Oracle Business Intelligence Enterprise Edition", "category": "business",
+      "path": "^/(analytics/saw\\.dll|bi-security-login/)",
+      "title": "^Oracle Business Intelligence( Sign In)?$",
+      "kev": [{"vendor": "^Oracle$", "product": "Intelligence Enterprise Edition"}]
+    },
+    {
+      "id": "oracle-agile-plm", "name": "Oracle Agile PLM", "category": "business",
+      "path": "^/Agile/(PLMServlet|default/login-cms\\.jsp)",
+      "kev": [{"vendor": "^Oracle$", "product": "Agile Product Lifecycle Management"}]
+    },
+    {
+      "id": "ibm-aspera-faspex", "name": "IBM Aspera Faspex", "category": "file-transfer",
+      "path": "^/aspera/faspex",
+      "body": ["['\\\"(=]\\s*/aspera/faspex/"],
+      "kev": [{"vendor": "^IBM$", "product": "Aspera Faspex"}]
+    },
+    {
+      "id": "ibm-data-risk-manager", "name": "IBM Data Risk Manager", "category": "security",
+      "path": "^/albatross/",
+      "kev": [{"vendor": "^IBM$", "product": "Data Risk Manager"}]
+    },
+    {
+      "id": "ibm-websphere", "name": "IBM WebSphere Application Server", "category": "server",
+      "headers": {"Server": "WebSphere Application Server", "$WSEP": ""},
+      "body": ["Error 404: (java\\.io\\.FileNotFoundException: )?SRVE0(190|255)E: "],
+      "versions": [{"source": "header:Server", "regex": "WebSphere Application Server/([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^IBM$", "product": "WebSphere Application Server"}]
+    },
+    {
+      "id": "hpe-oneview", "name": "HPE OneView", "category": "admin", "admin": true,
+      "body": ["var artifactVersion\\s*=\\s*\"[0-9]+\\.[0-9]+\\.[0-9]+\""],
+      "versions": [{"source": "body", "regex": "var artifactVersion\\s*=\\s*\"([0-9]+\\.[0-9]+\\.[0-9]+)\""}],
+      "cpe": ["hpe:oneview"],
+      "kev": [{"vendor": "^Hewlett Packard Enterprise", "product": "^OneView$"}]
+    },
+    {
+      "id": "servicenow", "name": "ServiceNow instance", "category": "itsm",
+      "cookies": ["^glide_user_route$", "^glide_session_store$", "^glide_user_activity$", "^glide_node_id_for_js$"],
+      "body": ["NOW\\.user\\.userID", "\\bg_builddate\\s*="],
+      "kev": [{"vendor": "^ServiceNow$", "product": "Now Platform"}]
+    },
+    {
+      "id": "forgerock-am", "name": "ForgeRock Access Management (OpenAM)", "category": "security",
+      "path": "^/(openam|opensso|am|sso)/(XUI/|UI/Login)",
+      "cookies": ["^amlbcookie$", "^iPlanetDirectoryPro$"],
+      "body": ["successfulUserRegistrationDestination", "action=\"/(openam|opensso)/UI/Login"],
+      "kev": [{"vendor": "^ForgeRock$", "product": "Access Management|OpenAM"}]
+    },
+    {
+      "id": "netiq-access-manager", "name": "NetIQ (Micro Focus) Access Manager", "category": "security",
+      "path": "^/nidp/",
+      "cookies": ["^UrnNovellNidpClusterMemberId$"],
+      "body": ["['\\\"(=]\\s*/nidp/(app|idff|saml2|images|javascript)/"],
+      "kev": [{"vendor": "^(Micro Focus|NetIQ|OpenText)$", "product": "Access Manager"}]
+    },
+    {
+      "id": "wso2-carbon", "name": "WSO2 Carbon management console", "category": "admin", "admin": true,
+      "headers": {"Server": "^WSO2 Carbon Server"},
+      "path": "^/carbon/admin/",
+      "title": "^WSO2 Management Console$",
+      "body": ["['\\\"(=]\\s*/carbon/admin/(js|css|images)/"],
+      "kev": [{"vendor": "^WSO2$", "product": ".*"}]
+    },
+    {
+      "id": "delmia-apriso", "name": "Dassault Systemes DELMIA Apriso", "category": "industrial",
+      "path": "^/Apriso/",
+      "kev": [{"vendor": "^Dassault Syst", "product": "Apriso"}]
+    },
+    {
+      "id": "ptc-windchill", "name": "PTC Windchill", "category": "business",
+      "path": "^/Windchill/",
+      "body": ["['\\\"(=]\\s*/Windchill/(app|netmarkets|wtcore)/"],
+      "kev": [{"vendor": "^PTC$", "product": "Windchill|FlexPLM"}]
+    },
+    {
+      "id": "trimble-cityworks", "name": "Trimble Cityworks", "category": "business",
+      "path": "^/Cityworks[A-Za-z]*/",
+      "kev": [{"vendor": "^Trimble$", "product": "Cityworks"}]
+    },
+    {
+      "id": "advantive-veracore", "name": "Advantive VeraCore", "category": "business",
+      "path": "^/VeraCore/",
+      "body": ["/veracore/img/LoginLogo\\.png"],
+      "kev": [{"vendor": "^Advantive$", "product": "VeraCore"}]
+    },
+    {
+      "id": "sugarcrm", "name": "SugarCRM", "category": "business",
+      "title": "^SugarCRM$",
+      "body": ["sugar_sidecar\\.min\\.js", "sidecar/minified/sidecar\\.min\\.js"],
+      "kev": [{"vendor": "^SugarCRM$", "product": ".*"}]
+    },
+    {
+      "id": "sysaid", "name": "SysAid On-Prem", "category": "itsm",
+      "title": "^SysAid Help Desk Software( - Login| Login)?$",
+      "kev": [{"vendor": "^SysAid$", "product": "SysAid"}]
+    },
+    {
+      "id": "quest-kace-sma", "name": "Quest KACE Systems Management Appliance", "category": "mdm", "admin": true,
+      "headers": {"X-DellKACE-Appliance": "k1000", "X-KACE-Appliance": "k1000|^sma$"},
+      "versions": [{"source": "header:X-DellKACE-Version", "regex": "^([0-9]+(?:\\.[0-9]+)+)"}, {"source": "header:X-KBOX-Version", "regex": "^([0-9]+(?:\\.[0-9]+)+)"}, {"source": "header:X-KACE-Version", "regex": "^([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["quest:kace_systems_management_appliance", "quest:kace_system_management_appliance"],
+      "kev": [{"vendor": "^Quest$", "product": "KACE System"}]
+    },
+    {
+      "id": "trendmicro-apex-one", "name": "Trend Micro Apex One (OfficeScan)", "category": "security", "admin": true,
+      "path": "^/officescan/(console/|default)",
+      "body": ["['\\\"(=]\\s*/officescan/console/"],
+      "kev": [{"vendor": "^Trend Micro$", "product": "Apex One|OfficeScan"}]
+    },
+    {
+      "id": "trendmicro-worry-free", "name": "Trend Micro Worry-Free Business Security", "category": "security", "admin": true,
+      "path": "^/SMB/console/",
+      "body": ["['\\\"(=]\\s*/SMB/console/"],
+      "kev": [{"vendor": "^Trend Micro$", "product": "Worry-Free"}]
+    },
+    {
+      "id": "n-able-n-central", "name": "N-able N-central", "category": "remote-access", "admin": true,
+      "body": ["ncentralVersion\\s*:\\s*\"[0-9]", "class=\"ncentral\""],
+      "versions": [{"source": "body", "regex": "ncentralVersion\\s*:\\s*\"([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
+      "packaged": [{"source": "body", "regex": "ncentralVersion"}],
+      "cpe": ["n-able:n-central"],
+      "kev": [{"vendor": "^N-able$", "product": "N-central"}]
+    },
+    {
+      "id": "kaseya-vsa", "name": "Kaseya VSA", "category": "remote-access", "admin": true,
+      "path": "^/vsapres/",
+      "body": ["['\\\"(=]\\s*/vsapres/web20/"],
+      "kev": [{"vendor": "^Kaseya$", "product": "VSA"}]
+    },
+    {
+      "id": "workspace-one-uem", "name": "Omnissa Workspace ONE UEM (AirWatch)", "category": "mdm", "admin": true,
+      "path": "^/AirWatch/",
+      "body": ["['\\\"(=]\\s*/AirWatch/(Images|Content|Scripts|Login)"],
+      "kev": [{"vendor": "^(Omnissa|VMware)$", "product": "Workspace One UEM|AirWatch"}]
+    },
+    {
+      "id": "vmware-workspace-one-access", "name": "VMware Workspace ONE Access (Identity Manager)", "category": "security",
+      "path": "^/SAAS/(auth/login|apps/?$|t/[^/]+/auth/login)",
+      "kev": [
+        {"vendor": "^VMware$", "product": "Workspace ONE Access"},
+        {"vendor": "^VMware$", "product": "^Multiple Products$", "text": "Workspace ONE Access"}
+      ]
+    },
+    {
+      "id": "vmware-aria-operations", "name": "VMware Aria Operations (vRealize Operations)", "category": "monitoring", "admin": true,
+      "title": "^(VMware )?(vRealize Operations( Manager)?|Aria Operations)$",
+      "kev": [
+        {"vendor": "^(VMware|Broadcom)$", "product": "^(VMware )?Aria Operations( and VMware Tools)?$"},
+        {"vendor": "^VMware$", "product": "^vRealize Operations"}
+      ]
+    },
+    {
+      "id": "vmware-aria-operations-networks", "name": "VMware Aria Operations for Networks (vRealize Network Insight)", "category": "monitoring", "admin": true,
+      "title": "^(VMware )?(vRealize Network Insight|Aria Operations for Networks)$",
+      "kev": [{"vendor": "^(VMware|Broadcom)$", "product": "Aria Operations for Networks|vRealize Network Insight"}]
+    },
+    {
+      "id": "vmware-esxi", "name": "VMware ESXi", "category": "virtualization", "admin": true,
+      "body": ["id_eesx_welcome", "ng-app=\"esxUiApp\"", "id_esx_viclientdesc"],
+      "kev": [{"vendor": "^(VMware|Broadcom)$", "product": "ESX"}]
+    },
+    {
+      "id": "vmware-horizon-daas", "name": "VMware Horizon DaaS", "category": "virtualization",
+      "title": "^Desktop Portal \\| VMware\\S{0,2} Horizon DaaS",
+      "kev": [{"vendor": "^VMware$", "product": "Horizon DaaS"}]
+    },
+    {
+      "id": "veeam-enterprise-manager", "name": "Veeam Backup Enterprise Manager", "category": "backup", "admin": true,
+      "title": "^Veeam Backup Enterprise Manager( : Login)?$",
+      "kev": [{"vendor": "^Veeam$", "product": "Backup & Replication"}]
+    },
+    {
+      "id": "commvault", "name": "Commvault Command Center", "category": "backup", "admin": true,
+      "path": "^/commandcenter/",
+      "body": ["commandcenter/wcSSO\\.do"],
+      "kev": [{"vendor": "^Commvault$", "product": "Command Center|Web Server"}]
+    },
+    {
+      "id": "nakivo", "name": "NAKIVO Backup & Replication", "category": "backup", "admin": true,
+      "title": "^NAKIVO Backup & Replication v[0-9][0-9.]*$",
+      "versions": [{"source": "title", "regex": "NAKIVO Backup & Replication v([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^NAKIVO$", "product": "Backup and Replication"}]
+    },
+    {
+      "id": "arcserve-udp", "name": "Arcserve Unified Data Protection", "category": "backup", "admin": true,
+      "body": ["src\\s*=\\s*[\"\\'](\\./|/)?([A-Za-z0-9_-]+/)*arcserve\\.js"],
+      "kev": [{"vendor": "^Arcserve$", "product": "Unified Data Protection"}]
+    },
+    {
+      "id": "goanywhere-mft", "name": "Fortra GoAnywhere MFT", "category": "file-transfer",
+      "path": "^/(goanywhere/|webclient/(Login|Welcome)\\.xhtml)",
+      "kev": [{"vendor": "^Fortra$", "product": "GoAnywhere"}]
+    },
+    {
+      "id": "cleo-mft", "name": "Cleo Harmony, VLTrader and LexiCom", "category": "file-transfer",
+      "headers": {"Server": "^Cleo (Harmony|VLTrader|LexiCom)\\b"},
+      "versions": [{"source": "header:Server", "regex": "Cleo (?:Harmony|VLTrader|LexiCom)/([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["cleo:harmony", "cleo:vltrader", "cleo:lexicom"],
+      "kev": [{"vendor": "^Cleo$", "product": "^Multiple Products$", "text": "Harmony|VLTrader|LexiCom"}]
+    },
+    {
+      "id": "accellion-fta", "name": "Accellion FTA", "category": "file-transfer",
+      "path": "^/courier/(web/)?1000@/",
+      "body": ["['\\\"(=]\\s*/courier/(web/)?1000@/", "/cfadmin/img/accellion-logo\\.png"],
+      "kev": [{"vendor": "^Accellion$", "product": "FTA"}]
+    },
+    {
+      "id": "projectsend", "name": "ProjectSend", "category": "file-transfer",
+      "body": ["Provided by <a href=\"https?://(www\\.)?projectsend\\.org/?\""],
+      "kev": [{"vendor": "^ProjectSend$", "product": "ProjectSend"}]
+    },
+    {
+      "id": "gladinet-centrestack", "name": "Gladinet CentreStack and Triofox", "category": "file-transfer",
+      "path": "^/portal/loginpage\\.aspx",
+      "title": "^(CentreStack|Triofox) - Login$",
+      "kev": [{"vendor": "^Gladinet$", "product": "CentreStack|Triofox"}]
+    },
+    {
+      "id": "beyondtrust-remote-support", "name": "BeyondTrust Remote Support and Privileged Remote Access", "category": "remote-access",
+      "body": ["(?s)powered_by_text.{0,500}(BeyondTrust|Bomgar)"],
+      "kev": [{"vendor": "^BeyondTrust$", "product": "Remote Support|Privileged Remote Access"}]
+    },
+    {
+      "id": "simplehelp", "name": "SimpleHelp", "category": "remote-access",
+      "title": "^Welcome to SimpleHelp$",
+      "kev": [{"vendor": "^SimpleHelp\\s*$", "product": "SimpleHelp"}]
+    },
+    {
+      "id": "mitel-micollab", "name": "Mitel MiCollab", "category": "voip",
+      "path": "^/ucs/micollab/",
+      "body": ["['\\\"(=]\\s*/ucs/micollab/"],
+      "kev": [{"vendor": "^Mitel$", "product": "MiCollab"}]
+    },
+    {
+      "id": "mitel-mivoice-connect", "name": "Mitel MiVoice Connect (ShoreTel Director)", "category": "voip", "admin": true,
+      "path": "^/ShoreWareDirector",
+      "body": ["['\\\"(=]\\s*/ShoreWareDirector/"],
+      "kev": [{"vendor": "^Mitel$", "product": "MiVoice Connect"}]
+    },
+    {
+      "id": "freepbx", "name": "Sangoma FreePBX", "category": "voip", "admin": true,
+      "title": "^FreePBX( Administration)?$",
+      "kev": [{"vendor": "^Sangoma$", "product": "FreePBX"}]
+    },
+    {
+      "id": "cisco-ucm", "name": "Cisco Unified Communications Manager", "category": "voip", "admin": true,
+      "body": ["['\\\"(=]\\s*/ccmadmin/showHome\\.do"],
+      "kev": [{"vendor": "^Cisco$", "product": "^Unified Communications Manager$"}]
+    },
+    {
+      "id": "smartermail", "name": "SmarterTools SmarterMail", "category": "mail",
+      "path": "^/interface/root",
+      "kev": [{"vendor": "^SmarterTools$", "product": "SmarterMail"}]
+    },
+    {
+      "id": "cwp", "name": "CWP Control Web Panel", "category": "hosting", "admin": true,
+      "headers": {"Server": "^cwpsrv"},
+      "body": ["/login/cwp_theme/"],
+      "kev": [{"vendor": "^(CWP|Control Web Panel|CentOS Web Panel)$", "product": "Control Web Panel"}]
+    },
+    {
+      "id": "cyberpanel", "name": "CyberPanel", "category": "hosting", "admin": true,
+      "title": "^Login - CyberPanel$",
+      "body": ["loginSystem/login-syste[mn]\\.js"],
+      "kev": [{"vendor": "^CyberPersons$", "product": "CyberPanel"}]
+    },
+    {
+      "id": "cpanel", "name": "cPanel & WHM", "category": "hosting", "admin": true,
+      "headers": {"Server": "^cpsrvd"},
+      "cookies": ["^cprelogin$", "^cpsession$", "^whostmgrrelogin$", "^whostmgrsession$", "^webmailrelogin$", "^webmailsession$"],
+      "title": "^(cPanel|WHM) Login$",
+      "body": ["cPanel_magic_revision_[0-9]+"],
+      "versions": [{"source": "header:Server", "regex": "cpsrvd/11\\.([0-9]+\\.[0-9]+\\.[0-9]+)"}],
+      "cpe": ["cpanel:cpanel", "cpanel:whm"],
+      "kev": [{"vendor": "^(WebPros|cPanel)", "product": "cPanel"}]
+    },
+    {
+      "id": "exim", "name": "Exim mail server", "category": "mail",
+      "banners": ["^220[ -]\\S+ ESMTP Exim\\b"],
+      "versions": [{"source": "banner", "regex": "ESMTP Exim ([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
+      "packaged": [{"source": "banner", "regex": "ESMTP Exim"}],
+      "cpe": ["exim:exim"],
+      "kev": [{"vendor": "^Exim$", "product": "^(Exim|Exim Internet Mailer|Mail Transfer Agent \\(MTA\\))$"}]
+    },
+    {
+      "id": "opensmtpd", "name": "OpenSMTPD", "category": "mail",
+      "banners": ["^220[ -]\\S+ ESMTP OpenSMTPD"],
+      "cpe": ["openbsd:opensmtpd"],
+      "kev": [{"vendor": "^OpenBSD$", "product": "^OpenSMTPD$"}]
+    },
+    {
+      "id": "mdaemon", "name": "MDaemon Email Server", "category": "mail",
+      "headers": {"Server": "^WDaemon"},
+      "body": ["['\\\"(=]\\s*/?WorldClient\\.dll\\?View="],
+      "banners": ["^220[ -]\\S+ ESMTP MDaemon\\b"],
+      "versions": [{"source": "banner", "regex": "ESMTP MDaemon ([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["mdaemon:mdaemon"],
+      "kev": [{"vendor": "^MDaemon$", "product": "^Email Server$"}]
+    },
+    {
+      "id": "proftpd", "name": "ProFTPD", "category": "file-transfer",
+      "banners": ["^220[ -].*\\bProFTPD\\b"],
+      "versions": [{"source": "banner", "regex": "ProFTPD ([0-9]+\\.[0-9]+\\.[0-9]+) Server"}],
+      "packaged": [{"source": "banner", "regex": "\\((Debian|Ubuntu|Raspbian|Red Hat|CentOS|Rocky|AlmaLinux|Fedora|SUSE|Amazon)\\)"}],
+      "cpe": ["proftpd:proftpd"],
+      "kev": [{"vendor": "^ProFTPD$", "product": "^ProFTPD$"}]
+    },
+    {
+      "id": "serv-u", "name": "SolarWinds Serv-U", "category": "file-transfer",
+      "headers": {"Server": "^Serv-U"},
+      "banners": ["^220[ -].*\\bServ-U FTP Server\\b"],
+      "versions": [{"source": "header:Server", "regex": "Serv-U/([0-9]+\\.[0-9]+\\.[0-9]+)"}, {"source": "banner", "regex": "Serv-U FTP Server v([0-9]+(?:\\.[0-9]+)+)"}],
+      "packaged": [{"source": "header:Server", "regex": "^Serv-U"}, {"source": "banner", "regex": "Serv-U"}],
+      "cpe": ["solarwinds:serv-u"],
+      "kev": [{"vendor": "^SolarWinds$", "product": "^Serv-U$"}]
+    },
+    {
+      "id": "ws-ftp-server", "name": "Progress WS_FTP Server", "category": "file-transfer",
+      "path": "^/ThinClient/WTM/",
+      "banners": ["\\bWS_FTP Server [0-9]", "^SSH-2\\.0-WS_FTP-SSH"],
+      "versions": [{"source": "banner", "regex": "WS_FTP Server ([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["progress:ws_ftp_server"],
+      "kev": [{"vendor": "^(Progress|Ipswitch)$", "product": "^WS_FTP Server$"}]
+    },
+    {
+      "id": "wing-ftp-server", "name": "Wing FTP Server", "category": "file-transfer",
+      "headers": {"Server": "^Wing FTP Server"},
+      "banners": ["^220[ -]Wing FTP Server\\b"],
+      "versions": [{"source": "header:Server", "regex": "Wing FTP Server/([0-9]+(?:\\.[0-9]+)+)"}, {"source": "body", "regex": "Wing FTP Server\\s+v?([0-9]+\\.[0-9]+\\.[0-9]+)"}],
+      "cpe": ["wftpserver:wing_ftp_server"],
+      "kev": [{"vendor": "^Wing FTP Server$", "product": "^Wing FTP Server$"}]
+    },
+    {
+      "id": "erlang-otp-ssh", "name": "Erlang/OTP SSH server", "category": "server",
+      "banners": ["^SSH-2\\.0-Erlang/"],
+      "kev": [{"vendor": "^Erlang$", "product": "^Erlang/OTP$", "text": "SSH"}]
+    },
+    {
+      "id": "activemq-openwire", "name": "Apache ActiveMQ (OpenWire)", "category": "data",
+      "banners": ["^.{0,4}ActiveMQ\\b.*\\b(TcpNoDelayEnabled|SizePrefixDisabled|CacheSize|ProviderName|StackTraceEnabled|PlatformDetails|CacheEnabled|TightEncodingEnabled|MaxFrameSize|MaxInactivityDuration)\\b"],
+      "cpe": ["apache:activemq"],
+      "kev": [{"vendor": "^Apache$", "product": "^ActiveMQ$"}]
+    },
+    {
+      "id": "geoserver", "name": "GeoServer", "category": "data", "admin": true,
+      "path": "^/geoserver/web/",
+      "title": "^GeoServer: Welcome$",
+      "body": ["(href|src|action)=[\"']/geoserver/web/"],
+      "versions": [{"source": "body", "regex": "<span>GeoServer ([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
+      "cpe": ["geoserver:geoserver"],
+      "kev": [{"vendor": "^OSGeo$", "product": "^(GeoServer|JAI-EXT)$"}]
+    },
+    {
+      "id": "paloalto-expedition", "name": "Palo Alto Networks Expedition", "category": "security", "admin": true,
+      "title": "^Expedition Project$",
+      "kev": [{"vendor": "^Palo Alto Networks$", "product": "^Expedition$"}]
+    },
+    {
+      "id": "joomla-sp-page-builder", "name": "SP Page Builder (Joomla)", "category": "cms",
+      "body": ["(href|src)=[\"'][^\"']*/components/com_sppagebuilder/"],
+      "kev": [{"vendor": "^JoomShaper$", "product": "^SP Page Builder$"}]
+    },
+    {
+      "id": "joomla-balbooa-forms", "name": "Balbooa Forms (Joomla)", "category": "cms",
+      "body": ["(href|src)=[\"'][^\"']*/components/com_baforms/"],
+      "kev": [{"vendor": "^Balbooa$", "product": "^Forms$"}]
+    },
+    {
+      "id": "joomla-page-builder-ck", "name": "Page Builder CK (Joomla)", "category": "cms",
+      "body": ["(href|src)=[\"'][^\"']*/components/com_pagebuilderck/"],
+      "kev": [{"vendor": "^Joomlack$", "product": "^Page Builder$"}]
+    },
+    {
+      "id": "wp-social-warfare", "name": "Social Warfare (WordPress plugin)", "category": "cms",
+      "body": ["(href|src)=[\"'][^\"']*/wp-content/plugins/social-warfare/"],
+      "versions": [{"source": "body", "regex": "/wp-content/plugins/social-warfare/[^\"'?]*\\?ver=([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
+      "cpe": ["warfareplugins:social_warfare"],
+      "kev": [{"vendor": "^WordPress$", "product": "^Social Warfare Plugin$"}]
+    },
+    {
+      "id": "cisco-ios-http", "name": "Cisco IOS (HTTP server)", "category": "network", "admin": true,
+      "headers": {"Server": "^cisco-IOS$", "WWW-Authenticate": "realm=\"level_15( or view)?_access\""},
+      "kev": [{"vendor": "^Cisco$", "product": "^IOS( and IOS XE)?( Software| software)?$|^IOS Software and Cisco IOS XE Software$|^IOS, (IOS )?XR, and (IOS )?XE( Software)?$"}]
+    },
+    {
+      "id": "joomla-icagenda", "name": "iCagenda (Joomla)", "category": "cms",
+      "body": ["(href|src)=[\"'][^\"']*/(components|media)/com_icagenda/"],
+      "kev": [{"vendor": "^iCagenda$", "product": "^iCagenda$"}]
+    },
+    {
+      "id": "playsms", "name": "playSMS", "category": "business", "admin": true,
+      "body": ["href=['\"]index\\.php\\?app=(page|main)&(amp;)?inc=(register|forgot|core_auth)"],
+      "kev": [{"vendor": "^PlaySMS$", "product": "^PlaySMS$"}]
+    },
+    {
+      "id": "brocade-fabric-os", "name": "Brocade Fabric OS (Web Tools)", "category": "network", "admin": true,
+      "body": ["(href|src|url|originalurl)\\s*=\\s*[\"']?/switchExplorer\\.html"],
+      "kev": [{"vendor": "^Broadcom$", "product": "^Brocade Fabric OS$"}]
+    },
+    {
+      "id": "ajaxpro", "name": "Ajax.NET Professional (AjaxPro)", "category": "framework",
+      "body": ["src=[\"'][^\"']*/ajaxpro/(prototype|core|converter)\\.ashx"],
+      "kev": [{"vendor": "^Ajax\\.NET Professional$", "product": "^Ajax\\.NET Professional$"}]
+    },
+    {
+      "id": "mikrotik-routeros", "name": "MikroTik RouterOS (WebFig)", "category": "network", "admin": true,
+      "title": "^(RouterOS router configuration page|mikrotik routeros > administration|MikroTik RouterOS Managing Webpage)$",
+      "body": ["<h1>RouterOS v?[0-9]+\\.[0-9]", "<div class=\"top\">mikrotik routeros [0-9.]+ configuration page</div>"],
+      "versions": [{"source": "body", "regex": "<h1>RouterOS v?([0-9]+(?:\\.[0-9]+)+)"}, {"source": "body", "regex": "mikrotik routeros ([0-9]+(?:\\.[0-9]+)+) configuration page"}, {"source": "body", "regex": "<b>MikroTik RouterOS ([0-9]+(?:\\.[0-9]+)+)</b>"}],
+      "cpe": ["mikrotik:routeros"],
+      "kev": [{"vendor": "^MikroTik$", "product": "^RouterOS$"}]
+    },
+    {
+      "id": "mikrotik-routeros-services", "name": "MikroTik RouterOS (hotspot, web proxy, FTP or SSH)", "category": "network",
+      "headers": {"Server": "^mikrotik httpproxy"},
+      "title": "^mikrotik hotspot > login$",
+      "banners": ["^220[ -].*\\bFTP server \\(MikroTik [0-9]", "^SSH-2\\.0-ROSSSH"],
+      "versions": [{"source": "banner", "regex": "FTP server \\(MikroTik ([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
+      "cpe": ["mikrotik:routeros"],
+      "kev": [{"vendor": "^MikroTik$", "product": "^RouterOS$"}]
+    },
+    {
+      "id": "ubiquiti-unifi-os", "name": "Ubiquiti UniFi OS console", "category": "network", "admin": true,
+      "title": "^UniFi OS$",
+      "body": ["UNIFI_OS_MANIFEST"],
+      "kev": [{"vendor": "^Ubiquiti$", "product": "^UniFi OS$"}]
+    },
+    {
+      "id": "ubiquiti-airos", "name": "Ubiquiti airOS", "category": "network", "admin": true,
+      "cookies": ["^AIROS_"],
+      "body": ["airos_logo\\.png"],
+      "kev": [{"vendor": "^Ubiquiti$", "product": "^AirOS$"}]
+    },
+    {
+      "id": "sierra-wireless-aleos", "name": "Sierra Wireless AirLink ALEOS (ACEmanager)", "category": "network", "admin": true,
+      "title": "^:+\\s*ACEmanager\\s*:+$",
+      "versions": [{"source": "body", "regex": "ALEOS Version ([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["sierrawireless:aleos"],
+      "kev": [{"vendor": "^Sierra Wireless$", "product": "^AirLink ALEOS$"}]
+    },
+    {
+      "id": "draytek-vigor", "name": "DrayTek Vigor router (DWS web server)", "category": "network", "admin": true,
+      "headers": {"Server": "^DWS$"},
+      "kev": [{"vendor": "^DrayTek$", "product": "Vigor Routers$"}]
+    },
+    {
+      "id": "dd-wrt", "name": "DD-WRT", "category": "network", "admin": true,
+      "body": ["<h1>DD-WRT Control Panel</h1>"],
+      "versions": [{"source": "body", "regex": "DD-WRT v[0-9.]+(?:-sp[0-9]+)?-r([0-9]+)"}, {"source": "title", "regex": "\\(build ([0-9]+)\\)"}],
+      "cpe": ["dd-wrt:dd-wrt"],
+      "kev": [{"vendor": "^DD-WRT$", "product": "^DD-WRT$"}]
+    },
+    {
+      "id": "dasan-gpon", "name": "Dasan GPON home router", "category": "network", "admin": true,
+      "title": "^GPON Home Gateway$",
+      "body": ["name=[\"']?XWebPageName[\"']?", "/GponForm/LoginForm"],
+      "kev": [{"vendor": "^Dasan$", "product": "GPON"}]
+    },
+    {
+      "id": "tenda-router", "name": "Tenda router (Tenda WiFi web interface)", "category": "network", "admin": true,
+      "title": "^Tenda WiFi$",
+      "kev": [{"vendor": "^Tenda$", "product": "^AC[0-9]"}]
+    },
+    {
+      "id": "asus-router", "name": "ASUS router (ASUSWRT)", "category": "network", "admin": true,
+      "path": "^/Main_Login\\.asp",
+      "title": "^ASUS Login$",
+      "body": ["location\\.href\\s*=\\s*'/Main_Login\\.asp'"]
+    },
+    {
+      "id": "ruckus-wireless-admin", "name": "Ruckus Wireless Admin (access point)", "category": "network", "admin": true,
+      "title": "^Ruckus Wireless Admin$",
+      "kev": [{"vendor": "^Ruckus Wireless$", "product": "^Multiple Products$", "text": "Access Point"}]
+    },
+    {
+      "id": "netgear-dgn2200", "name": "NETGEAR DGN2200", "category": "network", "admin": true,
+      "headers": {"WWW-Authenticate": "realm=\"NETGEAR DGN2200"},
+      "kev": [{"vendor": "^NETGEAR$", "product": "DGN2200"}]
+    },
+    {
+      "id": "netgear-wnr2000", "name": "NETGEAR WNR2000", "category": "network", "admin": true,
+      "headers": {"WWW-Authenticate": "realm=\"NETGEAR WNR2000(v[345])?\""},
+      "kev": [
+        {"vendor": "^NETGEAR$", "product": "^WNR2000"},
+        {"vendor": "^NETGEAR$", "product": "^Multiple Devices$", "text": "Buffer Overflow"}
+      ]
+    },
+    {
+      "id": "netgear-nighthawk", "name": "NETGEAR R-series or D6220/D6400 router", "category": "network", "admin": true,
+      "headers": {"WWW-Authenticate": "realm=\"NETGEAR (R6250|R6400|R6700|R6900|R7000|R7100LG|R7300DST|R7900|R8000|D6220|D6400)\""},
+      "kev": [{"vendor": "^NETGEAR$", "product": "^Multiple Routers$"}]
+    },
+    {
+      "id": "tp-link-tl-wr841n", "name": "TP-Link TL-WR841N", "category": "network", "admin": true,
+      "headers": {"WWW-Authenticate": "realm=\"TP-LINK[^\"]*\\bWR841N"},
+      "title": "^(TP-LINK\\s+)?TL-WR841N(D)?(\\s+v[0-9.]+)?$",
+      "kev": [
+        {"vendor": "^TP-Link$", "product": "^TL-WR841N$"},
+        {"vendor": "^TP-Link$", "product": "^Multiple Routers$", "text": "WR841N"}
+      ]
+    },
+    {
+      "id": "tp-link-tl-wr740n-wr940n", "name": "TP-Link TL-WR740N or TL-WR940N", "category": "network", "admin": true,
+      "headers": {"WWW-Authenticate": "realm=\"TP-LINK[^\"]*\\bWR(740|940)N\\b"},
+      "title": "^(TP-LINK\\s+)?TL-WR(740|940)N(\\s+v[0-9.]+)?$",
+      "kev": [{"vendor": "^TP-Link$", "product": "^Multiple Routers$", "text": "WR(740|940)N"}]
+    },
+    {
+      "id": "tp-link-archer-c", "name": "TP-Link Archer C5/C7/C8/C9", "category": "network", "admin": true,
+      "title": "^(TP-LINK\\s+)?Archer C[5789](\\s+v[0-9.]+)?$",
+      "kev": [{"vendor": "^TP-Link$", "product": "^Multiple Archer Devices$"}]
+    },
+    {
+      "id": "tp-link-archer-c7", "name": "TP-Link Archer C7", "category": "network", "admin": true,
+      "title": "^(TP-LINK\\s+)?Archer C7(\\s+v[0-9.]+)?$",
+      "kev": [{"vendor": "^TP-Link$", "product": "^Multiple Routers$", "text": "Archer C7"}]
+    },
+    {
+      "id": "d-link-dir-300", "name": "D-Link DIR-300", "category": "network", "admin": true,
+      "headers": {"Server": "^Linux, HTTP/1\\.[01], DIR-300\\s+Ver"},
+      "versions": [{"source": "header:Server", "regex": "DIR-300\\s+Ver\\s*([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^D-Link$", "product": "^DIR-300\\b"}]
+    },
+    {
+      "id": "d-link-dir-600", "name": "D-Link DIR-600", "category": "network", "admin": true,
+      "headers": {"Server": "^Linux, HTTP/1\\.[01], DIR-600\\s+Ver"},
+      "versions": [{"source": "header:Server", "regex": "DIR-600\\s+Ver\\s*([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^D-Link$", "product": "^DIR-600\\b"}]
+    },
+    {
+      "id": "d-link-dir-605", "name": "D-Link DIR-605", "category": "network", "admin": true,
+      "headers": {"Server": "^Linux, HTTP/1\\.[01], DIR-605L?\\s+Ver"},
+      "body": ["l_tb[\"']?>DIR-605"],
+      "versions": [{"source": "header:Server", "regex": "DIR-605L?\\s+Ver\\s*([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^D-Link$", "product": "^DIR-605\\b"}]
+    },
+    {
+      "id": "d-link-dir-645", "name": "D-Link DIR-645", "category": "network", "admin": true,
+      "headers": {"Server": "^Linux, HTTP/1\\.[01], DIR-645\\s+Ver"},
+      "versions": [{"source": "header:Server", "regex": "DIR-645\\s+Ver\\s*([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^D-Link$", "product": "^DIR-645\\b"}]
+    },
+    {
+      "id": "d-link-dir-823x", "name": "D-Link DIR-823X", "category": "network", "admin": true,
+      "title": "^(D-Link\\s+)?DIR-823X$",
+      "kev": [{"vendor": "^D-Link$", "product": "^DIR-823X\\b"}]
+    },
+    {
+      "id": "d-link-dir-859", "name": "D-Link DIR-859", "category": "network", "admin": true,
+      "headers": {"Server": "^Linux, HTTP/1\\.[01], DIR-859\\s+Ver"},
+      "versions": [{"source": "header:Server", "regex": "DIR-859\\s+Ver\\s*([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^D-Link$", "product": "^DIR-859\\b"}]
+    },
+    {
+      "id": "d-link-dir-8x0l", "name": "D-Link DIR-860L/DIR-865L/DIR-868L/DIR-880L", "category": "network", "admin": true,
+      "headers": {"Server": "^Linux, HTTP/1\\.[01], DIR-(860L|865L|868L|880L)\\s+Ver"},
+      "versions": [{"source": "header:Server", "regex": "DIR-8[0-9]{2}L\\s+Ver\\s*([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^D-Link$", "product": "^Multiple Routers$", "text": "OS Command Injection"}]
+    },
+    {
+      "id": "d-link-dcs-930l", "name": "D-Link DCS-930L camera", "category": "camera", "admin": true,
+      "headers": {"WWW-Authenticate": "realm=\"DCS-930L\""},
+      "kev": [{"vendor": "^D-Link$", "product": "^DCS-930L\\b"}]
+    },
+    {
+      "id": "d-link-sharecenter", "name": "D-Link ShareCenter NAS", "category": "storage", "admin": true,
+      "title": "^(D-Link\\s+)?ShareCenter(\\s+by D-Link)?$",
+      "body": ["cmd=cgi_get_ssl_info"],
+      "kev": [{"vendor": "^D-Link$", "product": "^(Multiple NAS Devices|DNS-320 (Device|Storage Device))$"}]
+    },
+    {
+      "id": "zyxel-nas", "name": "Zyxel NAS", "category": "storage", "admin": true,
+      "path": "^/r[0-9]+,/desktop,/",
+      "body": ["/r[0-9]+,/desktop,/"],
+      "kev": [{"vendor": "^Zyxel$", "product": "Network-Attached Storage"}]
+    },
+    {
+      "id": "unraid", "name": "Unraid", "category": "storage", "admin": true,
+      "body": ["/webGui/styles/clear-sans", "/webGui/styles/default-cases\\.css"],
+      "kev": [{"vendor": "^Unraid$", "product": "^Unraid$"}]
+    },
+    {
+      "id": "terramaster-tos", "name": "TerraMaster TOS", "category": "storage", "admin": true,
+      "headers": {"X-Powered-By": "TerraMaster", "Server": "^TOS(/[0-9.]+)?$"},
+      "title": "^TOS Loading$",
+      "kev": [{"vendor": "^TerraMaster$", "product": "^TerraMaster OS$"}]
+    },
+    {
+      "id": "hikvision", "name": "Hikvision IP camera or video recorder", "category": "camera", "admin": true,
+      "headers": {"Server": "^(Hikvision-Webs|DNVRS-Webs|DVRDVS-Webs|App-webs/)"},
+      "body": ["/doc/page/login\\.asp\\?_"],
+      "kev": [
+        {"vendor": "^Hikvision$", "product": "^Security cameras web server$"},
+        {"vendor": "^Hikvision$", "product": "^Multiple Products$", "text": "Improper Authentication"}
+      ]
+    },
+    {
+      "id": "dahua", "name": "Dahua (or Dahua OEM) IP camera or video recorder", "category": "camera", "admin": true,
+      "title": "^WEB SERVICE$",
+      "kev": [{"vendor": "^Dahua$", "product": "^IP Camera Firmware$"}]
+    },
+    {
+      "id": "reolink", "name": "Reolink IP camera", "category": "camera", "admin": true,
+      "title": "^Reolink$",
+      "kev": [{"vendor": "^Reolink$", "product": "IP Cameras?$"}]
+    },
+    {
+      "id": "nuuo-nvr", "name": "NUUO NVRmini network video recorder", "category": "camera", "admin": true,
+      "title": "^NUUO Network Video Recorder Login$",
+      "kev": [{"vendor": "^NUUO$", "product": "^NVRmini2? Devices$"}]
+    },
+    {
+      "id": "tvt-nvms-1000", "name": "TVT NVMS-1000 video recorder", "category": "camera", "admin": true,
+      "title": "^NVMS-1000$",
+      "kev": [{"vendor": "^TVT$", "product": "^NVMS-1000$"}]
+    },
+    {
+      "id": "intel-amt", "name": "Intel Active Management Technology (AMT)", "category": "admin", "admin": true,
+      "headers": {"Server": "^Intel\\(R\\) Active Management Technology"},
+      "title": "^Intel(\\(R\\)|®)?\\s*Active Management Technology$",
+      "versions": [{"source": "header:Server", "regex": "Active Management Technology ([0-9]+(?:\\.[0-9]+)+)"}],
+      "kev": [{"vendor": "^Intel$", "product": "^Active Management Technology"}]
+    },
+    {
+      "id": "nostromo", "name": "Nostromo nhttpd", "category": "server",
+      "headers": {"Server": "^nostromo\\b"},
+      "versions": [{"source": "header:Server", "regex": "^nostromo ([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["nazgul:nostromo_nhttpd"],
+      "kev": [{"vendor": "^Nostromo$", "product": "^nhttpd$"}]
+    },
+    {
+      "id": "goahead", "name": "Embedthis GoAhead", "category": "server",
+      "headers": {"Server": "^GoAhead-(Webs|http)\\b"},
+      "versions": [{"source": "header:Server", "regex": "^GoAhead-Webs/([0-9]+(?:\\.[0-9]+)+)"}],
+      "cpe": ["embedthis:goahead"],
+      "kev": [{"vendor": "^Embedthis$", "product": "^GoAhead$"}]
+    },
+    {
+      "id": "zkteco-biotime", "name": "ZKTeco BioTime", "category": "business", "admin": true,
+      "title": "^(ZK)?BioTime(\\s+[0-9]+(\\.[0-9]+)*)?$",
+      "kev": [{"vendor": "^ZKTeco$", "product": "^BioTime$"}]
+    },
+    {
+      "id": "samsung-magicinfo", "name": "Samsung MagicINFO Server", "category": "media", "admin": true,
+      "headers": {"Server": "^MagicInfo Premium Server"},
+      "path": "^/MagicInfo/",
+      "body": ["/MagicInfo/logo\\.ico"],
+      "kev": [{"vendor": "^Samsung$", "product": "^MagicINFO"}]
+    },
+    {
+      "id": "scadabr", "name": "ScadaBR", "category": "industrial", "admin": true,
+      "path": "^/ScadaBR/",
+      "title": "^ScadaBR$",
+      "body": ["name=\"DESCRIPTION\" content=\"ScadaBR Software\"", "images/scadabrLogo"],
+      "cpe": ["scadabr:scadabr"],
+      "kev": [{"vendor": "^(OpenPLC|ScadaBR)$", "product": "^ScadaBR$"}]
+    },
+    {
+      "id": "vtscada", "name": "Trihedral VTScada", "category": "industrial", "admin": true,
+      "title": "^VTScada Internet Client from Trihedral",
+      "kev": [{"vendor": "^Trihedral$", "product": "^VTScada"}]
+    },
+    {
+      "id": "solarview-compact", "name": "Contec SolarView Compact", "category": "industrial", "admin": true,
+      "body": ["SolarViewCompact", "[\"'/]Solar_Menu\\.php"],
+      "kev": [{"vendor": "^(SolarView|Contec)$", "product": "^(SolarView )?Compact$"}]
+    },
+    {
+      "id": "meteobridge", "name": "Smartbedded Meteobridge", "category": "monitoring", "admin": true,
+      "headers": {"WWW-Authenticate": "realm=\"MeteoBridge\""},
+      "kev": [{"vendor": "^Smartbedded$", "product": "^Meteobridge$"}]
     }
   ]
 }

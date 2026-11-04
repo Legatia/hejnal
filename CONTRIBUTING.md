@@ -76,16 +76,40 @@ any redirects inside the scope:
 - `editions` tells apart software editions that NVD lists separately, by the
   form of the version. Jenkins, for example, maps `2.426.3` to its `lts`
   edition and `2.441` to its weekly one (`-`).
-- `packaged` marks versions that come from a Linux distribution package.
-  Distributions backport fixes without changing the version, so Hejnal never
-  treats such a version as confirmed affected.
-- Categories: `edge` and `remote-access` raise the score, because attackers
-  go for internet-facing gateways first. Use the existing categories (the
-  tests list them).
+- `packaged` marks versions that may carry fixes the version number does not
+  show: Linux distribution packages, which backport fixes, and products whose
+  hotfixes keep the version number. Hejnal never treats such a version as
+  confirmed affected, but still rules out flaws fixed in an older version. A
+  pattern that always matches (as for Serv-U) marks every version this way.
+- Hejnal reads a letter right after a version as a pre-release (`1.2.0b2`).
+  If a product's maintenance releases add a letter instead (ProFTPD's
+  `1.3.5a` comes after `1.3.5`), make the version pattern require what
+  follows the number, so that such versions are not read at all rather than
+  misread.
+- `banners` recognises services that are not web servers by the greeting
+  they send as soon as Hejnal connects, such as
+  `220 mail.example.com ESMTP Exim 4.96`. A greeting is matched by banner
+  patterns only, and a version can be read from it with
+  `{"source": "banner", ...}`. Hejnal only reads the greeting; it never logs
+  in.
+- Categories: `edge`, `remote-access`, `network` and `camera` raise the
+  score, because attackers go for internet-facing gateways and devices
+  first. Use the existing categories (the tests list them).
 
 Check your rule against the real catalog before opening a pull request. Every
-entry it maps to should be a flaw in this product. Add a test case to
-`fingerprint/fingerprint_test.go` with a realistic response.
+entry it maps to should be a flaw in this product.
+
+Add at least one sample to
+[`fingerprint/testdata/samples.json`](fingerprint/testdata/samples.json): a
+realistic, minimal copy of what the product really sends, with the version
+the rule should read from it. Use `headers`, `path` and `body` for a web
+response, or `banner` for a greeting; join several values of one header with
+`\n`. The tests require a sample for every rule.
+
+ProjectDiscovery's [nuclei-templates](https://github.com/projectdiscovery/nuclei-templates)
+(MIT License) are a good place to confirm a product's markers. Use a marker
+only if the product's root page carries it, since Hejnal requests nothing
+else.
 
 ## Commits and pull requests
 
