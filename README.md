@@ -26,7 +26,7 @@ the city of an attack.
 2. **Recognises the software.** It sends one ordinary request per web service
    and reads the greeting of mail, file-transfer and other services. From the
    headers, cookies, page title, page markers and greetings it recognises over
-   200 products attackers go after most: Fortinet, Ivanti, Citrix, Palo Alto,
+   250 products attackers go after most: Fortinet, Ivanti, Citrix, Palo Alto,
    Cisco, Juniper, SonicWall and Check Point gateways; MikroTik, DrayTek,
    TP-Link and D-Link routers; Hikvision and Dahua cameras; Exchange, Zimbra
    and Exim; SAP, Oracle E-Business Suite, VMware ESXi and Veeam; WordPress,
@@ -172,9 +172,10 @@ A scope file looks like this ([example](examples/scope.example.json)):
 Unknown fields are rejected, so a misspelt key cannot silently change the
 scope.
 
-Mail, file-transfer and SSH servers are recognised by the greeting they send
-when Hejnal connects; it never logs in to them. To have them checked, add
-their ports to `ports`, for example `21`, `22`, `25` and `587`.
+Mail, file-transfer, SSH and message-broker servers are recognised by the
+greeting they send when Hejnal connects, and MongoDB by its answer to a plain
+web request; Hejnal never logs in to them. To have them checked, add their
+ports to `ports`, for example `21`, `22`, `25`, `587`, `27017` and `61616`.
 
 ## Run it every day
 
