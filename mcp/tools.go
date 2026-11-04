@@ -108,7 +108,7 @@ func (s *Server) makeTools() []*tool {
 		Name:  "hejnal_fix_list",
 		Title: "Fix list",
 		Description: "The prioritised fix list from the latest run, in Markdown: what to fix, most urgent first, " +
-			"why, what to do and the vendor advisories.",
+			"why, what to do and the vendor advisories, with each item's ID, and at the end the items people accepted, why and until when.",
 		InputSchema: objectSchema(map[string]any{"lang": lang, "min_severity": minSeverity}),
 		Annotations: readOnly,
 		call:        s.fixListTool,
@@ -226,8 +226,8 @@ func (s *Server) langArg(v string) (string, error) {
 	return "", fmt.Errorf("unknown language %q: use %s", v, strings.Join(report.Languages, " or "))
 }
 
-// loadFindings reads the latest findings, with an error that says what to do
-// when there are none.
+// loadFindings reads the latest findings, marked with the acceptances that
+// hold now, with an error that says what to do when there are none.
 func (s *Server) loadFindings() (*state.Snapshot, error) {
 	if s.broken != nil {
 		return nil, s.broken
@@ -239,6 +239,10 @@ func (s *Server) loadFindings() (*state.Snapshot, error) {
 	case err != nil:
 		s.logf("mcp: %v", err)
 		return nil, fmt.Errorf("could not read Hejnal's findings: %w", err)
+	}
+	if err := s.store.MarkAccepted(snap, s.now()); err != nil {
+		s.logf("mcp: %v", err)
+		return nil, fmt.Errorf("could not read the accepted items: %w", err)
 	}
 	return snap, nil
 }
@@ -307,10 +311,12 @@ func (s *Server) fixListTool(_ context.Context, raw json.RawMessage) toolResult 
 	fs, note := snap.Findings, ""
 	if minSev != "" {
 		// Keep whole items, as the fix list groups them, so each kept item
-		// still lists all its flaws.
+		// still lists all its flaws. Accepted findings form items of their
+		// own, as in the fix list.
 		var kept []match.Finding
 		left := 0
-		for _, g := range match.Groups(fs) {
+		rest, accepted := match.SplitAccepted(fs)
+		for _, g := range append(match.Groups(rest), match.Groups(accepted)...) {
 			if g.Severity.Rank() >= minSev.Rank() {
 				kept = append(kept, g.Findings...)
 			} else {
@@ -398,7 +404,7 @@ func (s *Server) findingsTool(_ context.Context, raw json.RawMessage) toolResult
 		fmt.Fprintf(&b, "Showing the %d most urgent; raise limit (at most %d) or narrow the filters to see more.\n", len(shown), maxLimit)
 	}
 	for i, f := range shown {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, findingLine(f))
+		fmt.Fprintf(&b, "%d. %s%s\n", i+1, findingLine(f), acceptanceText(f))
 	}
 	return toolResult{
 		Content: []content{{Type: "text", Text: b.String()}},
@@ -471,6 +477,22 @@ func findingLine(f match.Finding) string {
 		return head + string(f.Kind)
 	}
 	return head + fmt.Sprintf("%s on %s", f.Kind, where)
+}
+
+// acceptanceText says whether a person accepted the finding, quoting their
+// name and reason, which they typed.
+func acceptanceText(f match.Finding) string {
+	switch a := f.Accepted; {
+	case a != nil:
+		s := " · accepted until " + a.Until
+		if a.By != "" {
+			s += " by " + strconv.Quote(clip(a.By))
+		}
+		return s + ", reason " + strconv.Quote(clip(a.Reason))
+	case f.AcceptanceExpired != nil:
+		return " · open again: its acceptance expired after " + f.AcceptanceExpired.Until
+	}
+	return ""
 }
 
 // place says where a finding is: host and port, or the host alone for
@@ -732,6 +754,9 @@ func (s *Server) runTool(ctx context.Context, raw json.RawMessage) toolResult {
 
 // item is one item to fix in a summary.
 type item struct {
+	// ID is the item's short ID, as the fix list shows it and `hejnal
+	// accept` takes it.
+	ID string `json:"id"`
 	// Key identifies the item across runs.
 	Key        string         `json:"key"`
 	Kind       match.Kind     `json:"kind"`
@@ -770,13 +795,18 @@ type summary struct {
 	Resolved    []item `json:"resolved"`
 	// RuledOut counts flaws the version check rules out. They are not open.
 	RuledOut int `json:"ruledOut"`
+	// AcceptedItems counts the items people accepted with `hejnal accept`.
+	// They are not open.
+	AcceptedItems int `json:"acceptedItems"`
 }
 
 // summarize describes the latest findings and what changed since the last
 // report, as text and as structured data.
 func summarize(snap *state.Snapshot, ch engine.Changes) (string, summary) {
 	active := match.Active(snap.Findings)
-	open := match.Groups(active)
+	open := match.Groups(match.Open(snap.Findings))
+	_, acc := match.SplitAccepted(snap.Findings)
+	accepted := match.Groups(acc)
 	added, resolved := match.Groups(ch.Added), match.Groups(ch.Resolved)
 	sum := summary{
 		Organization: snap.Organization,
@@ -792,6 +822,7 @@ func summarize(snap *state.Snapshot, ch engine.Changes) (string, summary) {
 		Resolved:     items(resolved),
 		RuledOut:     len(snap.Findings) - len(active),
 	}
+	sum.AcceptedItems = len(accepted)
 	for _, g := range open {
 		switch g.Severity {
 		case match.Critical:
@@ -825,6 +856,9 @@ func summarize(snap *state.Snapshot, ch engine.Changes) (string, summary) {
 	if sum.RuledOut > 0 {
 		fmt.Fprintf(&b, "The version check rules out %s, which are not counted as open.\n", plural(sum.RuledOut, "flaw"))
 	}
+	if len(accepted) > 0 {
+		fmt.Fprintf(&b, "Accepted with `hejnal accept` after a check, and not counted as open: %s.\n", plural(len(accepted), "item"))
+	}
 	if len(open) > 0 {
 		b.WriteString("Call hejnal_fix_list for what to do about each item.\n")
 	}
@@ -850,7 +884,7 @@ func listItems(b *strings.Builder, heading string, groups []match.Group) {
 func items(groups []match.Group) []item {
 	out := []item{}
 	for _, g := range groups {
-		it := item{Key: g.Key, Kind: g.Kind, Host: g.Host, Port: g.Port, Technology: g.Technology, Version: g.Version,
+		it := item{ID: g.ID(), Key: g.Key, Kind: g.Kind, Host: g.Host, Port: g.Port, Technology: g.Technology, Version: g.Version,
 			Severity: g.Severity, Score: g.Score, Title: title(g)}
 		for _, f := range g.Findings {
 			if f.CVE != "" {

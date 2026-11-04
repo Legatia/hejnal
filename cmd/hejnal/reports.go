@@ -60,6 +60,9 @@ func (a *app) cmdReport(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := store.MarkAccepted(snap, a.now()); err != nil {
+		return err
+	}
 	m := engine.Meta(snap, o.lang)
 	var buf bytes.Buffer
 	switch kind {

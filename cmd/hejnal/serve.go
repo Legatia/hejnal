@@ -82,6 +82,7 @@ func (a *app) cmdMCP(ctx context.Context, args []string) error {
 		Engine:    e,
 		AllowRuns: *allowRuns,
 		Lang:      o.lang,
+		Now:       a.now,
 		Logf:      a.logf,
 	}
 	if *allowRuns {

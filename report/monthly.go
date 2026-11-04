@@ -27,7 +27,7 @@ func monthName(lang string, t time.Time) string {
 
 // Monthly writes a month's exposure report from the run history: what the
 // organisation exposed, what was found and fixed during the month, how long
-// fixes took, and what is still open.
+// fixes took, what is still open and what people accepted.
 func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) error {
 	tr := newTranslator(m.Lang)
 	start := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, time.UTC)
@@ -92,10 +92,14 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 			lastFinding[f.Key] = f
 		}
 	}
-	open := match.Active(last.Findings)
-	openKeys := map[string]bool{}
-	for _, f := range open {
-		openKeys[f.Key] = true
+	// Accepted findings are still there, so they are not fixed, but they are
+	// counted apart from the open ones, as the last run of the month marked
+	// them.
+	open := match.Open(last.Findings)
+	_, accepted := match.SplitAccepted(last.Findings)
+	present := map[string]bool{}
+	for _, f := range match.Active(last.Findings) {
+		present[f.Key] = true
 	}
 	// Candidates for "fixed": open at the start of the month or seen during it.
 	candidates := map[string]bool{}
@@ -116,7 +120,7 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 		if fs := firstSeen[key]; !fs.Before(start) && fs.Before(end) {
 			newFs = append(newFs, f)
 		}
-		if !openKeys[key] {
+		if !present[key] {
 			fixedFs = append(fixedFs, f)
 			// Fixed by the first run after it was last seen.
 			for _, s := range in {
@@ -147,9 +151,14 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 	if len(fixDays) > 0 {
 		fmt.Fprintf(&b, "- %s\n", tr("mon.median", median(fixDays)))
 	}
-	fmt.Fprintf(&b, "- %s\n\n", tr("mon.open", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
+	fmt.Fprintf(&b, "- %s\n", tr("mon.open", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
+	if ag := match.Groups(accepted); len(ag) > 0 {
+		fmt.Fprintf(&b, "- %s\n", tr("mon.accepted", len(ag)))
+	}
+	b.WriteString("\n")
 
-	writeList := func(heading string, fs []match.Finding, withSince bool) {
+	// writeList lists items, adding what note says about each, if anything.
+	writeList := func(heading string, fs []match.Finding, note func(match.Group) string) {
 		gs := match.Groups(fs)
 		if len(gs) == 0 {
 			return
@@ -161,22 +170,33 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 				break
 			}
 			line := fmt.Sprintf("- [%s] %s", tr("sev.short."+string(g.Severity)), mdEscape(groupTitle(tr, g)))
-			if withSince {
-				since := firstSeen[g.Findings[0].Key]
-				for _, f := range g.Findings {
-					if t := firstSeen[f.Key]; t.Before(since) {
-						since = t
-					}
-				}
-				line += " · " + tr("mon.since", since.Format("2006-01-02"))
+			if s := note(g); s != "" {
+				line += " · " + s
 			}
 			b.WriteString(line + "\n")
 		}
 		b.WriteString("\n")
 	}
-	writeList(tr("mon.newlist"), newFs, false)
-	writeList(tr("mon.fixedlist"), fixedFs, false)
-	writeList(tr("mon.openlist"), open, true)
+	none := func(match.Group) string { return "" }
+	since := func(g match.Group) string {
+		t := firstSeen[g.Findings[0].Key]
+		for _, f := range g.Findings {
+			if s := firstSeen[f.Key]; s.Before(t) {
+				t = s
+			}
+		}
+		return tr("mon.since", t.Format("2006-01-02"))
+	}
+	until := func(g match.Group) string {
+		if a := g.Acceptance(); a != nil {
+			return tr("acc.until", mdEscape(a.Until))
+		}
+		return ""
+	}
+	writeList(tr("mon.newlist"), newFs, none)
+	writeList(tr("mon.fixedlist"), fixedFs, none)
+	writeList(tr("mon.openlist"), open, since)
+	writeList(tr("acc.title"), accepted, until)
 
 	fmt.Fprintf(&b, "---\n\n%s\n", tr("mon.footer"))
 	_, err := io.WriteString(w, b.String())

@@ -10,7 +10,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 ## Napraw teraz (krytyczne)
 
-### 1. WordPress na www.example.com:443
+### 1. WordPress na www.example.com:443 · `f058ba93`
 
 - **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 3. Najnowszą CISA dodała do katalogu 2026-11-03.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
@@ -25,7 +25,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 > Hejnal porównał wersję `6.8.1` z wersjami podatnymi według NVD: ta wersja jest podatna.
 
-### 2. PHP na www.example.com:443
+### 2. PHP na www.example.com:443 · `cbf55259`
 
 - **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 2. Najnowszą CISA dodała do katalogu 2026-10-26.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
@@ -39,7 +39,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 > Hejnal porównał wersję `8.3.12` z wersjami podatnymi według NVD: ta wersja jest podatna.
 
-### 3. Fortinet FortiGate SSL VPN na vpn.example.com:443
+### 3. Fortinet FortiGate SSL VPN na vpn.example.com:443 · `bfda06f4`
 
 - **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 21. Najnowszą CISA dodała do katalogu 2026-10-16.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
@@ -54,11 +54,11 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
   - …oraz kolejne: 16 (pełna lista w findings.json)
 - **Biuletyny:** <https://fortiguard.fortinet.com/psirt/FG-IR-26-122> · <https://nvd.nist.gov/vuln/detail/CVE-2025-61624> · <https://fortiguard.fortinet.com/psirt/FG-IR-25-084> · <https://nvd.nist.gov/vuln/detail/CVE-2025-25249>
 
-> Hejnal rozpoznał produkt, ale nie zweryfikował jego wersji, więc może on być już załatany. Zamknij ten punkt, gdy potwierdzisz, że zainstalowana wersja zawiera poprawkę.
+> Hejnal rozpoznał produkt, ale nie zweryfikował jego wersji, więc może on być już załatany. Zamknij ten punkt, gdy potwierdzisz, że zainstalowana wersja zawiera poprawkę. Aby go zamknąć, uruchom `hejnal accept -item bfda06f4 -reason "..."`.
 
 ## W tym miesiącu (średnie)
 
-### 4. Panel administracyjny Jenkins dostępny na ci.example.com:443
+### 4. Panel administracyjny Jenkins dostępny na ci.example.com:443 · `4dc28dd3`
 
 - **Dlaczego:** Hejnal dotarł do tego panelu administracyjnego z miejsca, w którym działał. Wystawione panele administracyjne to częsta droga ataku.
 - **Co zrobić:** Jeśli jest dostępny z internetu, ukryj go za VPN lub listą dozwolonych adresów IP i wymagaj logowania wieloskładnikowego.
@@ -66,7 +66,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 ## Później (niskie)
 
-### 5. Jenkins na ci.example.com:443
+### 5. Jenkins na ci.example.com:443 · `aa53d21c`
 
 - **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 2. Najnowszą CISA dodała do katalogu 2022-04-25.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
@@ -77,7 +77,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 - **Wykluczone na podstawie wersji:** CVE-2017-1000353, CVE-2024-23897, CVE-2015-5317, CVE-2018-1000861
 - **Biuletyny:** <https://nvd.nist.gov/vuln/detail/CVE-2019-1003029> · <https://nvd.nist.gov/vuln/detail/CVE-2019-1003030>
 
-> Hejnal rozpoznał produkt, ale nie zweryfikował jego wersji, więc może on być już załatany. Zamknij ten punkt, gdy potwierdzisz, że zainstalowana wersja zawiera poprawkę.
+> Hejnal rozpoznał produkt, ale nie zweryfikował jego wersji, więc może on być już załatany. Zamknij ten punkt, gdy potwierdzisz, że zainstalowana wersja zawiera poprawkę. Aby go zamknąć, uruchom `hejnal accept -item aa53d21c -reason "..."`.
 
 ---
 

@@ -4,11 +4,12 @@
 // The API reads the state directory that runs write. Every endpoint except
 // GET /v1/health needs the bearer token. When the server allows it, clients
 // can also start a run. The API never marks findings as reported, so the
-// command line still announces them as new.
+// command line still announces them as new. It shows which findings people
+// accepted, but accepting happens only on the command line.
 //
 //	GET  /v1/health           status and version, without a token
 //	GET  /v1/findings         latest findings; filters: min_severity, kind, host
-//	GET  /v1/groups           items to fix, as in the fix list; filter: min_severity
+//	GET  /v1/groups           items to fix and accepted items, as in the fix list; filter: min_severity
 //	GET  /v1/inventory        hosts, services and products found
 //	GET  /v1/changes          new and resolved since the last report
 //	GET  /v1/reports/fixlist  the fix list in Markdown; lang=en or pl

@@ -342,6 +342,10 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 			snap.EPSSDate = s.Date
 		}
 	}
+	// The saved findings say which ones people accepted, and until when.
+	if err := e.store.MarkAccepted(snap, now); err != nil {
+		return nil, err
+	}
 	if err := e.store.SaveFindings(snap); err != nil {
 		return nil, err
 	}
@@ -350,7 +354,11 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 
 // Changes compares a snapshot with what people were last told about.
 type Changes struct {
-	Added    []match.Finding
+	// Added are the open findings that were not open at the last report:
+	// new ones, and ones whose acceptance expired or was removed.
+	Added []match.Finding
+	// Resolved are the findings gone since the last report, or now ruled
+	// out by the version check.
 	Resolved []match.Finding
 	// First is true before anything was reported.
 	First bool
@@ -384,14 +392,17 @@ func (e *Engine) Changes(snap *state.Snapshot) (Changes, error) {
 	if err != nil {
 		return Changes{}, err
 	}
-	// Flaws the version check rules out are not news. Comparing only the
-	// active findings also announces a flaw that becomes active again, say
-	// when a server stops showing its version, and counts a flaw the
-	// version check now rules out as resolved.
+	// Flaws the version check rules out are not news, and neither are
+	// findings people accepted. Comparing only the open findings also
+	// announces a flaw that becomes active again, say when a server stops
+	// showing its version, and a finding whose acceptance expired. Only
+	// findings that are gone count as resolved, so accepting one does not
+	// resolve it, while a flaw the version check now rules out is resolved.
 	if prev == nil {
-		return Changes{Added: match.Active(snap.Findings), First: true}, nil
+		return Changes{Added: match.Open(snap.Findings), First: true}, nil
 	}
-	added, resolved := state.Diff(match.Active(prev.Findings), match.Active(snap.Findings))
+	added, _ := state.Diff(match.Open(prev.Findings), match.Open(snap.Findings))
+	_, resolved := state.Diff(match.Active(prev.Findings), match.Active(snap.Findings))
 	return Changes{Added: added, Resolved: resolved}, nil
 }
 
