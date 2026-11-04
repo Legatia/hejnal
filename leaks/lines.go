@@ -79,6 +79,7 @@ func trimEOL(b []byte) []byte {
 type lineScanner struct {
 	file   string
 	commit string
+	key    []byte // fingerprint key, or nil for the process key
 	leaks  []Leak
 	pem    *pemBlock
 }
@@ -92,7 +93,7 @@ type pemBlock struct {
 }
 
 var (
-	pemField   = regexp.MustCompile(`^(?:Proc-Type|DEK-Info|Version|Comment|Hash|Charset|MessageID):`)
+	pemField   = regexp.MustCompile(`^(?:Proc-Type|DEK-Info|Version|Comment|Hash|Charset|MessageID|Subject|Encryption|Public-Lines|Private-Lines|Key-Derivation|Argon2-[A-Za-z]+|Private-MAC):`)
 	pemEscapes = strings.NewReplacer(`\n`, "", `\r`, "")
 )
 
@@ -151,16 +152,17 @@ func (s *lineScanner) scan(n int, text string, first, last bool) {
 			if !last && m[1] == len(text) {
 				continue // the token may go on; the next piece overlaps this one
 			}
+			if r.pem {
+				// Any of the key header forms; the key data follows it.
+				s.startPEM(r, n, text[m[1]:])
+				continue
+			}
 			lo, hi := m[2*r.group], m[2*r.group+1]
 			if lo < 0 {
 				continue
 			}
-			if r.pem {
-				s.startPEM(r, n, text[m[1]:])
-				continue
-			}
 			secret := text[lo:hi]
-			if r.minEntropy > 0 && entropy(secret) < r.minEntropy || placeholder(secret) ||
+			if r.minEntropy > 0 && entropy(secret) < r.minEntropy || placeholder(secret, len(r.prefixes) > 0 || knownToken(secret)) ||
 				r.check != nil && !r.check(text, m) {
 				continue
 			}
@@ -178,7 +180,7 @@ func (s *lineScanner) add(r *rule, n int, secret string) {
 		Line:        n,
 		Commit:      s.commit,
 		Redacted:    redact(secret, r.prefixes),
-		Fingerprint: fingerprint(secret),
+		Fingerprint: fingerprint(s.key, secret),
 	})
 }
 
@@ -230,7 +232,7 @@ func (p *pemBlock) takeLine(text string) bool {
 	if p.body.Len() >= maxPEMBody || p.lines >= maxPEMLines {
 		return false
 	}
-	t := strings.Trim(pemEscapes.Replace(text), " \t\"'`,;+()[]")
+	t := strings.Trim(pemEscapes.Replace(text), " \t\"'`,;+()[]\\")
 	if t != "" && !pemField.MatchString(t) {
 		if len(t) < minBase64Run || len(longestBase64(t)) != len(t) {
 			return false
@@ -265,6 +267,27 @@ func isBase64(c byte) bool {
 func containsAny(s string, words []string) bool {
 	for _, w := range words {
 		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// tokenPrefixes are the public prefixes of every rule.
+var tokenPrefixes = func() []string {
+	var out []string
+	for _, r := range rules {
+		out = append(out, r.prefixes...)
+	}
+	return out
+}()
+
+// knownToken reports whether a value starts like a token one of the rules
+// knows, so that general rules judge its placeholder words the same way as
+// the token's own rule does.
+func knownToken(secret string) bool {
+	for _, p := range tokenPrefixes {
+		if strings.HasPrefix(secret, p) {
 			return true
 		}
 	}

@@ -1,10 +1,14 @@
 package leaks
 
 import (
+	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -17,11 +21,12 @@ func TestRedact(t *testing.T) {
 	}{
 		{"ghp_" + strings.Repeat("ab", 18), []string{"ghp_"}, "ghp_ab… (40 chars)"},
 		{"github_pat_" + strings.Repeat("1A", 41), []string{"github_pat_"}, "github_pat_1A… (93 chars)"},
-		{"abcdefghijklmnopqrstuvwx", nil, "abcd… (24 chars)"},
-		{"abcdefgh", nil, "ab… (8 chars)"}, // short secrets show less
+		// Without a known public prefix, nothing of the secret is shown.
+		{"abcdefghijklmnopqrstuvwx", nil, "… (24 chars)"},
 		{"abc", nil, "… (3 chars)"},
-		{"żółwżółwżółwżółw", nil, "żółw… (16 chars)"},
-		{"abcdefghijklmnop", []string{"zz"}, "abcd… (16 chars)"}, // prefix does not apply
+		{"żółwżółwżółwżółw", nil, "… (16 chars)"},
+		{"abcdefghijklmnop", []string{"zz"}, "… (16 chars)"}, // prefix does not apply
+		{"ghp_ab", []string{"ghp_"}, "ghp… (6 chars)"},       // never more than half
 	} {
 		if got := redact(tt.secret, tt.prefixes); got != tt.want {
 			t.Errorf("redact(%q) = %q, want %q", tt.secret, got, tt.want)
@@ -31,14 +36,23 @@ func TestRedact(t *testing.T) {
 
 func TestFingerprint(t *testing.T) {
 	secret := "ghp_" + strings.Repeat("a1B2", 9)
-	sum := sha256.Sum256([]byte(secret))
-	want := hex.EncodeToString(sum[:])[:16]
-	leaks, _ := ScanReader("x", strings.NewReader("token: "+secret), Options{})
+	key := []byte("installation key")
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(secret))
+	want := hex.EncodeToString(m.Sum(nil))[:16]
+	leaks, _ := ScanReader("x", strings.NewReader("token: "+secret), Options{FingerprintKey: key})
 	if len(leaks) != 1 || leaks[0].Fingerprint != want {
 		t.Fatalf("got %+v, want fingerprint %s", leaks, want)
 	}
 	if leaks[0].Redacted != "ghp_a1… (40 chars)" {
 		t.Errorf("Redacted = %q", leaks[0].Redacted)
+	}
+	// Without the key, a fingerprint cannot be checked against guesses: it
+	// is not the plain hash, and another key gives another fingerprint.
+	sum := sha256.Sum256([]byte(secret))
+	other, _ := ScanReader("x", strings.NewReader("token: "+secret), Options{FingerprintKey: []byte("another key")})
+	if want == hex.EncodeToString(sum[:])[:16] || other[0].Fingerprint == want {
+		t.Error("fingerprints are not keyed")
 	}
 }
 
@@ -93,7 +107,7 @@ func TestPrivateKeys(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(leaks) != 1 || leaks[0].RuleID != "private-key" || leaks[0].Line != 2 || leaks[0].Fingerprint != fingerprint(data) {
+		if len(leaks) != 1 || leaks[0].RuleID != "private-key" || leaks[0].Line != 2 || leaks[0].Fingerprint != fingerprint(nil, data) {
 			t.Errorf("%s: got %+v, want one private key on line 2", kind, leaks)
 		}
 	}
@@ -109,10 +123,10 @@ func TestPrivateKeys(t *testing.T) {
 		"quoted": "const key = `" + lines[0] + "\n" + `"` + strings.Join(lines[1:len(lines)-1], `\n" +`+"\n"+`"`) + `\n"`,
 	} {
 		leaks, _ := ScanReader("k", strings.NewReader(text), Options{})
-		if len(leaks) != 1 || leaks[0].Line != 1 || leaks[0].Fingerprint != fingerprint(data) {
+		if len(leaks) != 1 || leaks[0].Line != 1 || leaks[0].Fingerprint != fingerprint(nil, data) {
 			t.Errorf("%s: got %+v, want the key on line 1 with the key data's fingerprint", name, leaks)
 		}
-		if len(leaks) == 1 && leaks[0].Redacted != fmt.Sprintf("%s… (%d chars)", data[:4], len(data)) {
+		if len(leaks) == 1 && leaks[0].Redacted != fmt.Sprintf("… (%d chars)", len(data)) {
 			t.Errorf("%s: Redacted = %q", name, leaks[0].Redacted)
 		}
 	}
@@ -149,5 +163,54 @@ func TestDuplicates(t *testing.T) {
 	}
 	if len(leaks) != 2 || leaks[0].Line != 2 || leaks[1].RuleID != "slack-token" || leaks[1].Line != 6 {
 		t.Errorf("got %+v, want the GitHub token once, on line 2, and the Slack token", leaks)
+	}
+}
+
+func TestOtherPrivateKeyFormats(t *testing.T) {
+	_, data := pemKey("RSA "+"PRIVATE KEY", 900)
+	lines := []string{data[:64], data[64:128], data[128:192], data[192:256]}
+	ssh2 := "---- BEGIN SSH2 ENCRYPTED " + "PRIVATE KEY ----\nComment: \"rsa-key-20261104\"\n" + strings.Join(lines, "\n") + "\n---- END SSH2 ENCRYPTED PRIVATE KEY ----\n"
+	putty := "PuTTY-User-Key-File-3: ssh-rsa\nEncryption: none\nComment: rsa-key-20261104\nPublic-Lines: 1\nAAAAB3NzaC1yc2EAAAADAQABAAABAQ\nPrivate-Lines: 4\n" +
+		strings.Join(lines, "\n") + "\nPrivate-MAC: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+	shell := "KEY=\"-----BEGIN " + "RSA PRIVATE KEY-----\\\n" + strings.Join(lines, "\\\n") + "\\\n-----END RSA PRIVATE KEY-----\"\n"
+	for name, text := range map[string]string{"ssh2": ssh2, "putty": putty, "shell continuation": shell} {
+		leaks, err := ScanReader("k", strings.NewReader(text), Options{})
+		if err != nil || len(leaks) != 1 || leaks[0].RuleID != "private-key" || leaks[0].Line != 1 {
+			t.Errorf("%s: got %+v, %v; want the key on line 1", name, leaks, err)
+		}
+		if len(leaks) == 1 && strings.Contains(leaks[0].Redacted, data[:8]) {
+			t.Errorf("%s: Redacted shows key data: %q", name, leaks[0].Redacted)
+		}
+	}
+}
+
+func TestSkippedAndLinkedFiles(t *testing.T) {
+	dir := t.TempDir()
+	token := "ghp_" + fake(alnum, 36, 901)
+	big := strings.Repeat("x", 2048) + "\ntoken: " + token + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "bundle.js"), []byte(big), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outside, []byte("token: "+token+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.txt")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skip("symbolic links are not available")
+	}
+	var skipped []string
+	opts := Options{MaxFileSize: 1024, Skipped: func(path string, size int64) { skipped = append(skipped, path) }}
+	leaks, err := ScanDir(context.Background(), dir, opts)
+	if err != nil || len(leaks) != 0 {
+		t.Errorf("got %+v, %v; want nothing scanned", leaks, err)
+	}
+	if len(skipped) != 1 || skipped[0] != "bundle.js" {
+		t.Errorf("skipped = %v, want the large file reported", skipped)
+	}
+	// A file swapped for a link after the directory was listed is not
+	// followed.
+	if got, err := scanFile(link, "link.txt", opts.withDefaults()); err != nil || len(got) != 0 {
+		t.Errorf("scanFile followed a link: %+v, %v", got, err)
 	}
 }

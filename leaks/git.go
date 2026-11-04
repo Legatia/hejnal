@@ -8,7 +8,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -24,11 +27,32 @@ var (
 	commitLine = regexp.MustCompile(`^commit ([0-9a-f]{40}|[0-9a-f]{64})$`)
 )
 
-// gitLocationVars would point git at another repository than the one asked
-// for, for example when Hejnal itself runs inside a git hook.
-var gitLocationVars = []string{
-	"GIT_DIR=", "GIT_WORK_TREE=", "GIT_COMMON_DIR=", "GIT_INDEX_FILE=",
-	"GIT_OBJECT_DIRECTORY=", "GIT_ALTERNATE_OBJECT_DIRECTORIES=", "GIT_NAMESPACE=",
+// gitKeepVars are the only environment variables git gets. Everything else,
+// such as GIT_DIR from a hook or Hejnal's own API keys, stays out of reach of
+// git and of any program a hostile repository manages to start.
+var gitKeepVars = []string{
+	"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP",
+	"SystemRoot", "SYSTEMROOT", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME",
+}
+
+// gitSafety are settings that override what a scanned repository's own
+// .git/config may say: no signature checks, which run gpg.program; no
+// file system monitor; and the first commit's changes always shown.
+var gitSafety = []string{
+	"-c", "log.showSignature=false",
+	"-c", "log.showRoot=true",
+	"-c", "core.fsmonitor=false",
+	"-c", "diff.interHunkContext=0",
+}
+
+// binaryExtensions are skipped in history scans, where --text would
+// otherwise print binary files in full.
+var binaryExtensions = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true, ".webp": true, ".bmp": true,
+	".zip": true, ".gz": true, ".tgz": true, ".bz2": true, ".xz": true, ".7z": true, ".rar": true,
+	".jar": true, ".war": true, ".class": true, ".exe": true, ".dll": true, ".so": true, ".dylib": true,
+	".pdf": true, ".woff": true, ".woff2": true, ".ttf": true, ".otf": true, ".eot": true,
+	".mp3": true, ".mp4": true, ".mov": true, ".avi": true, ".wasm": true, ".pyc": true, ".o": true, ".a": true,
 }
 
 // ScanGitHistory scans every commit on every branch and tag of the git
@@ -38,22 +62,36 @@ var gitLocationVars = []string{
 // Leak.Line the line number in the file as of that commit. When the same
 // secret was added to a file more than once, the oldest commit is reported.
 //
-// Paths in Options.SkipDirs and lockfiles are skipped. ScanGitHistory needs
-// git on the PATH. It stops with an error after 512 MiB of git output, and
-// when ctx ends.
+// repo must be the top directory of the repository (or a bare repository),
+// not a directory inside one. Paths in Options.SkipDirs, lockfiles and
+// common binary file types are skipped. ScanGitHistory needs git 2.31 or
+// later on the PATH. It stops with an error after 512 MiB of git output,
+// and when ctx ends.
+//
+// The scanned repository is treated as untrusted: git runs without
+// Hejnal's environment, cannot fetch anything, and ignores repository
+// settings that would start programs or hide changes.
 func ScanGitHistory(ctx context.Context, repo string, opts Options) ([]Leak, error) {
 	opts = opts.withDefaults()
 	git, err := exec.LookPath("git")
 	if err != nil {
 		return nil, errors.New("leaks: git was not found on the PATH; install git to scan repository history")
 	}
+	if err := checkTopLevel(ctx, git, repo); err != nil {
+		return nil, err
+	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	// --no-textconv keeps git from running conversion programs, so the scan
-	// sees the stored text. Fixed prefixes override diff.noprefix settings.
-	cmd := exec.CommandContext(runCtx, git, "-C", repo, "log", "-p", "--all", "--reverse",
-		"--no-color", "--no-ext-diff", "--no-textconv", "-U0",
+	// --no-ext-diff and --no-textconv keep git from running diff and
+	// conversion programs, so the scan sees the stored text. --text shows
+	// files that .gitattributes marks as binary or -diff, merges are shown
+	// against their first parent, and fixed prefixes override
+	// diff.noprefix settings.
+	args := append(slices.Clone(gitSafety), "-C", repo, "log", "-p", "--all", "--reverse",
+		"--no-color", "--no-ext-diff", "--no-textconv", "--no-show-signature", "--text",
+		"--diff-merges=first-parent", "--inter-hunk-context=0", "-U0",
 		"--src-prefix=a/", "--dst-prefix=b/", "--format=commit %H")
+	cmd := exec.CommandContext(runCtx, git, args...)
 	cmd.Env = gitEnv()
 	stderr := &cappedBuffer{max: 4 << 10}
 	cmd.Stderr = stderr
@@ -65,6 +103,7 @@ func ScanGitHistory(ctx context.Context, repo string, opts Options) ([]Leak, err
 		return nil, fmt.Errorf("leaks: start git: %w", err)
 	}
 	p := &diffParser{opts: opts}
+	p.s.key = opts.FingerprintKey
 	perr := p.parse(ctx, &limitedReader{r: stdout, limit: maxGitOutput})
 	if perr != nil {
 		cancel() // stop git, which may be blocked writing to the pipe
@@ -121,6 +160,11 @@ func (p *diffParser) parse(ctx context.Context, r io.Reader) error {
 		}
 		p.inAdded = false
 		switch {
+		case p.remOld > 0 && p.remNew > 0 && strings.HasPrefix(line, " "):
+			// A context line, in case git shows some after all.
+			p.remOld--
+			p.remNew--
+			p.newLine++
 		case p.remOld > 0 && strings.HasPrefix(line, "-"):
 			p.remOld--
 		case p.remNew > 0 && strings.HasPrefix(line, "+"):
@@ -155,8 +199,9 @@ func (p *diffParser) header(line string) {
 		p.skip = true
 	case strings.HasPrefix(line, "+++ "):
 		p.s.flush()
-		p.s.file = diffPath(line[len("+++ "):])
-		p.skip = p.s.file == "" || p.opts.skipPath(p.s.file)
+		file := diffPath(line[len("+++ "):])
+		p.skip = file == "" || p.opts.skipPath(file) || binaryExtensions[strings.ToLower(path.Ext(file))]
+		p.s.file = cleanPath(file)
 	case strings.HasPrefix(line, "@@ "):
 		p.s.flush()
 		m := hunkHeader.FindStringSubmatch(line)
@@ -195,23 +240,58 @@ func diffPath(s string) string {
 	return strings.TrimPrefix(s, "b/")
 }
 
+// gitEnv is the environment git runs with: the few variables it needs, and
+// settings that stop it from fetching missing objects or asking for input.
 func gitEnv() []string {
-	var env []string
-	for _, kv := range os.Environ() {
-		if !slicesHasPrefix(gitLocationVars, kv) {
-			env = append(env, kv)
+	env := []string{
+		"GIT_ALLOW_PROTOCOL=none", // no transport at all, so no fetch can run a program
+		"GIT_NO_LAZY_FETCH=1",     // git 2.44 and later: never fetch missing objects
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_PAGER=cat",
+		"GIT_OPTIONAL_LOCKS=0",
+	}
+	for _, name := range gitKeepVars {
+		if v, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+v)
 		}
 	}
 	return env
 }
 
-func slicesHasPrefix(prefixes []string, s string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
+// checkTopLevel makes sure repo is the top of a repository rather than a
+// directory inside one, whose history would include other projects under
+// misleading names.
+func checkTopLevel(ctx context.Context, git, repo string) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	return false
+	run := func(args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, git, append(append(slices.Clone(gitSafety), "-C", repo, "rev-parse"), args...)...)
+		cmd.Env = gitEnv()
+		out, err := cmd.Output()
+		return strings.TrimSpace(string(out)), err
+	}
+	bare, err := run("--is-bare-repository")
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("leaks: %s is not a Git repository", repo)
+	}
+	query := "--show-toplevel"
+	if bare == "true" {
+		query = "--absolute-git-dir"
+	}
+	top, err := run(query)
+	if err != nil {
+		return fmt.Errorf("leaks: %s is not a Git repository", repo)
+	}
+	want, err1 := filepath.EvalSymlinks(repo)
+	got, err2 := filepath.EvalSymlinks(top)
+	if err1 != nil || err2 != nil || filepath.Clean(want) != filepath.Clean(got) {
+		return fmt.Errorf("leaks: %s is inside the Git repository %s; scan the repository's top directory for its history", repo, top)
+	}
+	return nil
 }
 
 // limitedReader fails once more than limit bytes have been read.

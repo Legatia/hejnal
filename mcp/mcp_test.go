@@ -403,3 +403,35 @@ func TestMisconfiguredServerExplains(t *testing.T) {
 		t.Errorf("language not logged: %s", l.String())
 	}
 }
+
+func TestBatchLimits(t *testing.T) {
+	// Too many messages in one batch.
+	var many []string
+	for i := 0; i < maxBatch+1; i++ {
+		many = append(many, request(i+1, "ping", nil))
+	}
+	s := NewServer(Config{Store: state.Store{Dir: t.TempDir()}})
+	resps := exchange(t, s, "["+strings.Join(many, ",")+"]")
+	if len(resps) != 1 || resps[0].Error == nil || resps[0].Error.Code != codeInvalidRequest {
+		t.Errorf("oversized batch: %+v", resps)
+	}
+	// Protocol 2025-06-18 removed batches.
+	s = NewServer(Config{Store: state.Store{Dir: t.TempDir()}})
+	resps = exchange(t, s,
+		request(1, "initialize", map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}}),
+		"["+request(2, "ping", nil)+"]")
+	if len(resps) != 2 || resps[1].Error == nil || !strings.Contains(resps[1].Error.Message, "does not allow batches") {
+		t.Errorf("batch under 2025-06-18: %+v", resps)
+	}
+	// 2025-03-26 still has them.
+	s = NewServer(Config{Store: state.Store{Dir: t.TempDir()}})
+	in := request(1, "initialize", map[string]any{"protocolVersion": "2025-03-26", "capabilities": map[string]any{}}) + "\n[" + request(2, "ping", nil) + "]\n"
+	var out bytes.Buffer
+	if err := s.Serve(context.Background(), strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	lines := outputLines(out.Bytes())
+	if len(lines) != 2 || !bytes.HasPrefix(lines[1], []byte("[")) {
+		t.Errorf("batch under 2025-03-26:\n%s", out.Bytes())
+	}
+}

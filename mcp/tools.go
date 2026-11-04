@@ -445,7 +445,7 @@ func findingLine(f match.Finding) string {
 	case match.KindAdminExposed:
 		return head + fmt.Sprintf("%s admin interface reachable on %s", f.Technology, where)
 	case match.KindExposedFile:
-		line := fmt.Sprintf("%s at %s", fileKind(f.TechID), f.URL)
+		line := fmt.Sprintf("%s at %q", fileKind(f.TechID), clip(f.URL))
 		if f.Evidence != "" {
 			line += fmt.Sprintf(" (%q)", clip(f.Evidence))
 		}
@@ -482,12 +482,13 @@ func place(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
-// secretPlace says where a secret was found: the file and line, and the
-// commit when it was found in the Git history.
+// secretPlace says where a secret was found: the file, quoted because
+// anyone who can add a file to a repository chooses its name, the line, and
+// the commit when it was found in the Git history.
 func secretPlace(f match.Finding) string {
-	p := f.File
+	p := strconv.Quote(clip(f.File))
 	if f.Line > 0 {
-		p += ":" + strconv.Itoa(f.Line)
+		p += " line " + strconv.Itoa(f.Line)
 	}
 	if c := f.Commit; c != "" {
 		p += " (commit " + c[:min(len(c), 12)] + ")"
@@ -528,11 +529,19 @@ func confidence(f match.Finding) string {
 	return "version not checked against the fix"
 }
 
+// plainVersion matches versions that are safe to show as they are.
+var plainVersion = regexp.MustCompile(`^[0-9A-Za-z.+_~\-]{1,32}$`)
+
+// product names a product and its version. A version that is long or holds
+// unusual characters comes from a hostile server, so it is quoted.
 func product(name, version string) string {
-	if version == "" {
+	switch {
+	case version == "":
 		return name
+	case plainVersion.MatchString(version):
+		return name + " " + version
 	}
-	return name + " " + version
+	return name + " " + strconv.Quote(clip(version))
 }
 
 type inventoryArgs struct {
@@ -628,10 +637,10 @@ func (s *Server) inventoryTool(_ context.Context, raw json.RawMessage) toolResul
 func serviceLine(svc inventory.Service) string {
 	parts := []string{fmt.Sprintf("port %d (%s)", svc.Port, svc.Scheme)}
 	if svc.URL != "" {
-		parts = append(parts, svc.URL)
+		parts = append(parts, strconv.Quote(clip(svc.URL)))
 	}
 	if svc.FinalURL != "" {
-		parts = append(parts, "redirects to "+svc.FinalURL)
+		parts = append(parts, "redirects to "+strconv.Quote(clip(svc.FinalURL)))
 	}
 	if svc.Status != 0 {
 		parts = append(parts, fmt.Sprintf("HTTP %d", svc.Status))

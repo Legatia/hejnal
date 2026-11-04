@@ -30,7 +30,7 @@ func fake(alphabet string, n int, seed uint32) string {
 			x ^= x << 5
 			b[i] = alphabet[x%uint32(len(alphabet))]
 		}
-		if s := string(b); !placeholder(s) {
+		if s := string(b); !placeholder(s, true) && !placeholder(s, false) {
 			return s
 		}
 	}
@@ -69,6 +69,14 @@ func ruleCases() []ruleCase {
 	urlPassword := fake(alnum, 16, 32)
 	generic := "Rk8vW2" + "qN5tJ9" + "pL4z"
 	generic2 := "Zx3Cv6" + "Bn9Mq2Wd5"
+	awsSecret3, awsSecret4, awsSecret5, awsSecret6 := fake(b64, 40, 40), fake(b64, 40, 41), fake(b64, 40, 42), fake(b64, 40, 43)
+	akia2 := "AKIA" + fake(upper+digits, 16, 44)
+	ghp2 := "ghp_" + fake(alnum, 36, 45)
+	xoxe := "xoxe.xoxp-1-" + fake(alnum, 40, 46)
+	xapp := "xapp-1-" + fake(upper+digits, 11, 47) + "-" + fake(digits, 13, 48) + "-" + fake(hexdig, 64, 49)
+	trigger := "https://hooks.slack.com/triggers/T" + fake(upper+digits, 10, 50) + "/" + fake(digits, 13, 51) + "/" + fake(hexdig, 32, 52)
+	envValue, yamlValue := fake(alnum+"!%^", 18, 53), fake(alnum, 22, 55)
+	secretKey := fake(alnum, 30, 54)
 
 	return []ruleCase{
 		{"aws-access-key-id", "aws_access_key_id = " + akia, akia},
@@ -99,6 +107,19 @@ func ruleCases() []ruleCase {
 		{"password-in-url", "DATABASE_URL=postgres://app:" + urlPassword + "@db.internal.acme.pl:5432/app", urlPassword},
 		{"generic-secret", `db_password = "` + generic + `"`, generic},
 		{"generic-secret", `"api_key": "` + generic2 + `",`, generic2},
+		// Other ways people write the same secrets.
+		{"aws-secret-access-key", `  secret_key = "` + awsSecret3 + `"`, awsSecret3},            // Terraform
+		{"aws-secret-access-key", "          aws-secret-access-key: " + awsSecret4, awsSecret4}, // GitHub Actions
+		{"aws-secret-access-key", "cloud.aws.credentials.secret-key=" + awsSecret5, awsSecret5}, // Spring
+		{"aws-secret-access-key", "aws.secretKey=" + awsSecret6, awsSecret6},                    // Java properties
+		{"aws-access-key-id", "PROD_AKIA_KEY=MY_" + akia2, akia2},                               // after an underscore
+		{"github-token", "DEPLOY_" + ghp2, ghp2},                                                // after an underscore
+		{"slack-token", "SLACK_REFRESH=" + xoxe, xoxe},                                          // refresh token
+		{"slack-token", "SLACK_APP_TOKEN=" + xapp, xapp},                                        // app-level token
+		{"slack-webhook", "trigger: " + trigger, trigger},                                       // workflow trigger
+		{"env-secret", "DB_PASSWORD=" + envValue, envValue},                                     // .env without quotes
+		{"env-secret", "  client_secret: " + yamlValue + "  # prod", yamlValue},                 // YAML
+		{"generic-secret", `SECRET_KEY = "` + secretKey + `"`, secretKey},                       // Django
 	}
 }
 
@@ -113,7 +134,7 @@ func TestRules(t *testing.T) {
 				t.Fatalf("got %d leaks, want 1: %+v", len(leaks), leaks)
 			}
 			l := leaks[0]
-			if l.RuleID != c.rule || l.File != "cfg/app.env" || l.Line != 2 || l.Fingerprint != fingerprint(c.secret) {
+			if l.RuleID != c.rule || l.File != "cfg/app.env" || l.Line != 2 || l.Fingerprint != fingerprint(nil, c.secret) {
 				t.Errorf("got %+v, want rule %s on line 2 with the secret's fingerprint", l, c.rule)
 			}
 			if l.Severity == "" || l.Description == "" || l.Commit != "" {
@@ -190,13 +211,33 @@ func TestPlaceholdersAndAllowMarker(t *testing.T) {
 }
 
 func TestPlaceholder(t *testing.T) {
+	// In random tokens, placeholder words count anywhere.
 	for _, w := range []string{"EXAMPLE", "Sample", "dummy", "FAKE", "test", "xXxX", "00000000", "YOUR_", "ChangeMe", "<key>", "${KEY}", "{{ key }}"} {
-		if s := "Ab3" + w + "Zq9"; !placeholder(s) {
-			t.Errorf("placeholder(%q) = false", s)
+		if s := "Ab3" + w + "Zq9"; !placeholder(s, true) {
+			t.Errorf("placeholder(%q, token) = false", s)
+		}
+	}
+	// In passwords, only as words of their own, so real passwords that
+	// happen to contain them are still reported.
+	for s, want := range map[string]bool{
+		"my-test-password":         true,
+		"example_value_1":          true,
+		"<password>":               true,
+		"your_password_here":       true,
+		"${DB_PASSWORD}":           true,
+		"Contest#Winner2024!":      false,
+		"Latest2024pw":             false,
+		"Greatest-Purple-Horse-42": false,
+		"Fakeout77qZ":              false,
+		"Pr0test!x9":               false,
+		"pass<w>ord!9":             false,
+	} {
+		if got := placeholder(s, false); got != want {
+			t.Errorf("placeholder(%q, password) = %v, want %v", s, got, want)
 		}
 	}
 	for _, s := range []string{fake(alnum, 40, 60), "0000000", "Password1!"} {
-		if placeholder(s) {
+		if placeholder(s, true) || placeholder(s, false) {
 			t.Errorf("placeholder(%q) = true", s)
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -100,11 +101,15 @@ func (h HIBP) BreachedDomain(ctx context.Context, domain string) (map[string][]s
 	return nil, statusError(status)
 }
 
+// breachNameRE matches HIBP's breach names, which are short words such as
+// "Adobe" or "000webhost".
+var breachNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$`)
+
 // Breach fetches the details of the breach with this name, such as "Adobe".
 func (h HIBP) Breach(ctx context.Context, name string) (Breach, error) {
 	name = strings.TrimSpace(name)
-	if name == "" {
-		return Breach{}, errors.New("leaks: empty breach name")
+	if !breachNameRE.MatchString(name) {
+		return Breach{}, fmt.Errorf("leaks: invalid breach name %q", name)
 	}
 	status, body, err := h.get(ctx, "/breach/"+url.PathEscape(name))
 	if err != nil {
@@ -151,6 +156,13 @@ func (h HIBP) get(ctx context.Context, path string) (int, []byte, error) {
 // wait asked for by a 429 answer.
 func (h HIBP) do(ctx context.Context, path string) (int, time.Duration, []byte, error) {
 	base := strings.TrimRight(cmp.Or(h.BaseURL, DefaultHIBPBaseURL), "/")
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		return 0, 0, nil, errors.New("leaks: invalid HIBP address")
+	}
+	if h.APIKey != "" && u.Scheme != "https" && !loopback(u.Hostname()) {
+		return 0, 0, nil, errors.New("leaks: the HIBP API key is only sent over https")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("leaks: HIBP request: %w", err)
@@ -160,10 +172,13 @@ func (h HIBP) do(ctx context.Context, path string) (int, time.Duration, []byte, 
 	}
 	req.Header.Set("user-agent", cmp.Or(h.UserAgent, defaultHIBPUserAgent))
 	req.Header.Set("accept", "application/json")
-	client := h.Client
-	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+	client := http.Client{Timeout: 60 * time.Second}
+	if h.Client != nil {
+		client = *h.Client
 	}
+	// HIBP does not redirect, and a redirect would carry the API key, which
+	// is not an Authorization header, to wherever it points.
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -226,4 +241,12 @@ func normaliseDomain(d string) (string, error) {
 		return "", bad("it looks like an IP address")
 	}
 	return d, nil
+}
+
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

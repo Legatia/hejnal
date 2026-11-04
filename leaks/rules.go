@@ -48,22 +48,26 @@ func Rules() []Rule {
 // match cannot stop in the middle of a longer token.
 const tokenEnd = `(?:[^0-9A-Za-z_\-]|$)`
 
+// tokenStart matches the start of the line or a character that cannot be
+// part of the token, including "_", as in MY_KEY_AKIA....
+const tokenStart = `(?:^|[^0-9A-Za-z])`
+
 // rules go from specific formats to general ones. When two rules find the
 // same secret in a file, the first one is reported.
 var rules = []rule{{
 	Rule:     Rule{"aws-access-key-id", "AWS access key ID", SeverityHigh},
-	re:       regexp.MustCompile(`\b((?:AKIA|ASIA)[0-9A-Z]{16})\b`),
+	re:       regexp.MustCompile(tokenStart + `((?:AKIA|ASIA)[0-9A-Z]{16})(?:[^0-9A-Za-z]|$)`),
 	group:    1,
 	keywords: []string{"akia", "asia"},
 	prefixes: []string{"AKIA", "ASIA"},
 }, {
 	Rule:     Rule{"aws-secret-access-key", "AWS secret access key", SeverityCritical},
-	re:       regexp.MustCompile(`(?i)(?:aws_?secret_?(?:access_?)?key|secret_?access_?key)["']?\s*(?::=|=>|=|:)\s*["']?([0-9A-Za-z/+]{40})(?:[^0-9A-Za-z/+=]|$)`),
+	re:       regexp.MustCompile(`(?i)(?:aws[_.\-]?)?secret[_.\-]?(?:access[_.\-]?)?key["']?\s*(?::=|=>|=|:)\s*["']?([0-9A-Za-z/+]{40})(?:[^0-9A-Za-z/+=]|$)`),
 	group:    1,
 	keywords: []string{"secret"},
 }, {
 	Rule:     Rule{"github-token", "GitHub token", SeverityCritical},
-	re:       regexp.MustCompile(`\b(gh[pousr]_[0-9A-Za-z]{36,251})\b`),
+	re:       regexp.MustCompile(tokenStart + `(gh[pousr]_[0-9A-Za-z]{36,251})(?:[^0-9A-Za-z_]|$)`),
 	group:    1,
 	keywords: []string{"ghp_", "gho_", "ghu_", "ghs_", "ghr_"},
 	prefixes: []string{"ghp_", "gho_", "ghu_", "ghs_", "ghr_"},
@@ -81,16 +85,17 @@ var rules = []rule{{
 	prefixes: []string{"glpat-"},
 }, {
 	Rule:     Rule{"slack-token", "Slack token", SeverityHigh},
-	re:       regexp.MustCompile(`\b(xox[abposr]-[0-9]{1,16}-[0-9A-Za-z\-]{8,})`),
+	re:       regexp.MustCompile(tokenStart + `(xox[abposr]-[0-9]{1,16}-[0-9A-Za-z\-]{8,}|xoxe(?:\.xox[bp])?-[0-9]-[0-9A-Za-z\-]{20,}|xapp-[0-9]-[0-9A-Za-z\-]{20,})`),
 	group:    1,
-	keywords: []string{"xox"},
-	prefixes: []string{"xoxa-", "xoxb-", "xoxo-", "xoxp-", "xoxr-", "xoxs-"},
+	keywords: []string{"xox", "xapp-"},
+	prefixes: []string{"xoxe.xoxb-", "xoxe.xoxp-", "xoxa-", "xoxb-", "xoxe-", "xoxo-", "xoxp-", "xoxr-", "xoxs-", "xapp-"},
 }, {
-	Rule:     Rule{"slack-webhook", "Slack incoming webhook URL", SeverityHigh},
-	re:       regexp.MustCompile(`(https?://hooks\.slack\.com/services/T[0-9A-Z]{6,12}/B[0-9A-Z]{6,12}/[0-9A-Za-z]{20,32})\b`),
+	Rule:     Rule{"slack-webhook", "Slack incoming webhook or workflow trigger URL", SeverityHigh},
+	re:       regexp.MustCompile(`(https?://hooks\.slack\.com/(?:services/T[0-9A-Z]{6,12}/B[0-9A-Z]{6,12}/[0-9A-Za-z]{20,32}|(?:triggers|workflows)/T[0-9A-Z]{6,12}/[0-9A-Za-z]{6,24}/[0-9A-Za-z]{20,64}))\b`),
 	group:    1,
 	keywords: []string{"hooks.slack.com"},
-	prefixes: []string{"https://hooks.slack.com/services/", "http://hooks.slack.com/services/"},
+	prefixes: []string{"https://hooks.slack.com/services/", "https://hooks.slack.com/triggers/", "https://hooks.slack.com/workflows/",
+		"http://hooks.slack.com/services/", "http://hooks.slack.com/triggers/", "http://hooks.slack.com/workflows/"},
 }, {
 	Rule:     Rule{"stripe-live-key", "Stripe live secret or restricted key", SeverityCritical},
 	re:       regexp.MustCompile(`\b((?:sk|rk)_live_[0-9A-Za-z]{24,})\b`),
@@ -110,10 +115,10 @@ var rules = []rule{{
 	keywords: []string{"gocspx-"},
 	prefixes: []string{"GOCSPX-"},
 }, {
-	Rule:       Rule{"private-key", "Private key (PEM block with key data)", SeverityCritical},
-	re:         regexp.MustCompile(`-----BEGIN ((?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?)-----`),
+	Rule:       Rule{"private-key", "Private key (PEM, SSH2 or PuTTY file with key data)", SeverityCritical},
+	re:         regexp.MustCompile(`-----BEGIN ((?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?)-----|---- BEGIN (SSH2 (?:ENCRYPTED )?PRIVATE KEY) ----|^(PuTTY-User-Key-File-[23]): `),
 	group:      1,
-	keywords:   []string{"private key"},
+	keywords:   []string{"private key", "putty-user-key-file"},
 	minEntropy: 4,
 	pem:        true,
 }, {
@@ -176,9 +181,18 @@ var rules = []rule{{
 	check:    realURLPassword,
 }, {
 	Rule:       Rule{"generic-secret", "Password, secret or token assigned a literal value", SeverityMedium},
-	re:         regexp.MustCompile(`(?i)(?:password|passwd|secret|token|api_key)["']?\s*(?::=|=>|=|:)\s*["'\x60]([^"'\x60\s]{8,200})["'\x60]`),
+	re:         regexp.MustCompile(`(?i)(?:password|passwd|secret|token|api_?key|secret_?key|private_?key|access_?key)["']?\s*(?::=|=>|=|:)\s*["'\x60]([^"'\x60\s]{8,200})["'\x60]`),
 	group:      1,
-	keywords:   []string{"password", "passwd", "secret", "token", "api_key"},
+	keywords:   []string{"password", "passwd", "secret", "token", "apikey", "api_key", "private_key", "privatekey", "access_key", "accesskey"},
+	minEntropy: 3.5,
+	check:      notVariableName,
+}, {
+	// Settings files such as .env and YAML write values without quotes.
+	Rule: Rule{"env-secret", "Password, secret or token in a settings file", SeverityMedium},
+	re: regexp.MustCompile(`(?i)^\s*(?:export\s+)?[0-9A-Za-z_.\-]*(?:password|passwd|secret|token|api_?key|secret_?key|private_?key|access_?key)\s*[=:]\s*` +
+		`([^\s"'\x60#(){}$<>!&*|][^\s"'\x60#(){}$<>]{7,199})\s*(?:#.*)?$`),
+	group:      1,
+	keywords:   []string{"password", "passwd", "secret", "token", "apikey", "api_key", "private_key", "privatekey", "access_key", "accesskey"},
 	minEntropy: 3.5,
 	check:      notVariableName,
 }}

@@ -230,6 +230,7 @@ change it):
 | `history/` | Findings from earlier runs; the last 200 are kept. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
 | `leaks.json`, `breaches.json` | Saved secret scans (secrets partly hidden) and breach counts, included in the next run. |
+| `leaks.key` | The private key for secret fingerprints. |
 | `cache/kev.json`, `cache/epss.json`, `cache/nvd/` | Downloaded feeds. KEV is refreshed after 6 hours, EPSS scores when they are more than two days old, NVD records after a week (a day while NVD has not analysed a flaw yet). |
 
 ### Offline and air-gapped use
@@ -244,22 +245,33 @@ systems, of course.
 Attackers do not always need a flaw. A cloud key committed to a repository, or
 a password reused from a breached website, works just as well.
 
-`hejnal leaks scan` looks for secrets in source code: cloud and API keys,
-access tokens, private keys, passwords in URLs and password assignments. Add
-`-history` to check every commit too, because a secret deleted from the code
-stays in the Git history.
+`hejnal leaks scan` looks for secrets in source code and settings files:
+cloud and API keys, access tokens, private keys (PEM, SSH2 and PuTTY),
+passwords in URLs and password assignments. Add `-history` to check every
+commit of the repository too, because a secret deleted from the code stays
+in the Git history. Name the repository's top directory, and have Git 2.31
+or later. Scanning a repository you received from someone else is safe:
+Git runs without Hejnal's settings and secrets, cannot fetch anything, and
+ignores the repository's own settings that would run programs or hide
+changes.
 
 ```sh
 hejnal leaks scan -history ~/code/website ~/code/backend
 ```
 
-Secrets are shown partly hidden, such as `ghp_ab… (40 chars)`, and never
-stored or printed in full. The command exits with status 2 when it finds a
-secret of high severity or above (`-fail-on` changes the level), so it can
-gate a CI pipeline. Mark a line that holds a harmless example with
-`hejnal:allow`. With `-save`, the result is kept in the state directory, so
-the fix list, notifications and monthly report include it. Each saved scan
-replaces the previous one, so pass all your repositories in one command.
+Secrets are never stored or printed in full. Tokens with a public prefix
+show it, such as `ghp_ab… (40 chars)`, and passwords show only their length.
+The command exits with status 2 when it finds a secret of high severity or
+above (`-fail-on` changes the level), so it can gate a CI pipeline. Mark a
+line that holds a harmless example with `hejnal:allow`. Files over 2 MiB are
+not scanned, and the command says which.
+
+With `-save`, the result is kept in the state directory, so the fix list,
+notifications and monthly report include it. Each saved scan replaces the
+previous one, so pass all your repositories in one command. Secrets are
+told apart by a fingerprint keyed with a private key kept in the state
+directory, so the same secret is recognised across scans, while nobody
+without the key can test guesses against a fingerprint.
 
 `hejnal leaks breaches` asks [Have I Been Pwned](https://haveibeenpwned.com/)
 which accounts on the scope's domains appear in known data breaches. It needs

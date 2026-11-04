@@ -121,6 +121,9 @@ type compiledEdition struct {
 // version unusable for version checks rather than mistaken for a release.
 var qualifierRE = regexp.MustCompile(`^[-_~+]?[A-Za-z][A-Za-z0-9.]*`)
 
+// maxVersionLen is the longest version kept.
+const maxVersionLen = 32
+
 // sourceMatcher compiles a pattern for one response part.
 func sourceMatcher(source, regex string, needGroup bool) (versionMatcher, error) {
 	re, err := ci(regex)
@@ -397,7 +400,9 @@ func (c *compiled) version(r Response) string {
 			}
 			ver := in[m[2]:m[3]]
 			ver += qualifierRE.FindString(in[m[3]:])
-			if ver = strings.TrimSpace(ver); ver != "" {
+			// Real versions are short; anything longer is not one, and could
+			// carry text a hostile server wants shown.
+			if ver = strings.TrimSpace(ver); ver != "" && len(ver) <= maxVersionLen {
 				return ver
 			}
 		}

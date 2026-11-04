@@ -15,6 +15,8 @@ package leaks
 
 import (
 	"cmp"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -22,6 +24,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -72,9 +75,17 @@ type Options struct {
 	// MaxFileSize is the largest file, in bytes, that is read. Zero or less
 	// means DefaultMaxFileSize.
 	MaxFileSize int64
+	// FingerprintKey makes fingerprints keyed hashes (HMAC-SHA256), so
+	// nobody without the key can test guesses of a secret against them.
+	// Keep it private, and reuse it to recognise the same secret across
+	// scans. Nil uses a random key that lasts as long as the process.
+	FingerprintKey []byte
+	// Skipped, when set, is told about files that were not scanned because
+	// they are too large.
+	Skipped func(path string, size int64)
 }
 
-var defaultSkipDirs = []string{".git", "node_modules", "vendor", "dist", "build", ".venv", "venv", "__pycache__"}
+var defaultSkipDirs = []string{".git", ".hejnal", "node_modules", "vendor", "dist", "build", ".venv", "venv", "__pycache__"}
 
 // lockfiles are generated dependency lists full of hashes that look random.
 var lockfiles = map[string]bool{
@@ -127,12 +138,27 @@ func (o Options) skipPath(rel string) bool {
 	return false
 }
 
-// placeholderWords mark values that are examples rather than real secrets.
-// "00000000" stands for a run of 8 zeros.
-var placeholderWords = []string{"example", "sample", "dummy", "fake", "test", "xxxx", "00000000", "your_", "changeme"}
+// Placeholder words mark values that are examples rather than real secrets.
+// In tokens, which are random, they count anywhere: "ghp_Sample...". In
+// passwords, which people choose, only as a word of their own, such as
+// "test-key-1", so "Contest#Winner2024!" and "Latest2024pw" are still
+// reported.
+var (
+	placeholderInToken    = regexp.MustCompile(`(?i)example|sample|dummy|fake|test|changeme|change_me|replace_?me|placeholder`)
+	placeholderInPassword = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:example|sample|dummy|fake|test|changeme|change_me|replace_?me|placeholder)(?:[^a-z0-9]|$)`)
+)
 
-// placeholderShapes match template syntax: <name>, ${NAME} and {{ name }}.
-var placeholderShapes = regexp.MustCompile(`<[^<>]*>|\$\{[^{}]*\}|\{\{.*?\}\}`)
+// placeholderMarks mark examples wherever they appear: runs of x or zeros
+// and "your_..." names.
+var placeholderMarks = regexp.MustCompile(`(?i)xxxx|00000000|your[_-]`)
+
+// placeholderShapes match template syntax: ${NAME} and {{ name }}, and in
+// tokens also <name>. A password must be <name> as a whole to count.
+var (
+	placeholderShapes        = regexp.MustCompile(`\$\{[^{}]*\}|\{\{.*?\}\}`)
+	placeholderAngleToken    = regexp.MustCompile(`<[^<>]*>`)
+	placeholderAnglePassword = regexp.MustCompile(`^<[^<>]*>$`)
+)
 
 // trivialValues are words people write where a password goes in examples.
 var trivialValues = []string{"password", "passwd", "pass", "pwd", "secret", "token"}
@@ -145,32 +171,58 @@ var knownExamples = map[string]bool{
 	"0011cc25eb432071":          true, // Azurite's well-known account key
 }
 
-// placeholder reports whether a matched secret is an example value.
-func placeholder(secret string) bool {
-	if knownExamples[secret] || knownExamples[fingerprint(secret)] {
+// placeholder reports whether a matched secret is an example value. token
+// is true for random tokens with a known prefix, and false for values people
+// choose, such as passwords.
+func placeholder(secret string, token bool) bool {
+	if knownExamples[secret] || knownExamples[plainHash(secret)] {
 		return true
 	}
-	lower := strings.ToLower(secret)
-	for _, w := range placeholderWords {
-		if strings.Contains(lower, w) {
-			return true
-		}
+	if slices.Contains(trivialValues, strings.ToLower(secret)) || placeholderMarks.MatchString(secret) ||
+		placeholderShapes.MatchString(secret) {
+		return true
 	}
-	return slices.Contains(trivialValues, lower) || placeholderShapes.MatchString(secret)
+	if token {
+		return placeholderInToken.MatchString(secret) || placeholderAngleToken.MatchString(secret)
+	}
+	return placeholderInPassword.MatchString(secret) || placeholderAnglePassword.MatchString(secret)
 }
 
-// fingerprint is the first 16 hex characters of the secret's SHA-256 hash.
-func fingerprint(secret string) string {
+// plainHash is the first 16 hex characters of the SHA-256 hash, used only to
+// list known example values without spelling them out.
+func plainHash(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:8])
 }
 
-// redact shortens a secret to a safe form. It shows the rule's known prefix
-// plus 2 characters, or otherwise at most the first 4 characters (fewer for
-// short secrets), then the length. It never shows more than half the secret.
+// processKey keys fingerprints when Options.FingerprintKey is not set.
+var processKey = func() []byte {
+	k := make([]byte, 32)
+	if _, err := rand.Read(k); err != nil {
+		panic("leaks: no randomness: " + err.Error())
+	}
+	return k
+}()
+
+// fingerprint is the first 16 hex characters of the secret's HMAC-SHA256
+// under key, or under processKey when key is nil.
+func fingerprint(key []byte, secret string) string {
+	if key == nil {
+		key = processKey
+	}
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(secret))
+	return hex.EncodeToString(m.Sum(nil)[:8])
+}
+
+// redact shortens a secret to a safe form: the rule's known public prefix
+// plus 2 characters, then the length, such as "ghp_ab… (40 chars)". Secrets
+// without a known prefix, such as passwords, show no characters at all,
+// because even a few would make short ones easier to guess. It never shows
+// more than half the secret.
 func redact(secret string, prefixes []string) string {
 	n := utf8.RuneCountInString(secret)
-	show := min(4, n/4)
+	show := 0
 	for _, p := range prefixes {
 		if strings.HasPrefix(secret, p) {
 			show = utf8.RuneCountInString(p) + 2
@@ -179,6 +231,30 @@ func redact(secret string, prefixes []string) string {
 	}
 	show = min(show, n/2)
 	return fmt.Sprintf("%s… (%d chars)", string([]rune(secret)[:show]), n)
+}
+
+// cleanPath makes a file name safe to show: control characters, line and
+// paragraph separators and direction overrides become "?", and very long
+// names are shortened, so a name cannot add lines or hidden text to
+// reports, chat messages or an AI assistant's input.
+func cleanPath(p string) string {
+	const maxLen = 300
+	var b strings.Builder
+	n := 0
+	for _, r := range p {
+		if n == maxLen {
+			b.WriteString("…")
+			break
+		}
+		switch {
+		case unicode.IsControl(r), r == '\u2028', r == '\u2029', r >= '\u202a' && r <= '\u202e', r >= '\u2066' && r <= '\u2069', r == '\ufeff', r == utf8.RuneError:
+			b.WriteByte('?')
+		default:
+			b.WriteRune(r)
+		}
+		n++
+	}
+	return b.String()
 }
 
 // entropy is the Shannon entropy of s in bits per character. Random strings

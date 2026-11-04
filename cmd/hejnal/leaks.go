@@ -68,6 +68,18 @@ func (a *app) cmdLeaksScan(ctx context.Context, args []string) (int, error) {
 		return exitError, err
 	}
 
+	store := state.Store{Dir: o.stateDir}
+	var skipped []string
+	opts := leaks.Options{Skipped: func(path string, size int64) { skipped = append(skipped, path) }}
+	if *save {
+		// A key kept with the results makes fingerprints stable across scans
+		// without letting anyone check guesses of a secret against them.
+		key, err := store.LeakKey()
+		if err != nil {
+			return exitError, err
+		}
+		opts.FingerprintKey = key
+	}
 	var found []leaks.Leak
 	var roots []string
 	for _, dir := range dirs {
@@ -80,12 +92,12 @@ func (a *app) cmdLeaksScan(ctx context.Context, args []string) (int, error) {
 		} else if !st.IsDir() {
 			return exitError, fmt.Errorf("%s is not a directory", dir)
 		}
-		ls, err := leaks.ScanDir(ctx, root, leaks.Options{})
+		ls, err := leaks.ScanDir(ctx, root, opts)
 		if err != nil {
 			return exitError, err
 		}
 		if *history {
-			hist, err := leaks.ScanGitHistory(ctx, root, leaks.Options{})
+			hist, err := leaks.ScanGitHistory(ctx, root, opts)
 			if err != nil {
 				return exitError, err
 			}
@@ -99,6 +111,14 @@ func (a *app) cmdLeaksScan(ctx context.Context, args []string) (int, error) {
 		}
 		found = append(found, ls...)
 		roots = append(roots, root)
+		if *save {
+			if st, err := filepath.Abs(o.stateDir); err == nil && strings.HasPrefix(st+string(filepath.Separator), root+string(filepath.Separator)) {
+				fmt.Fprintf(a.stderr, "Note: the state directory %s is inside %s; keep it out of version control, for example with .gitignore.\n", o.stateDir, dir)
+			}
+		}
+	}
+	if len(skipped) > 0 {
+		fmt.Fprintf(a.stderr, "%d files larger than %d MiB were not scanned, such as %s.\n", len(skipped), leaks.DefaultMaxFileSize>>20, skipped[0])
 	}
 
 	if *asJSON {
@@ -115,7 +135,6 @@ func (a *app) cmdLeaksScan(ctx context.Context, args []string) (int, error) {
 	}
 
 	if *save {
-		store := state.Store{Dir: o.stateDir}
 		scan := &state.LeakScan{ScannedAt: a.now().UTC(), Roots: roots, History: *history, Leaks: found}
 		if err := store.SaveLeakScan(scan); err != nil {
 			return exitError, err

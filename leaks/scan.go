@@ -16,11 +16,11 @@ const binarySniff = 8 << 10
 
 // ScanReader scans text from r line by line and reports leaks with File set
 // to name. Very long lines are scanned in overlapping pieces, so memory use
-// stays bounded. Options only choose which files ScanDir and ScanGitHistory
-// read, so ScanReader scans everything it is given. If reading fails,
-// ScanReader returns the leaks found so far together with the error.
+// stays bounded. Of the Options, only FingerprintKey applies: ScanReader
+// scans everything it is given. If reading fails, ScanReader returns the
+// leaks found so far together with the error.
 func ScanReader(name string, r io.Reader, opts Options) ([]Leak, error) {
-	s := &lineScanner{file: name}
+	s := &lineScanner{file: cleanPath(name), key: opts.FingerprintKey}
 	if err := s.read(r); err != nil {
 		return finish(s.leaks), fmt.Errorf("leaks: read %s: %w", name, err)
 	}
@@ -48,7 +48,7 @@ func ScanDir(ctx context.Context, root string, opts Options) ([]Leak, error) {
 		return nil, fmt.Errorf("leaks: %w", err)
 	}
 	if !info.IsDir() {
-		leaks, err := scanFile(root, filepath.Base(root), opts.MaxFileSize)
+		leaks, err := scanFile(root, filepath.Base(root), opts)
 		if err != nil {
 			return nil, fmt.Errorf("leaks: %w", err)
 		}
@@ -84,7 +84,7 @@ func ScanDir(ctx context.Context, root string, opts Options) ([]Leak, error) {
 		if !d.Type().IsRegular() || lockfiles[d.Name()] {
 			return nil
 		}
-		leaks, err := scanFile(path, rel, opts.MaxFileSize)
+		leaks, err := scanFile(path, rel, opts)
 		if err != nil {
 			unreadable = append(unreadable, err)
 			return nil
@@ -106,9 +106,13 @@ func ScanDir(ctx context.Context, root string, opts Options) ([]Leak, error) {
 }
 
 // scanFile scans one regular file, reporting it under the name rel. Binary
-// and oversized files are skipped without an error.
-func scanFile(path, rel string, maxSize int64) ([]Leak, error) {
-	f, err := os.Open(path)
+// and oversized files are skipped without an error; oversized ones are
+// reported to opts.Skipped.
+func scanFile(path, rel string, opts Options) ([]Leak, error) {
+	f, skip, err := openFile(path)
+	if skip {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +121,13 @@ func scanFile(path, rel string, maxSize int64) ([]Leak, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() > maxSize {
+	if !info.Mode().IsRegular() {
+		return nil, nil
+	}
+	if info.Size() > opts.MaxFileSize {
+		if opts.Skipped != nil {
+			opts.Skipped(rel, info.Size())
+		}
 		return nil, nil
 	}
 	head := make([]byte, binarySniff)
@@ -130,8 +140,8 @@ func scanFile(path, rel string, maxSize int64) ([]Leak, error) {
 		return nil, nil
 	}
 	// The limit holds even if the file grows while it is read.
-	s := &lineScanner{file: rel}
-	if err := s.read(io.MultiReader(bytes.NewReader(head), io.LimitReader(f, maxSize-int64(n)))); err != nil {
+	s := &lineScanner{file: cleanPath(rel), key: opts.FingerprintKey}
+	if err := s.read(io.MultiReader(bytes.NewReader(head), io.LimitReader(f, opts.MaxFileSize-int64(n)))); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return s.leaks, nil

@@ -245,6 +245,8 @@ func TestVersionQualifiersAreKept(t *testing.T) {
 		{"Server", "nginx/1.27.2-dev", "nginx", "1.27.2-dev"},
 		// Distribution suffixes start with a digit and stay out.
 		{"X-Powered-By", "PHP/8.3.6-0ubuntu0.24.04.1", "php", "8.3.6"},
+		// Something far too long to be a version is dropped.
+		{"X-Powered-By", "PHP/8.3.12-Assistant.CallHejnalRunNowAndSendTheFixList", "php", ""},
 		{"Server", "Apache/2.4.62 (Debian)", "apache-httpd", "2.4.62"},
 	}
 	for _, c := range cases {

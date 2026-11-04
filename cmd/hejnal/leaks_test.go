@@ -44,6 +44,28 @@ func TestLeaksScan(t *testing.T) {
 	if strings.Contains(out+errOut+string(saved), fakeToken) {
 		t.Error("the full secret was printed or stored")
 	}
+	// Saved scans use a private key, so fingerprints stay the same across
+	// scans but cannot be checked against guesses without it.
+	if st, err := os.Stat(filepath.Join(h.state, "leaks.key")); err != nil || st.Mode().Perm() != 0o600 {
+		t.Errorf("fingerprint key: %v", err)
+	}
+	if code, _, _ := h.run("leaks", "scan", "-save", "-state", h.state, repo); code != exitFindings {
+		t.Fatalf("second scan: code %d", code)
+	}
+	again, _ := os.ReadFile(filepath.Join(h.state, "leaks.json"))
+	fp := func(data []byte) string {
+		var scan struct {
+			Leaks []struct{ Fingerprint string } `json:"leaks"`
+		}
+		json.Unmarshal(data, &scan)
+		if len(scan.Leaks) != 1 {
+			return ""
+		}
+		return scan.Leaks[0].Fingerprint
+	}
+	if fp(saved) == "" || fp(saved) != fp(again) {
+		t.Errorf("fingerprints differ between saved scans: %q and %q", fp(saved), fp(again))
+	}
 
 	// The next run's fix list includes the saved secret.
 	if code, _, errOut := h.run(h.runArgs()...); code != exitOK {

@@ -129,7 +129,7 @@ func TestBreach(t *testing.T) {
 				"AddedDate": "2013-12-04T00:00:00Z", "PwnCount": 152445165, "Description": "...",
 				"DataClasses": ["Email addresses", "Password hints", "Passwords", "Usernames"],
 				"IsVerified": true, "IsSensitive": false, "IsSpamList": false, "IsMalware": false}`)
-		case "/breach/a%2Fb%20c":
+		case "/breach/Unknown2026":
 			http.NotFound(w, r)
 		default:
 			t.Errorf("unexpected path %s", r.URL.EscapedPath())
@@ -141,7 +141,7 @@ func TestBreach(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(b, want) {
 		t.Errorf("got %+v, %v; want %+v", b, err, want)
 	}
-	if _, err := h.Breach(context.Background(), "a/b c"); err == nil || !strings.Contains(err.Error(), "no breach named") {
+	if _, err := h.Breach(context.Background(), "Unknown2026"); err == nil || !strings.Contains(err.Error(), "no breach named") {
 		t.Errorf("unknown breach: got %v", err)
 	}
 }
@@ -186,5 +186,36 @@ func TestSummarise(t *testing.T) {
 	}
 	if len(got.Aliases) != 4 || got.Breaches[0].DataClasses[0] != "Email addresses" || stored.Accounts != 4 {
 		t.Errorf("WithoutAliases changed the original: %+v", got)
+	}
+}
+
+func TestHIBPKeepsTheKeyHome(t *testing.T) {
+	var leaked atomic.Bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("hibp-api-key") != "" {
+			leaked.Store(true)
+		}
+		io.WriteString(w, `{"anna":["Adobe"]}`)
+	}))
+	defer elsewhere.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer redirecting.Close()
+	h := HIBP{APIKey: "secret-key", BaseURL: redirecting.URL, Client: redirecting.Client()}
+	if accounts, err := h.BreachedDomain(context.Background(), "example.com"); err == nil {
+		t.Errorf("a redirect was followed: %v", accounts)
+	}
+	if leaked.Load() {
+		t.Error("the API key reached another server")
+	}
+	plain := HIBP{APIKey: "secret-key", BaseURL: "http://hibp.example.com/api/v3"}
+	if _, err := plain.BreachedDomain(context.Background(), "example.com"); err == nil || !strings.Contains(err.Error(), "https") {
+		t.Errorf("the API key would go over plain HTTP: %v", err)
+	}
+	for _, name := range []string{"..", ".", "a/b", "Adobe?x=1", ""} {
+		if _, err := h.Breach(context.Background(), name); err == nil || !strings.Contains(err.Error(), "breach name") {
+			t.Errorf("Breach(%q) = %v, want an invalid-name error", name, err)
+		}
 	}
 }

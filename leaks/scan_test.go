@@ -137,7 +137,7 @@ func TestLongLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"github-token": fingerprint(ghp), "npm-token": fingerprint(npm), "gitlab-token": fingerprint(inOverlap)}
+	want := map[string]string{"github-token": fingerprint(nil, ghp), "npm-token": fingerprint(nil, npm), "gitlab-token": fingerprint(nil, inOverlap)}
 	if len(leaks) != 4 || leaks[3].RuleID != "aws-access-key-id" || leaks[3].Line != 2 {
 		t.Fatalf("got %+v, want three leaks on line 1 and one on line 2", leaks)
 	}
@@ -148,7 +148,7 @@ func TestLongLines(t *testing.T) {
 	}
 
 	leaks, _ = ScanReader("crlf", strings.NewReader("a\r\ntoken: "+ghp+"\r\n"), Options{})
-	if len(leaks) != 1 || leaks[0].Line != 2 || leaks[0].Fingerprint != fingerprint(ghp) {
+	if len(leaks) != 1 || leaks[0].Line != 2 || leaks[0].Fingerprint != fingerprint(nil, ghp) {
 		t.Errorf("CRLF: got %+v", leaks)
 	}
 }

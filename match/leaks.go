@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Legatia/hejnal/leaks"
 )
@@ -28,7 +29,7 @@ func Secrets(ls []leaks.Leak) []Finding {
 			TechID:      l.RuleID,
 			Technology:  l.Description,
 			Evidence:    l.Redacted,
-			File:        l.File,
+			File:        cleanText(l.File),
 			Line:        l.Line,
 			Commit:      l.Commit,
 			Fingerprint: l.Fingerprint,
@@ -93,4 +94,15 @@ func validDate(s string) string {
 func withinYear(date string, now time.Time) bool {
 	t, err := time.Parse("2006-01-02", date)
 	return err == nil && now.Sub(t) < 365*24*time.Hour
+}
+
+// cleanText replaces control characters and line separators, so a file name
+// saved by an older version cannot add lines to reports and messages.
+func cleanText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' || r >= '\u202a' && r <= '\u202e' || r >= '\u2066' && r <= '\u2069' {
+			return '?'
+		}
+		return r
+	}, s)
 }

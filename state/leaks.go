@@ -1,6 +1,7 @@
 package state
 
 import (
+	"crypto/rand"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,7 +14,31 @@ import (
 const (
 	LeaksFile    = "leaks.json"
 	BreachesFile = "breaches.json"
+	// LeakKeyFile holds the key for secret fingerprints.
+	LeakKeyFile = "leaks.key"
 )
+
+// LeakKey returns the key that makes secret fingerprints keyed hashes,
+// creating it on first use. With the key kept private, a fingerprint shown
+// in reports, the API or the MCP server cannot be checked against guesses.
+func (s Store) LeakKey() ([]byte, error) {
+	path := filepath.Join(s.Dir, LeakKeyFile)
+	key, err := os.ReadFile(path)
+	if err == nil && len(key) == 32 {
+		return key, nil
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	key = make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	if err := WriteFile(path, key); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
 
 // LeakScan is a saved scan of source code for secrets. Secrets are kept only
 // partly hidden, as the leaks package reports them.
