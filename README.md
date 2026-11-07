@@ -113,6 +113,35 @@ cosign verify-blob \
 sha256sum --ignore-missing -c checksums.txt
 ```
 
+### Linux packages with a daily timer
+
+Each release also has `.deb`, `.rpm` and `.apk` packages. They install the
+binary and a systemd timer that runs `hejnal run` every morning as an
+unprivileged, sandboxed service, keeping its results in `/var/lib/hejnal`:
+
+```sh
+sudo apt install ./hejnal_<version>_linux_amd64.deb      # or: sudo dnf install ./hejnal_<version>_linux_amd64.rpm
+sudo cp /usr/share/doc/hejnal/scope.example.json /etc/hejnal/scope.json
+sudo editor /etc/hejnal/scope.json       # your domains, and who authorised the checks
+sudo editor /etc/hejnal/hejnal.env       # webhooks, email, NVD key, extra flags
+sudo systemctl enable --now hejnal.timer
+sudo systemctl start hejnal.service      # run once now
+sudo cat /var/lib/hejnal/fixlist.md
+```
+
+The service does nothing until `/etc/hejnal/scope.json` exists.
+
+### Container image
+
+```sh
+docker run --rm -v "$PWD:/work" -w /work --user "$(id -u)" \
+  ghcr.io/legatia/hejnal:latest run -scope scope.json
+```
+
+The image holds only the binary, for `linux/amd64` and `linux/arm64`.
+
+### With Go
+
 With [Go](https://go.dev/dl/) 1.26 or newer you can also install it directly:
 
 ```sh

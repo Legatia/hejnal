@@ -1,0 +1,36 @@
+# Runs one Hejnal check. Started each day by hejnal.timer.
+# Put the scope in /etc/hejnal/scope.json and settings in /etc/hejnal/hejnal.env.
+[Unit]
+Description=Hejnal check for exploited flaws in your internet-facing systems
+Documentation=https://github.com/Legatia/hejnal
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/hejnal/scope.json
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+StateDirectory=hejnal
+WorkingDirectory=/var/lib/hejnal
+EnvironmentFile=-/etc/hejnal/hejnal.env
+ExecStart=/usr/bin/hejnal run -scope /etc/hejnal/scope.json -state /var/lib/hejnal $HEJNAL_ARGS
+# Status 2 means new findings reached -fail-on; the run itself worked.
+SuccessExitStatus=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
