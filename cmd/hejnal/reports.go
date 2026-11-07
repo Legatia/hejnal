@@ -111,18 +111,30 @@ func (a *app) cmdRules(args []string) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(a.stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tPRODUCT\tCATEGORY\tADMIN")
+	fmt.Fprintln(tw, "ID\tPRODUCT\tCATEGORY\tSEEN IN\tADMIN")
 	rules := eng.Rules()
+	greetings := 0
 	for _, r := range rules {
 		admin := ""
 		if r.Admin {
 			admin = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.ID, r.Name, r.Category, admin)
+		var seen []string
+		if len(r.Headers)+len(r.Cookies)+len(r.Body) > 0 || r.Path != "" || r.Title != "" || r.Generator != "" {
+			seen = append(seen, "web page")
+		}
+		if len(r.Banners) > 0 {
+			seen = append(seen, "greeting")
+			greetings++
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.ID, r.Name, r.Category, strings.Join(seen, ", "), admin)
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.stdout, "\n%d products. Rules live in fingerprint/rules.json.\n", len(rules))
+	if greetings > 0 {
+		fmt.Fprintln(a.stdout, "Greetings are read from mail, file-transfer and other non-web services on the ports in your scope.")
+	}
 	return nil
 }

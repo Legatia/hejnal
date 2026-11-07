@@ -352,6 +352,48 @@ func TestBanner(t *testing.T) {
 	}
 }
 
+// TestBannerIdentifiesTheProduct checks that a mail server is recognised by
+// its greeting.
+func TestBannerIdentifiesTheProduct(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				c.Write([]byte("220 mail.example.com ESMTP Exim 4.94.2 Tue, 04 Nov 2026 12:00:00 +0100\r\n"))
+				c.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+				io.Copy(io.Discard, c)
+			}(c)
+		}
+	}()
+	port := ln.Addr().(*net.TCPAddr).Port
+	s := testScope(t, nil, []string{"127.0.0.1"}, []int{port}, nil)
+	inv, err := Run(context.Background(), Options{Scope: s, Engine: engine(t), Timeout: 2 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inv.Assets) != 1 || len(inv.Assets[0].Services) != 1 {
+		t.Fatalf("assets = %+v", inv.Assets)
+	}
+	svc := inv.Assets[0].Services[0]
+	if len(svc.Technologies) != 1 {
+		t.Fatalf("technologies = %+v", svc.Technologies)
+	}
+	// Exim's greeting looks the same in distribution packages, so its
+	// version is never treated as an upstream build.
+	if tech := svc.Technologies[0]; tech.ID != "exim" || tech.Version != "4.94.2" || !tech.Packaged {
+		t.Errorf("technology = %+v", tech)
+	}
+}
+
 func TestClosedPortsAndEmptyRanges(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

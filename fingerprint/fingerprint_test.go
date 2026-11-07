@@ -1,7 +1,9 @@
 package fingerprint
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -41,6 +43,8 @@ var (
 		"collaboration": true, "mail": true, "edge": true, "virtualization": true, "mdm": true,
 		"file-transfer": true, "remote-access": true, "admin": true, "itsm": true,
 		"printing": true, "storage": true, "media": true, "chat": true,
+		"network": true, "camera": true, "backup": true, "monitoring": true, "business": true,
+		"voip": true, "ai": true, "security": true, "data": true, "hosting": true, "industrial": true,
 	}
 )
 
@@ -279,5 +283,114 @@ func TestEditions(t *testing.T) {
 	}
 	if _, err := Load([]byte(`{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "editions": [{"edition": "lts", "regex": "("}]}]}`)); err == nil {
 		t.Error("Load accepted an invalid edition regex")
+	}
+}
+
+func TestBanners(t *testing.T) {
+	e, err := Load([]byte(`{"rules": [
+		{"id": "ftpd", "name": "FTPd", "category": "file-transfer", "banners": ["^220 FTPd "],
+		 "versions": [{"source": "banner", "regex": "FTPd ([0-9.]+)"}],
+		 "packaged": [{"source": "banner", "regex": "\\(Debian\\)"}]},
+		{"id": "untitled", "name": "Untitled", "category": "cms", "title": "^$"},
+		{"id": "nas", "name": "NAS", "category": "storage", "admin": true, "body": ["nasLogin"], "banners": ["^220 NAS FTP"]}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := func(r Response) map[string]inventory.Technology {
+		out := map[string]inventory.Technology{}
+		for _, tech := range e.Identify(r) {
+			out[tech.ID] = tech
+		}
+		return out
+	}
+	got := ids(NewBanner("220 FTPd 2.1.4 (Debian) ready"))
+	if len(got) != 1 || got["ftpd"].Version != "2.1.4" || !got["ftpd"].Packaged || !strings.HasPrefix(got["ftpd"].Evidence, "banner ") {
+		t.Errorf("FTP greeting: %+v", got)
+	}
+	// A greeting is never matched by patterns meant for web pages, even one
+	// that matches its empty title.
+	if got := ids(NewBanner("SSH-2.0-OpenSSH_9.6")); len(got) != 0 {
+		t.Errorf("SSH greeting: %+v", got)
+	}
+	// A web page that quotes a greeting is not that service.
+	page := `<html><head><title>220 FTPd 2.1.4 ready</title></head><body>220 FTPd 2.1.4 ready</body></html>`
+	if _, ok := ids(NewResponse(header("Server", "220 FTPd 2.1.4"), "/", page))["ftpd"]; ok {
+		t.Error("a web page matched a banner pattern")
+	}
+	// The admin flag describes a product's web interface, not its other
+	// services.
+	if tech, ok := ids(NewBanner("220 NAS FTP server ready"))["nas"]; !ok || tech.Admin {
+		t.Errorf("NAS FTP greeting: %+v, %v; want the product without the admin flag", tech, ok)
+	}
+	if tech, ok := ids(NewResponse(header(), "/", "<script>nasLogin()</script>"))["nas"]; !ok || !tech.Admin {
+		t.Errorf("NAS web page: %+v, %v; want the admin flag", tech, ok)
+	}
+	if _, err := Load([]byte(`{"rules": [{"id": "x", "name": "X", "category": "mail", "banners": ["("]}]}`)); err == nil {
+		t.Error("Load accepted an invalid banner pattern")
+	}
+}
+
+// sample is a response or greeting a product really sends, with the version
+// a rule should read from it.
+type sample struct {
+	ID      string            `json:"id"`
+	Note    string            `json:"note"`
+	Path    string            `json:"path"`
+	Headers map[string]string `json:"headers"`
+	Body    string            `json:"body"`
+	Banner  string            `json:"banner"`
+	Version string            `json:"version"`
+}
+
+// TestSamples checks every rule against samples of what the product sends,
+// and requires at least one sample per rule.
+func TestSamples(t *testing.T) {
+	data, err := os.ReadFile("testdata/samples.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var samples []sample
+	if err := json.Unmarshal(data, &samples); err != nil {
+		t.Fatal(err)
+	}
+	e := engine(t)
+	sampled := map[string]bool{}
+	for i, s := range samples {
+		r := NewBanner(s.Banner)
+		if s.Banner == "" {
+			h := http.Header{}
+			for k, v := range s.Headers {
+				// Several values of one header are separated by newlines.
+				for _, line := range strings.Split(v, "\n") {
+					h.Add(k, line)
+				}
+			}
+			path := s.Path
+			if path == "" {
+				path = "/"
+			}
+			r = NewResponse(h, path, s.Body)
+		}
+		var got []string
+		found := false
+		for _, tech := range e.Identify(r) {
+			got = append(got, tech.ID)
+			if tech.ID == s.ID {
+				found = true
+				if tech.Version != s.Version {
+					t.Errorf("sample %d (%s, %s): version %q, want %q", i, s.ID, s.Note, tech.Version, s.Version)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("sample %d (%s, %s): not identified; got %v", i, s.ID, s.Note, got)
+		}
+		sampled[s.ID] = true
+	}
+	for _, r := range e.Rules() {
+		if !sampled[r.ID] {
+			t.Errorf("rule %s has no sample in testdata/samples.json", r.ID)
+		}
 	}
 }

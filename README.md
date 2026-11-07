@@ -22,12 +22,16 @@ the city of an attack.
 1. **Finds your systems.** Hejnal starts from the domains, hosts and IP ranges
    in your scope file. It adds subdomains found in certificate transparency
    logs and names from the certificates your servers present, then checks
-   which web ports answer.
-2. **Recognises the software.** It sends one ordinary request per web service.
-   From the headers, cookies, page title and page markers it recognises over 50
-   products attackers go after most: Fortinet, Ivanti, Citrix, Palo Alto,
-   Cisco, SonicWall and Check Point gateways; Exchange, Zimbra and Roundcube;
-   WordPress, Drupal and PHP; GitLab, Jenkins, Confluence and more.
+   which ports answer.
+2. **Recognises the software.** It sends one ordinary request per web service
+   and reads the greeting of mail, file-transfer and other services. From the
+   headers, cookies, page title, page markers and greetings it recognises over
+   250 products attackers go after most: Fortinet, Ivanti, Citrix, Palo Alto,
+   Cisco, Juniper, SonicWall and Check Point gateways; MikroTik, DrayTek,
+   TP-Link and D-Link routers; Hikvision and Dahua cameras; Exchange, Zimbra
+   and Exim; SAP, Oracle E-Business Suite, VMware ESXi and Veeam; WordPress,
+   Drupal and PHP; GitLab, Jenkins, Confluence and more. `hejnal rules` lists
+   them all.
 3. **Matches it against what is exploited now.** It compares what it found
    with the [CISA Known Exploited Vulnerabilities
    catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
@@ -167,6 +171,11 @@ A scope file looks like this ([example](examples/scope.example.json)):
 
 Unknown fields are rejected, so a misspelt key cannot silently change the
 scope.
+
+Mail, file-transfer, SSH and message-broker servers are recognised by the
+greeting they send when Hejnal connects, and MongoDB by its answer to a plain
+web request; Hejnal never logs in to them. To have them checked, add their
+ports to `ports`, for example `21`, `22`, `25`, `587`, `27017` and `61616`.
 
 ## Run it every day
 
@@ -345,7 +354,10 @@ recorded:
 
 Versions from Linux distribution packages (for example PHP from Ubuntu, or
 Apache reporting `(Debian)`) are never confirmed this way, because
-distributions backport fixes without changing the version number.
+distributions backport fixes without changing the version number. The same
+goes for products whose hotfixes keep the version number, such as Serv-U and
+N-central, and for Exim, whose greeting looks the same in distribution
+packages.
 
 Without a version, a match means: **you run a product attackers are
 exploiting right now; make sure your version has the fix.**
@@ -356,7 +368,7 @@ Each match gets a score from 0 to 100:
 |---|---|
 | Base | 60 |
 | Added to KEV in the last 30 days / 90 days / over a year ago | +20 / +10 / −20 |
-| Internet-facing gateway or remote-access product | +10 |
+| Internet-facing gateway, remote-access product, network device or camera | +10 |
 | Known use in ransomware campaigns | +10 |
 | CISA asks for forensic triage | +5 |
 | EPSS probability | up to +10 |
@@ -390,6 +402,10 @@ itself, see [SECURITY.md](SECURITY.md).
 ## Licence and data
 
 Hejnal is licensed under the [Apache License 2.0](LICENSE).
+
+Some fingerprint markers were confirmed against ProjectDiscovery's
+[nuclei-templates](https://github.com/projectdiscovery/nuclei-templates)
+(MIT License).
 
 It uses the CISA Known Exploited Vulnerabilities catalog (public domain, CC0),
 EPSS scores from [FIRST](https://www.first.org/epss/), affected-version data

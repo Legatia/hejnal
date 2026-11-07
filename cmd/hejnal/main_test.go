@@ -235,8 +235,29 @@ func TestVersionAndRules(t *testing.T) {
 	if code, out, _ := h.run("version"); code != exitOK || !strings.HasPrefix(out, "hejnal ") {
 		t.Errorf("version: %d %q", code, out)
 	}
-	if code, out, _ := h.run("rules"); code != exitOK || !strings.Contains(out, "fortinet-fortigate") {
+	code, out, _ := h.run("rules")
+	if code != exitOK || !strings.Contains(out, "fortinet-fortigate") {
 		t.Errorf("rules: %d\n%s", code, out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		switch f[0] {
+		case "exim":
+			if !strings.Contains(line, "greeting") || strings.Contains(line, "web page") {
+				t.Errorf("exim is recognised by its greeting only: %q", line)
+			}
+		case "fortinet-fortigate":
+			if !strings.Contains(line, "web page") || strings.Contains(line, "greeting") {
+				t.Errorf("FortiGate is recognised by its web page only: %q", line)
+			}
+		case "moveit":
+			if !strings.Contains(line, "web page, greeting") {
+				t.Errorf("MOVEit is recognised by both: %q", line)
+			}
+		}
 	}
 }
 

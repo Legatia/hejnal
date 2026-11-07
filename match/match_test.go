@@ -220,6 +220,22 @@ func TestOrigin(t *testing.T) {
 			t.Errorf("origin(%+v) = %s:%d, want %s:%d", c.svc, host, port, c.host, c.port)
 		}
 	}
+	// A service known only by its banner gets an address to show.
+	for host, want := range map[string]string{"mx.example": "tcp://mx.example:25", "2001:db8::25": "tcp://[2001:db8::25]:25"} {
+		if _, _, got := origin(host, inventory.Service{Port: 25, Scheme: "tcp", Banner: "220 mx ESMTP"}); got != want {
+			t.Errorf("origin(%s, banner service) URL = %q, want %q", host, got, want)
+		}
+	}
+}
+
+func TestScoreFavoursExposedDevices(t *testing.T) {
+	v := kev.Vulnerability{DateAdded: "2026-11-01"}
+	base := Score(v, "cms", 0, now)
+	for _, category := range []string{"edge", "remote-access", "network", "camera"} {
+		if got := Score(v, category, 0, now); got != base+10 {
+			t.Errorf("Score(%s) = %d, want %d", category, got, base+10)
+		}
+	}
 }
 
 func TestCVEs(t *testing.T) {

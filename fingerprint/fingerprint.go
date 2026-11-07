@@ -33,7 +33,10 @@ type Rule struct {
 	Title     string            `json:"title,omitempty"`
 	Generator string            `json:"generator,omitempty"`
 	Body      []string          `json:"body,omitempty"`
-	Versions  []VersionRule     `json:"versions,omitempty"`
+	// Banners match the greeting a non-web service sends when a client
+	// connects, such as "220 mail.example.com ESMTP Exim 4.96".
+	Banners  []string      `json:"banners,omitempty"`
+	Versions []VersionRule `json:"versions,omitempty"`
 	// Packaged marks versions from Linux distribution packages, which get
 	// security fixes without a new upstream version number.
 	Packaged []SourcePattern `json:"packaged,omitempty"`
@@ -54,15 +57,15 @@ type EditionRule struct {
 }
 
 // SourcePattern matches a pattern against one part of a response. Source
-// is "header:<Name>", "title", "generator" or "body".
+// is "header:<Name>", "title", "generator", "body" or "banner".
 type SourcePattern struct {
 	Source string `json:"source"`
 	Regex  string `json:"regex"`
 }
 
 // VersionRule extracts a version from a response part. Source is one of
-// "header:<Name>", "title", "generator" or "body"; the first capture group of
-// Regex is the version.
+// "header:<Name>", "title", "generator", "body" or "banner"; the first capture
+// group of Regex is the version.
 type VersionRule struct {
 	Source string `json:"source"`
 	Regex  string `json:"regex"`
@@ -101,6 +104,7 @@ type compiled struct {
 	title     *regexp.Regexp
 	generator *regexp.Regexp
 	body      []*regexp.Regexp
+	banners   []*regexp.Regexp
 	versions  []versionMatcher
 	packaged  []versionMatcher
 	kev       []kevMatcher
@@ -138,7 +142,7 @@ func sourceMatcher(source, regex string, needGroup bool) (versionMatcher, error)
 		vm.source, vm.header = "header", http.CanonicalHeaderKey(name)
 	}
 	switch vm.source {
-	case "header", "title", "generator", "body":
+	case "header", "title", "generator", "body", "banner":
 	default:
 		return versionMatcher{}, fmt.Errorf("unknown source %q", source)
 	}
@@ -219,6 +223,13 @@ func compile(r Rule) (*compiled, error) {
 		}
 		c.body = append(c.body, re)
 	}
+	for _, p := range r.Banners {
+		re, err := ci(p)
+		if err != nil {
+			return nil, err
+		}
+		c.banners = append(c.banners, re)
+	}
 	for _, v := range r.Versions {
 		vm, err := sourceMatcher(v.Source, v.Regex, true)
 		if err != nil {
@@ -263,13 +274,14 @@ func compile(r Rule) (*compiled, error) {
 		}
 		c.kev = append(c.kev, m)
 	}
-	if len(c.headers)+len(c.cookies)+len(c.body) == 0 && c.path == nil && c.title == nil && c.generator == nil {
+	if len(c.headers)+len(c.cookies)+len(c.body)+len(c.banners) == 0 && c.path == nil && c.title == nil && c.generator == nil {
 		return nil, fmt.Errorf("rule has no signals")
 	}
 	return c, nil
 }
 
-// Response is the part of an HTTP response the rules look at.
+// Response is the part of an HTTP response the rules look at, or the banner
+// of a service that is not a web server.
 type Response struct {
 	Header      http.Header
 	CookieNames []string
@@ -277,6 +289,14 @@ type Response struct {
 	Title       string
 	Generators  []string
 	Body        string
+	// Banner is the greeting of a non-web service. Only banner patterns
+	// look at it.
+	Banner string
+}
+
+// NewBanner prepares a non-web service's greeting for matching.
+func NewBanner(banner string) Response {
+	return Response{Header: http.Header{}, Banner: banner}
 }
 
 var (
@@ -330,7 +350,9 @@ func (e *Engine) Identify(r Response) []inventory.Technology {
 			Name:     c.Name,
 			Version:  c.version(r),
 			Category: c.Category,
-			Admin:    c.Admin,
+			// Admin marks a web interface; a greeting on another port is
+			// not one, even from a product that has one.
+			Admin:    c.Admin && r.Banner == "",
 			Evidence: ev,
 		}
 		if t.Version != "" {
@@ -342,6 +364,16 @@ func (e *Engine) Identify(r Response) []inventory.Technology {
 }
 
 func (c *compiled) match(r Response) (string, bool) {
+	if r.Banner != "" {
+		// A greeting is matched by banner patterns only: a pattern meant for
+		// web pages could match its empty title or path.
+		for _, re := range c.banners {
+			if re.MatchString(r.Banner) {
+				return "banner " + clean(r.Banner, 120), true
+			}
+		}
+		return "", false
+	}
 	for _, h := range c.headers {
 		for _, v := range r.Header.Values(h.name) {
 			if h.re == nil || h.re.MatchString(v) {
@@ -387,6 +419,8 @@ func (v versionMatcher) inputs(r Response) []string {
 		return r.Generators
 	case "body":
 		return []string{r.Body}
+	case "banner":
+		return []string{r.Banner}
 	}
 	return nil
 }

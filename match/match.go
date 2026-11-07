@@ -317,7 +317,10 @@ func Score(v kev.Vulnerability, category string, epssScore float64, now time.Tim
 			score -= 20
 		}
 	}
-	if category == "edge" || category == "remote-access" {
+	switch category {
+	case "edge", "remote-access", "network", "camera":
+		// Internet-facing gateways, remote access tools and devices are
+		// what attackers scan for first.
 		score += 10
 	}
 	if v.Ransomware() {
@@ -402,8 +405,16 @@ func origin(host string, s inventory.Service) (string, int, string) {
 	if raw == "" {
 		raw = s.URL
 	}
+	if raw == "" {
+		// A service known only by its banner, such as a mail server.
+		h := host
+		if ip := net.ParseIP(h); ip != nil {
+			h = ip.String()
+		}
+		return h, s.Port, "tcp://" + net.JoinHostPort(h, strconv.Itoa(s.Port))
+	}
 	u, err := url.Parse(raw)
-	if raw == "" || err != nil || u.Hostname() == "" {
+	if err != nil || u.Hostname() == "" {
 		return host, s.Port, raw
 	}
 	port := 0

@@ -147,7 +147,11 @@ func (w *webClient) probe(ctx context.Context, host string, port int) *inventory
 		}
 		return found
 	}
-	return &inventory.Service{Port: port, Scheme: "tcp", Banner: w.banner(ctx, addr)}
+	svc := &inventory.Service{Port: port, Scheme: "tcp", Banner: w.banner(ctx, addr)}
+	if svc.Banner != "" {
+		svc.Technologies = w.r.opts.Engine.Identify(fingerprint.NewBanner(svc.Banner))
+	}
+	return svc
 }
 
 func schemesFor(port int) []string {
