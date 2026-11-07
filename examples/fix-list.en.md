@@ -10,7 +10,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 ## Fix now (critical)
 
-### 1. WordPress on www.example.com:443
+### 1. WordPress on www.example.com:443 · `f058ba93`
 
 - **Why:** Known exploited flaws in this product: 3. The newest was added to CISA's catalog on 2026-11-03.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
@@ -25,7 +25,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 > Hejnal compared version `6.8.1` with the affected versions NVD lists: this version is affected.
 
-### 2. PHP on www.example.com:443
+### 2. PHP on www.example.com:443 · `cbf55259`
 
 - **Why:** Known exploited flaws in this product: 2. The newest was added to CISA's catalog on 2026-10-26.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
@@ -39,7 +39,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 > Hejnal compared version `8.3.12` with the affected versions NVD lists: this version is affected.
 
-### 3. Fortinet FortiGate SSL VPN on vpn.example.com:443
+### 3. Fortinet FortiGate SSL VPN on vpn.example.com:443 · `bfda06f4`
 
 - **Why:** Known exploited flaws in this product: 21. The newest was added to CISA's catalog on 2026-10-16.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
@@ -54,11 +54,11 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
   - …and 16 more (full list in findings.json)
 - **Advisories:** <https://fortiguard.fortinet.com/psirt/FG-IR-26-122> · <https://nvd.nist.gov/vuln/detail/CVE-2025-61624> · <https://fortiguard.fortinet.com/psirt/FG-IR-25-084> · <https://nvd.nist.gov/vuln/detail/CVE-2025-25249>
 
-> Hejnal recognised the product but did not verify its version, so it may already be patched. Close this item once you have confirmed the installed version includes the fix.
+> Hejnal recognised the product but did not verify its version, so it may already be patched. Close this item once you have confirmed the installed version includes the fix. To close it, run `hejnal accept -item bfda06f4 -reason "..."`.
 
 ## This month (medium)
 
-### 4. Jenkins admin interface reachable on ci.example.com:443
+### 4. Jenkins admin interface reachable on ci.example.com:443 · `4dc28dd3`
 
 - **Why:** Hejnal reached this admin interface from where it ran. Exposed admin panels are a common way in for attackers.
 - **What to do:** If it is reachable from the internet, move it behind a VPN or an IP allow-list and require multi-factor sign-in.
@@ -66,7 +66,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 ## Later (low)
 
-### 5. Jenkins on ci.example.com:443
+### 5. Jenkins on ci.example.com:443 · `aa53d21c`
 
 - **Why:** Known exploited flaws in this product: 2. The newest was added to CISA's catalog on 2022-04-25.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
@@ -77,7 +77,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 - **Ruled out by version:** CVE-2017-1000353, CVE-2024-23897, CVE-2015-5317, CVE-2018-1000861
 - **Advisories:** <https://nvd.nist.gov/vuln/detail/CVE-2019-1003029> · <https://nvd.nist.gov/vuln/detail/CVE-2019-1003030>
 
-> Hejnal recognised the product but did not verify its version, so it may already be patched. Close this item once you have confirmed the installed version includes the fix.
+> Hejnal recognised the product but did not verify its version, so it may already be patched. Close this item once you have confirmed the installed version includes the fix. To close it, run `hejnal accept -item aa53d21c -reason "..."`.
 
 ---
 

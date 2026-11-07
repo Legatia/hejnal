@@ -45,6 +45,8 @@ Usage:
   hejnal feeds     [flags]                      download the CISA KEV catalog
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    fixlist|nis2|monthly [flags] print a report from the saved runs
+  hejnal accept    -item <id> -reason "..."     record that you checked an item and accept it
+  hejnal accept    -list | -remove <id>         list accepted items, or remove an acceptance
   hejnal leaks     scan|breaches [flags]        find secrets in code and breached accounts
   hejnal serve     [-addr host:port] [flags]    serve the results over a REST API
   hejnal mcp       [flags]                      serve the results to AI assistants over MCP
@@ -120,6 +122,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		err = a.cmdMatch(ctx, rest)
 	case "report":
 		err = a.cmdReport(rest)
+	case "accept":
+		err = a.cmdAccept(rest)
 	case "leaks":
 		code, err = a.cmdLeaks(ctx, rest)
 	case "serve":

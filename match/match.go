@@ -170,6 +170,12 @@ type Finding struct {
 	Score      int      `json:"score"`
 	Severity   Severity `json:"severity"`
 	Confidence string   `json:"confidence"`
+	// Accepted is set while a person's acceptance, made with `hejnal
+	// accept`, covers the finding. Alerts and the exit status leave it out.
+	Accepted *Acceptance `json:"accepted,omitempty"`
+	// AcceptanceExpired is set when the acceptance that covered the finding
+	// has expired, so the finding is open again.
+	AcceptanceExpired *Acceptance `json:"acceptanceExpired,omitempty"`
 }
 
 // Options tune matching.

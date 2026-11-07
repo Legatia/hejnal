@@ -77,6 +77,9 @@ func (h *handler) findings(w http.ResponseWriter, r *http.Request) {
 // groupItem is one item to fix, as in the fix list. Secrets have no host or
 // port, and breaches have a domain as host and no port.
 type groupItem struct {
+	// ID is the item's short ID, as the fix list shows it and `hejnal
+	// accept` takes it.
+	ID string `json:"id"`
 	// Key identifies the item across runs, for example to keep one ticket
 	// per item.
 	Key        string         `json:"key"`
@@ -96,6 +99,11 @@ type groupItem struct {
 	Forensics bool `json:"forensics,omitempty"`
 	// Expires is when the certificate of a TLS item expires.
 	Expires *time.Time `json:"expires,omitempty"`
+	// Accepted says who accepted an accepted item, why and until when.
+	Accepted *match.Acceptance `json:"accepted,omitempty"`
+	// AcceptanceExpired is set on an item that is open again because its
+	// acceptance expired.
+	AcceptanceExpired *match.Acceptance `json:"acceptanceExpired,omitempty"`
 }
 
 type severityCounts struct {
@@ -124,13 +132,18 @@ type groupsResponse struct {
 	KEVVersion   string         `json:"kevVersion"`
 	Counts       severityCounts `json:"counts"`
 	Groups       []groupItem    `json:"groups"`
+	// AcceptedGroups are the items people accepted with `hejnal accept`.
+	// They are not items to fix until the acceptance expires; an item with
+	// new findings since is also in Groups, with the new ones.
+	AcceptedGroups []groupItem `json:"acceptedGroups"`
 	// RuledOut counts the findings left out because the version check shows
 	// the flaw is fixed in the version seen.
 	RuledOut int `json:"ruledOut"`
 }
 
 // groups serves GET /v1/groups: the items to fix, as in the fix list, most
-// urgent first. Flaws the version check rules out are not items to fix.
+// urgent first, and the accepted items. Flaws the version check rules out are
+// not items to fix.
 func (h *handler) groups(w http.ResponseWriter, r *http.Request) {
 	q, err := params(r, "min_severity")
 	if err != nil {
@@ -148,24 +161,32 @@ func (h *handler) groups(w http.ResponseWriter, r *http.Request) {
 	}
 	active := match.Active(snap.Findings)
 	resp := groupsResponse{
-		Organization: snap.Organization,
-		GeneratedAt:  snap.GeneratedAt,
-		KEVVersion:   snap.KEVVersion,
-		Groups:       []groupItem{},
-		RuledOut:     len(snap.Findings) - len(active),
+		Organization:   snap.Organization,
+		GeneratedAt:    snap.GeneratedAt,
+		KEVVersion:     snap.KEVVersion,
+		Groups:         []groupItem{},
+		AcceptedGroups: []groupItem{},
+		RuledOut:       len(snap.Findings) - len(active),
 	}
-	for _, g := range match.Groups(active) {
+	for _, g := range match.Groups(match.Open(snap.Findings)) {
 		if g.Severity.Rank() < minSev.Rank() {
 			continue
 		}
 		resp.Groups = append(resp.Groups, newGroupItem(g))
 		resp.Counts.add(g.Severity)
 	}
+	_, accepted := match.SplitAccepted(snap.Findings)
+	for _, g := range match.Groups(accepted) {
+		if g.Severity.Rank() >= minSev.Rank() {
+			resp.AcceptedGroups = append(resp.AcceptedGroups, newGroupItem(g))
+		}
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
 func newGroupItem(g match.Group) groupItem {
 	item := groupItem{
+		ID:              g.ID(),
 		Key:             g.Key,
 		Kind:            g.Kind,
 		Host:            g.Host,
@@ -179,6 +200,7 @@ func newGroupItem(g match.Group) groupItem {
 		NewestDateAdded: g.Newest(),
 		Forensics:       g.Forensics(),
 	}
+	item.Accepted, item.AcceptanceExpired = g.Acceptance(), g.ExpiredAcceptance()
 	for _, f := range g.Findings {
 		if f.CVE != "" {
 			item.CVEs = append(item.CVEs, f.CVE)
@@ -285,8 +307,8 @@ func (h *handler) report(write func(io.Writer, []match.Finding, report.Meta) err
 	}
 }
 
-// loadFindings reads the latest findings, or answers the request with an
-// error and returns false.
+// loadFindings reads the latest findings, marked with the acceptances that
+// hold now, or answers the request with an error and returns false.
 func (h *handler) loadFindings(w http.ResponseWriter) (*state.Snapshot, bool) {
 	snap, err := h.store.LoadFindings()
 	switch {
@@ -296,6 +318,13 @@ func (h *handler) loadFindings(w http.ResponseWriter) (*state.Snapshot, bool) {
 	case err != nil:
 		h.logf("api: reading the findings: %v", err)
 		writeError(w, http.StatusInternalServerError, "could not read the findings; see the server log")
+		return nil, false
+	}
+	// Acceptances made since the run apply at once. The API only reads
+	// them: people accept items with `hejnal accept`.
+	if err := h.store.MarkAccepted(snap, h.now()); err != nil {
+		h.logf("api: reading the accepted items: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not read the accepted items; see the server log")
 		return nil, false
 	}
 	return snap, true

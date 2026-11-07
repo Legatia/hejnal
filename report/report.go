@@ -46,21 +46,34 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 		b.WriteString(".\n\n")
 	}
 
-	// Items whose flaws the version check all ruled out go to the end.
+	// Items whose flaws the version check all ruled out go to the end, and
+	// so do accepted findings, in a section of their own. An item with new
+	// findings since it was accepted is listed with the new ones only.
+	rest, acc := match.SplitAccepted(fs)
+	accepted := match.Groups(acc)
+	earlier := map[string]*match.Acceptance{}
+	for _, g := range accepted {
+		earlier[g.Key] = g.Acceptance()
+	}
 	var groups, fixed []match.Group
-	for _, g := range match.Groups(fs) {
-		if g.Kind == match.KindKEV && len(match.Active(g.Findings)) == 0 {
-			fixed = append(fixed, g)
-		} else {
+	for _, g := range match.Groups(rest) {
+		switch {
+		case g.Kind != match.KindKEV || len(match.Active(g.Findings)) > 0:
 			groups = append(groups, g)
+		case earlier[g.Key] == nil:
+			// The ruled-out flaws of an accepted item are not listed again.
+			fixed = append(fixed, g)
 		}
 	}
 	c := match.CountGroups(groups)
 	fmt.Fprintf(&b, "**%s**\n\n", tr("fix.summary", c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
 	if len(groups) == 0 {
-		if m.Services == 0 {
+		switch {
+		case m.Services == 0:
 			fmt.Fprintf(&b, "%s\n\n", tr("fix.empty"))
-		} else {
+		case len(accepted) > 0:
+			fmt.Fprintf(&b, "%s\n\n", tr("fix.accepted"))
+		default:
 			fmt.Fprintf(&b, "%s\n\n", tr("fix.none"))
 		}
 	}
@@ -77,24 +90,32 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 				first = false
 			}
 			n++
-			writeGroup(&b, tr, n, g)
+			writeGroup(&b, tr, n, g, earlier[g.Key])
 		}
 	}
 	if len(fixed) > 0 {
 		fmt.Fprintf(&b, "## %s\n\n%s\n\n", tr("fix.ruledout.title"), tr("fix.ruledout.intro"))
 		for _, g := range fixed {
-			fmt.Fprintf(&b, "- %s (%s): %s\n", tr("kev.title", mdEscape(g.Technology), hostPort(g.Host, g.Port)),
-				tr("label.version", mdCode(g.Version)), strings.Join(cveList(g.Findings), ", "))
+			fmt.Fprintf(&b, "- %s (%s): %s · %s\n", tr("kev.title", mdEscape(g.Technology), hostPort(g.Host, g.Port)),
+				tr("label.version", mdCode(g.Version)), strings.Join(cveList(g.Findings), ", "), mdCode(g.ID()))
 		}
 		b.WriteString("\n")
 	}
+	writeAccepted(&b, tr, accepted)
 	fmt.Fprintf(&b, "---\n\n%s\n", tr("fix.footer"))
 	_, err := io.WriteString(w, b.String())
 	return err
 }
 
-func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
+// writeGroup writes one item to fix. earlier is the acceptance of the item's
+// other findings, when part of it was accepted.
+func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier *match.Acceptance) {
 	where := hostPort(g.Host, g.Port)
+	// head writes the item's title and ID, and what was accepted of it.
+	head := func(title string) {
+		fmt.Fprintf(b, "### %d. %s · %s\n\n", n, title, mdCode(g.ID()))
+		writeAcceptanceNotes(b, tr, g, earlier)
+	}
 	switch g.Kind {
 	case match.KindKEV:
 		active := match.Active(g.Findings)
@@ -109,7 +130,7 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 			}
 			packaged = packaged || f.Packaged
 		}
-		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("kev.title", mdEscape(g.Technology), where))
+		head(tr("kev.title", mdEscape(g.Technology), where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("kev.why", len(active), newest(active)))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("kev.todo"))
 		if g.Forensics() {
@@ -130,12 +151,12 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 		if links := groupLinks(active); len(links) > 0 {
 			fmt.Fprintf(b, "- **%s:** %s\n", tr("label.advisories"), strings.Join(links, " · "))
 		}
-		note := tr("kev.confidence")
+		note := tr("kev.confidence") + " " + tr("acc.hint", g.ID())
 		switch {
 		case confirmed:
 			note = tr("kev.confirmed", mdCode(g.Version))
 		case packaged:
-			note = tr("kev.packaged")
+			note = tr("kev.packaged") + " " + tr("acc.hint", g.ID())
 		}
 		fmt.Fprintf(b, "\n> %s\n\n", note)
 	case match.KindTLSExpired, match.KindTLSExpiring:
@@ -148,23 +169,23 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 		if g.Kind == match.KindTLSExpired {
 			prefix = "tlsx"
 		}
-		fmt.Fprintf(b, "### %d. %s\n\n", n, tr(prefix+".title", where))
+		head(tr(prefix+".title", where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr(prefix+".why", mdCode(f.Subject), date))
 		fmt.Fprintf(b, "- **%s:** %s\n\n", tr("label.todo"), tr("tls.todo"))
 	case match.KindExposedFile:
 		f := g.Findings[0]
-		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("file.title."+f.TechID, where))
+		head(tr("file.title."+f.TechID, where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("file.why."+f.TechID))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("file.todo."+f.TechID))
 		fmt.Fprintf(b, "- **%s:** %s (%s)\n\n", tr("label.seen"), mdCode(f.URL), mdEscape(f.Evidence))
 	case match.KindAdminExposed:
-		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("admin.title", mdEscape(g.Technology), where))
+		head(tr("admin.title", mdEscape(g.Technology), where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("admin.why"))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("admin.todo"))
 		writeSeen(b, tr, g, false)
 		b.WriteString("\n")
 	case match.KindSecret:
-		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("secret.title", mdEscape(g.Technology)))
+		head(tr("secret.title", mdEscape(g.Technology)))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("secret.why"))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("secret.todo"))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.secret"), mdCode(g.Evidence))
@@ -184,7 +205,7 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group) {
 				withPasswords++
 			}
 		}
-		fmt.Fprintf(b, "### %d. %s\n\n", n, tr("breach.title", mdEscape(g.Host)))
+		head(tr("breach.title", mdEscape(g.Host)))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("breach.why", len(g.Findings), withPasswords))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("breach.todo"))
 		fmt.Fprintf(b, "- **%s:**\n", tr("label.breaches"))
@@ -346,20 +367,24 @@ func Summary(open, added, resolved []match.Finding, first bool, m Meta) string {
 }
 
 // SummaryLines is the run summary as a plain title and lines, for any
-// channel. Flaws the version check ruled out are left out.
+// channel. Flaws the version check ruled out and accepted findings are left
+// out; accepted items are only counted.
 func SummaryLines(open, added, resolved []match.Finding, first bool, m Meta) (string, []string) {
 	tr := newTranslator(m.Lang)
 	title := "Hejnal · " + m.Organization
 	var lines []string
-	og := match.Groups(match.Active(open))
+	og := match.Groups(match.Open(open))
 	c := match.CountGroups(og)
 	if first {
 		lines = append(lines, tr("sum.first", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
 	} else {
-		lines = append(lines, tr("sum.counts", len(match.Groups(match.Active(added))), len(match.Groups(resolved)), len(og),
+		lines = append(lines, tr("sum.counts", len(match.Groups(match.Open(added))), len(match.Groups(resolved)), len(og),
 			c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
 	}
-	list := match.Groups(match.Active(added))
+	if _, acc := match.SplitAccepted(open); len(acc) > 0 {
+		lines[0] += tr("sum.accepted", len(match.Groups(acc)))
+	}
+	list := match.Groups(match.Open(added))
 	if first {
 		list = og
 	}
@@ -369,7 +394,11 @@ func SummaryLines(open, added, resolved []match.Finding, first bool, m Meta) (st
 			lines = append(lines, tr("sum.more", len(list)-maxLines))
 			break
 		}
-		lines = append(lines, fmt.Sprintf("• [%s] %s", tr("sev.short."+string(g.Severity)), groupTitle(tr, g)))
+		line := fmt.Sprintf("• [%s] %s", tr("sev.short."+string(g.Severity)), groupTitle(tr, g))
+		if g.ExpiredAcceptance() != nil {
+			line += " · " + tr("sum.expired")
+		}
+		lines = append(lines, line)
 	}
 	if len(og) > 0 {
 		lines = append(lines, tr("sum.report"))
@@ -384,19 +413,34 @@ func chatEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "@", "@\u2060").Replace(s)
 }
 
+// ItemTitle names an item to fix in plain text, such as "WordPress on
+// www.example.com:443", in the given language.
+func ItemTitle(g match.Group, lang string) string {
+	return itemTitle(newTranslator(lang), g)
+}
+
+// groupTitle names an item in plain text, with its first flaws for known
+// exploited ones.
 func groupTitle(tr translator, g match.Group) string {
+	if g.Kind != match.KindKEV {
+		return itemTitle(tr, g)
+	}
+	var cves []string
+	for i, f := range g.Findings {
+		if i == 3 {
+			cves = append(cves, fmt.Sprintf("+%d", len(g.Findings)-3))
+			break
+		}
+		cves = append(cves, f.CVE)
+	}
+	return itemTitle(tr, g) + ": " + strings.Join(cves, ", ")
+}
+
+func itemTitle(tr translator, g match.Group) string {
 	where := hostPort(g.Host, g.Port)
 	switch g.Kind {
 	case match.KindKEV:
-		var cves []string
-		for i, f := range g.Findings {
-			if i == 3 {
-				cves = append(cves, fmt.Sprintf("+%d", len(g.Findings)-3))
-				break
-			}
-			cves = append(cves, f.CVE)
-		}
-		return tr("kev.title", g.Technology, where) + ": " + strings.Join(cves, ", ")
+		return tr("kev.title", g.Technology, where)
 	case match.KindTLSExpired:
 		return tr("tlsx.title", where)
 	case match.KindTLSExpiring:

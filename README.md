@@ -204,6 +204,23 @@ A free [NVD API key](https://nvd.nist.gov/developers/request-an-api-key) in
 Exit status: `0` when done, `1` on errors, `2` when `-fail-on` is set and new
 findings reach that severity.
 
+Many findings ask a person to check something: "you run WordPress, which
+attackers are exploiting; make sure your version has the fix". Each item in
+the fix list has an ID. Once you have checked an item, accept it, and daily
+runs stop raising it:
+
+```sh
+hejnal accept -item 3f9a1c0d -reason "Version 6.8.3 has the fix" -by "Anna Nowak"
+hejnal accept -list              # what is accepted, by whom, why and until when
+hejnal accept -remove 3f9a1c0d   # open the item again
+```
+
+An acceptance covers the findings open in the item when you accept it.
+Alerts and the exit status leave them out, and the fix list moves them to an
+"Accepted" section at the end. A new flaw in the same item still shows. An
+acceptance lasts 90 days, or until the date you give with `-until`, at most a
+year. Then the item is open again and reported as new.
+
 To include leaked secrets and breached accounts, see
 [below](#leaked-secrets-and-breached-accounts).
 
@@ -217,6 +234,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal feeds` | Downloads the KEV catalog into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
 | `hejnal report fixlist\|nis2\|monthly` | Prints a report from the saved runs. |
+| `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
 | `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
 | `hejnal serve` | Serves the results over a REST API. |
 | `hejnal mcp` | Serves the results to AI assistants over MCP. |
@@ -236,6 +254,7 @@ change it):
 | `inventory.json` | Hosts, open services, certificates and recognised products. |
 | `findings.json` | Findings from the last run. |
 | `reported.json` | The findings people were last told about, used to tell what is new. |
+| `accepted.json` | Items accepted with `hejnal accept`: which findings, why, by whom and until when. |
 | `history/` | Findings from earlier runs; the last 200 are kept. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
 | `leaks.json`, `breaches.json` | Saved secret scans (secrets partly hidden) and breach counts, included in the next run. |
@@ -310,7 +329,7 @@ curl -H "Authorization: Bearer $HEJNAL_API_TOKEN" http://127.0.0.1:8080/v1/group
 |---|---|
 | `GET /v1/health` | Status and version. The only endpoint that needs no token. |
 | `GET /v1/findings` | Findings from the last run. Filters: `min_severity`, `kind`, `host`. |
-| `GET /v1/groups` | Items to fix, as in the fix list. Filter: `min_severity`. |
+| `GET /v1/groups` | Items to fix and accepted items, as in the fix list. Filter: `min_severity`. |
 | `GET /v1/inventory` | Hosts, services and recognised products. |
 | `GET /v1/changes` | What is new and what was resolved since the last notification. |
 | `GET /v1/reports/fixlist`, `GET /v1/reports/nis2` | The reports as Markdown. Parameter: `lang`. |
@@ -438,6 +457,11 @@ naprawić najpierw.
   projekt wczesnego ostrzeżenia NIS2 (zgłoszenie do właściwego CSIRT, zwykle
   przez system S46).
 - **Udostępnia wyniki** przez REST API i serwer MCP dla asystentów AI.
+- **Pamięta sprawdzone punkty:** każdy punkt listy ma identyfikator. Polecenie
+  `hejnal accept` zapisuje, kto sprawdził punkt, dlaczego i do kiedy.
+  Powiadomienia i kod wyjścia pomijają go wtedy przez 90 dni albo do daty z
+  opcji `-until`, najwyżej przez rok. Nowa podatność w tym samym punkcie i tak
+  się pokaże.
 
 [Przykładowa lista poprawek](examples/fix-list.pl.md).
 
@@ -450,6 +474,7 @@ hejnal init
 hejnal run -scope scope.json -lang pl
 hejnal report fixlist -lang pl
 hejnal report monthly -lang pl
+hejnal accept -item 3f9a1c0d -reason "Wersja 6.8.3 ma poprawkę" -by "Anna Nowak"
 hejnal leaks scan -history ~/kod/serwis
 ```
 
