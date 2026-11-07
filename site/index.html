@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hejnal</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Hejnal warns small organisations within hours when attackers start exploiting a flaw in something they run, and tells them what to fix first.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a night-watch tower. Dark brick band for the alarm, a parchment page for the facts, brass for anything that calls for action. */
+:root {
+  --bg: #f6f1e8;          /* parchment */
+  --fg: #1d1a17;
+  --muted: #5f574d;
+  --line: #ddd3c3;
+  --panel: #fffaf2;
+  --brick: #8e2b22;       /* Kraków brick gothic */
+  --brick-ink: #fbeee6;
+  --brass: #b9852a;
+  --brass-ink: #1d1a17;
+  --night: #1e2230;
+  --night-ink: #e9e4da;
+  --ok: #2f6b45;
+  --warn: #9a5b00;
+  --crit: #a3261b;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #16181f; --fg: #ece6db; --muted: #a79e90; --line: #2e3240; --panel: #1d2029;
+  --brick: #9e3328; --brick-ink: #fbeee6; --brass: #d3a04a; --brass-ink: #16181f;
+  --night: #0f1117; --night-ink: #e9e4da; --ok: #6fbf8a; --warn: #e0a54a; --crit: #ef7b6c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #16181f; --fg: #ece6db; --muted: #a79e90; --line: #2e3240; --panel: #1d2029;
+  --brick: #9e3328; --brick-ink: #fbeee6; --brass: #d3a04a; --brass-ink: #16181f;
+  --night: #0f1117; --night-ink: #e9e4da; --ok: #6fbf8a; --warn: #e0a54a; --crit: #ef7b6c; color-scheme: dark }
+
+* { box-sizing: border-box }
+html { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px) }
+body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font: 400 1.0625rem/1.6 var(--body); }
+.wrap { max-width: 68rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--display); line-height: 1.08; text-wrap: balance; margin: 0 }
+h2 { font-size: clamp(1.6rem, 3.2vw, 2.3rem); font-weight: 800; letter-spacing: -0.01em }
+h3 { font-size: 1.15rem; font-weight: 700 }
+p { margin: 0 }
+a { color: inherit }
+.eyebrow { font: 600 .75rem/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted) }
+:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; border-radius: 4px }
+
+/* top bar */
+.top { background: var(--brick); color: var(--brick-ink) }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 14px; flex-wrap: wrap }
+.brand { display: flex; align-items: center; gap: 10px; font: 800 1.25rem/1 var(--display); text-decoration: none }
+.brand svg { width: 26px; height: 26px }
+.nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font: 500 .95rem/1 var(--display) }
+.nav a { text-decoration: none; opacity: .9 }
+.nav a:hover { opacity: 1; text-decoration: underline }
+.lang { display: inline-flex; border: 1px solid color-mix(in srgb, var(--brick-ink) 45%, transparent); border-radius: 999px; overflow: hidden }
+.lang button { background: none; border: 0; color: inherit; font: 600 .8rem/1 var(--mono); padding: 7px 11px; cursor: pointer }
+.lang button[aria-pressed="true"] { background: var(--brick-ink); color: var(--brick) }
+
+/* hero */
+.hero { background: var(--brick); color: var(--brick-ink); padding-block: clamp(36px, 7vw, 80px) clamp(40px, 7vw, 84px) }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center }
+.hero h1 { font-size: clamp(2.3rem, 5.6vw, 4.2rem); font-weight: 800; letter-spacing: -0.02em }
+.hero h1 .cut { color: var(--brass) }
+.hero .lede { margin-top: 18px; font-size: 1.15rem; max-width: 34rem; opacity: .95 }
+.cta { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 6px; font: 700 1rem/1 var(--display); text-decoration: none; border: 2px solid transparent }
+.btn.primary { background: var(--brass); color: var(--brass-ink) }
+.btn.ghost { border-color: color-mix(in srgb, var(--brick-ink) 55%, transparent); color: var(--brick-ink) }
+.btn:hover { filter: brightness(1.06) }
+.note { margin-top: 14px; font: 400 .8rem/1.4 var(--mono); opacity: .8 }
+
+/* the alert card in the hero */
+.alert { background: var(--night); color: var(--night-ink); border-radius: 10px; padding: 18px 18px 14px; box-shadow: 0 18px 40px rgba(0,0,0,.28); font: 400 .86rem/1.5 var(--mono); min-width: 0 }
+.alert .bar { display: flex; justify-content: space-between; gap: 10px; color: #9aa3b5; font-size: .75rem; margin-bottom: 10px; flex-wrap: wrap }
+.alert .row { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; padding: 10px 0; border-top: 1px solid #2c3242 }
+.pill { font: 700 .68rem/1 var(--mono); letter-spacing: .06em; padding: 5px 7px; border-radius: 4px; white-space: nowrap; align-self: start }
+.pill.now { background: #c2392c; color: #fff }
+.pill.week { background: #c98a1f; color: #1d1a17 }
+.pill.month { background: #3b4457; color: #e9e4da }
+.alert b { color: #fff; font-weight: 600 }
+.alert .meta { color: #9aa3b5; display: block; overflow-wrap: anywhere }
+.alert .ex { margin-top: 8px; color: #7d8597; font-size: .72rem }
+
+/* the broken note: hejnał stops mid-phrase */
+.staff { display: block; width: 100%; height: 40px; margin-top: 30px; color: var(--brick-ink); opacity: .55 }
+
+section { padding-block: clamp(48px, 7vw, 84px) }
+.head { display: grid; gap: 10px; max-width: 44rem; margin-bottom: 30px }
+.head p { color: var(--muted) }
+
+/* steps: a real sequence */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; counter-reset: s; list-style: none; padding: 0; margin: 0 }
+.steps li { border-top: 3px solid var(--brick); padding-top: 14px; display: grid; gap: 8px; min-width: 0 }
+.steps li::before { counter-increment: s; content: "Step " counter(s); font: 600 .75rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--brick) }
+:root[lang="pl"] .steps li::before { content: "Krok " counter(s) }
+.steps p { color: var(--muted) }
+
+/* numbers */
+.facts { background: var(--panel); border-block: 1px solid var(--line) }
+.figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px }
+.fig { display: grid; gap: 6px; min-width: 0 }
+.fig .n { font: 800 clamp(2.2rem, 5vw, 3.2rem)/1 var(--display); color: var(--brick); font-variant-numeric: tabular-nums }
+.fig p { color: var(--muted) }
+.meter { margin-top: 30px; display: grid; gap: 8px }
+.meter .track { height: 14px; border-radius: 7px; background: var(--line); overflow: hidden }
+.meter .fill { height: 100%; width: 47.3%; background: var(--brick) }
+.meter .lbl { display: flex; justify-content: space-between; gap: 10px; font: 400 .8rem/1.4 var(--mono); color: var(--muted); flex-wrap: wrap }
+
+/* principles */
+.rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 40px }
+.rules div { display: grid; gap: 6px; min-width: 0 }
+.rules p { color: var(--muted) }
+
+/* tiers */
+.tiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px }
+.tier { border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 10px; align-content: start; background: var(--bg); min-width: 0 }
+.tier.feat { border: 2px solid var(--brick) }
+.tier .price { font: 800 1.4rem/1.1 var(--display) }
+.tier .price small { font: 400 .8rem/1.3 var(--mono); color: var(--muted); display: block; margin-top: 4px }
+.tier ul { margin: 0; padding-left: 1.1em; color: var(--muted); display: grid; gap: 4px; font-size: .97rem }
+.small { font: 400 .8rem/1.5 var(--mono); color: var(--muted); margin-top: 18px }
+
+/* nis2 band */
+.nis2 { background: var(--night); color: var(--night-ink) }
+.nis2 .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start }
+.nis2 h2 { color: var(--night-ink) }
+.nis2 .eyebrow { color: #9aa3b5 }
+.dates { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px }
+.dates li { display: grid; grid-template-columns: 8.5rem minmax(0,1fr); gap: 14px; border-left: 3px solid var(--brass); padding-left: 14px }
+.dates time { font: 600 .9rem/1.4 var(--mono); color: var(--brass) }
+
+/* founder + footer */
+.founder .wrap { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 40px; align-items: center }
+.founder blockquote { margin: 0; font: 400 1.35rem/1.45 var(--body); border-left: 4px solid var(--brick); padding-left: 18px }
+.founder .who { margin-top: 12px; font: 600 .9rem/1.4 var(--mono); color: var(--muted) }
+.contact { display: grid; gap: 12px }
+.copyrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.copyrow code { font: 400 .95rem/1 var(--mono); background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; overflow-wrap: anywhere }
+.copyrow button { font: 600 .85rem/1 var(--display); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer }
+footer { border-top: 1px solid var(--line); padding-block: 26px; color: var(--muted); font: 400 .82rem/1.6 var(--mono) }
+footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap }
+
+@media (max-width: 860px) {
+  .hero .wrap, .nis2 .wrap, .founder .wrap { grid-template-columns: minmax(0, 1fr) }
+  .tiers { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+}
+@media (max-width: 560px) {
+  .steps, .figures, .rules, .tiers { grid-template-columns: minmax(0, 1fr) }
+  .dates li { grid-template-columns: minmax(0, 1fr); gap: 2px }
+  .nav a.hide-sm { display: none }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .meter .fill { animation: grow 1.2s ease-out both }
+  @keyframes grow { from { width: 0 } to { width: 47.3% } }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Hejnal">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M4 13h10l12-7v20l-12-7H4z"/><path fill="currentColor" d="M7 19h4l2 7H9z"/></svg>
+      Hejnal
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a class="hide-sm" href="#how" data-i18n="nav.how">How it works</a>
+      <a class="hide-sm" href="#plans" data-i18n="nav.plans">Plans</a>
+      <a href="https://github.com/Legatia/hejnal">GitHub</a>
+      <span class="lang" role="group" aria-label="Language">
+        <button type="button" id="lang-en" aria-pressed="true">EN</button>
+        <button type="button" id="lang-pl" aria-pressed="false">PL</button>
+      </span>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow" style="color:inherit;opacity:.8" data-i18n="hero.eyebrow">Early warning for internet-facing systems</p>
+        <h1 style="margin-top:14px" data-i18n-html="hero.title">Know within hours when attackers start <span class="cut">exploiting something you run.</span></h1>
+        <p class="lede" data-i18n="hero.lede">Hejnal finds your internet-facing systems, recognises the software on them and checks it against the flaws attackers are exploiting right now. You get a short, ranked fix list instead of a 300-page scan report.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/Legatia/hejnal" data-i18n="hero.cta1">Get the open-source tool</a>
+          <a class="btn ghost" href="#contact" data-i18n="hero.cta2">Join early access</a>
+        </div>
+        <p class="note" data-i18n="hero.note">Free and open source (Apache-2.0). Hosted and managed plans for teams.</p>
+      </div>
+
+      <div class="alert" role="img" aria-label="Example alert from Hejnal">
+        <div class="bar"><span>hejnal · fix list</span><span>example.pl · 06:00</span></div>
+        <div class="row"><span class="pill now" data-i18n="alert.now">FIX NOW</span><span><b>Ivanti Connect Secure</b> · vpn.example.pl:443<span class="meta" data-i18n="alert.r1">Exploited flaw added to CISA's catalog 2 days ago · used in ransomware attacks</span></span></div>
+        <div class="row"><span class="pill week" data-i18n="alert.week">THIS WEEK</span><span><b>WordPress 6.4.3</b> · www.example.pl:443<span class="meta" data-i18n="alert.r2">Version confirmed affected by NVD · patch to the latest release</span></span></div>
+        <div class="row"><span class="pill month" data-i18n="alert.month">THIS MONTH</span><span><b>Exim 4.94.2</b> · mx.example.pl:25<span class="meta" data-i18n="alert.r3">Recognised from its mail greeting · check your distribution's security updates</span></span></div>
+        <p class="ex" data-i18n="alert.ex">Example output for a made-up company.</p>
+      </div>
+    </div>
+    <div class="wrap">
+      <svg class="staff" viewBox="0 0 600 40" preserveAspectRatio="none" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="1"><path d="M0 8H600M0 16H600M0 24H600M0 32H600"/></g>
+        <g fill="currentColor"><ellipse cx="40" cy="28" rx="6" ry="4.5"/><ellipse cx="100" cy="20" rx="6" ry="4.5"/><ellipse cx="160" cy="12" rx="6" ry="4.5"/><ellipse cx="220" cy="16" rx="6" ry="4.5"/><ellipse cx="280" cy="8" rx="6" ry="4.5"/><ellipse cx="340" cy="12" rx="6" ry="4.5"/></g>
+        <path d="M352 12 L372 12" stroke="currentColor" stroke-width="2" stroke-dasharray="3 4"/>
+      </svg>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow" data-i18n="how.eyebrow">How it works</p>
+        <h2 data-i18n="how.title">One ordinary visit per system, three questions answered</h2>
+        <p data-i18n="how.sub">Hejnal sends what any visitor sends. It never logs in, never tries an exploit, and only checks systems you have authorised in writing.</p>
+      </div>
+      <ol class="steps">
+        <li><h3 data-i18n="s1.t">Find what you expose</h3><p data-i18n="s1.p">Your domains, subdomains from public certificate logs, your IP ranges and the ports that answer.</p></li>
+        <li><h3 data-i18n="s2.t">Recognise the software</h3><p data-i18n="s2.p">279 products, from VPN gateways and firewalls to routers, cameras, mail servers, CMSs and developer tools, read from web pages and service greetings.</p></li>
+        <li><h3 data-i18n="s3.t">Match what attackers exploit</h3><p data-i18n="s3.p">CISA's catalog of exploited flaws, version ranges from NVD and exploit likelihood from FIRST, ranked into a weekly fix list and alerts within hours.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="facts">
+    <div class="wrap">
+      <div class="figures">
+        <div class="fig"><span class="n">279</span><p data-i18n="f1">products recognised, each with a test sample of what it sends</p></div>
+        <div class="fig"><span class="n">836</span><p data-i18n="f2">of the 1,767 flaws in CISA's catalog of exploited vulnerabilities are covered</p></div>
+        <div class="fig"><span class="n">43</span><p data-i18n="f3">days: the median time to patch a flaw attackers already exploit (Verizon DBIR 2026)</p></div>
+      </div>
+      <div class="meter" aria-label="Coverage of CISA's catalog">
+        <div class="track"><div class="fill"></div></div>
+        <div class="lbl"><span data-i18n="m.l">47% of the catalog covered</span><span data-i18n="m.r">most of the rest is desktop and phone software no network scan can see</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow" data-i18n="r.eyebrow">Built to be trusted</p>
+        <h2 data-i18n="r.title">Safe by design, traceable by default</h2>
+      </div>
+      <div class="rules">
+        <div><h3 data-i18n="r1.t">Detection only</h3><p data-i18n="r1.p">No exploits, no logins, no brute force. Optional checks only look for exposed files such as <code>.env</code> and <code>.git</code>.</p></div>
+        <div><h3 data-i18n="r2.t">Every finding has a source</h3><p data-i18n="r2.p">Each item links to the catalog entry, the version check and the evidence Hejnal saw, so you can verify it yourself.</p></div>
+        <div><h3 data-i18n="r3.t">Written authorisation</h3><p data-i18n="r3.p">Every scope file records who approved the scan and when. Hejnal refuses targets outside it.</p></div>
+        <div><h3 data-i18n="r4.t">Signed, open releases</h3><p data-i18n="r4.p">Open-source code, signed builds and a list of every component, because security tools are targets too.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="plans" class="facts">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow" data-i18n="p.eyebrow">Plans</p>
+        <h2 data-i18n="p.title">Run it yourself, or let us watch for you</h2>
+      </div>
+      <div class="tiers">
+        <div class="tier"><h3 data-i18n="t1.n">Open source</h3><p class="price" data-i18n-html="t1.p">Free<small>Apache-2.0</small></p><ul><li data-i18n="t1.a">Command-line tool, REST API and MCP server</li><li data-i18n="t1.b">Fix list, monthly report, NIS2 draft</li><li data-i18n="t1.c">Slack, Teams and email alerts</li></ul></div>
+        <div class="tier feat"><h3 data-i18n="t2.n">Hosted</h3><p class="price" data-i18n-html="t2.p">€99 / month<small>up to 250 internet-facing assets</small></p><ul><li data-i18n="t2.a">One dashboard across sites</li><li data-i18n="t2.b">Alerts within hours of a new exploited flaw</li><li data-i18n="t2.c">Sign-in controls, audit trail, report exports</li></ul></div>
+        <div class="tier"><h3 data-i18n="t3.n">Managed</h3><p class="price" data-i18n-html="t3.p">from €490 / month<small>per organisation</small></p><ul><li data-i18n="t3.a">We apply fixes and check for break-ins</li><li data-i18n="t3.b">We rotate exposed passwords and keys</li><li data-i18n="t3.c">We draft your NIS2 incident reports</li></ul></div>
+        <div class="tier"><h3 data-i18n="t4.n">Partners</h3><p class="price" data-i18n-html="t4.p">€29 / month<small>per client organisation</small></p><ul><li data-i18n="t4.a">For IT service firms</li><li data-i18n="t4.b">Many clients in one installation</li><li data-i18n="t4.c">Reports under your own brand</li></ul></div>
+      </div>
+      <p class="small" data-i18n="p.small">Early-access prices for the first customers. The open-source core stays free.</p>
+    </div>
+  </section>
+
+  <section class="nis2">
+    <div class="wrap">
+      <div class="head" style="margin:0">
+        <p class="eyebrow" data-i18n="n.eyebrow">NIS2 in Poland</p>
+        <h2 data-i18n="n.title">The deadlines are set. Exposure is the easiest place to start.</h2>
+        <p style="color:#b9b2a6" data-i18n="n.p">The amended KSC act makes covered organisations, and the suppliers they rely on, show they manage known risks. Hejnal gives you the evidence: what was exposed, when you knew, and when it was fixed.</p>
+      </div>
+      <ul class="dates">
+        <li><time datetime="2026-04-03">3 April 2026</time><span data-i18n="d1">Amended KSC act in force</span></li>
+        <li><time datetime="2027-04-03">3 April 2027</time><span data-i18n="d2">Security measures must be in place</span></li>
+        <li><time datetime="2028-04">April 2028</time><span data-i18n="d3">First audits for essential entities; fines up to €10 million or 2% of turnover</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="contact" class="founder">
+    <div class="wrap">
+      <div>
+        <blockquote data-i18n="q">Kraków's trumpeter warned the city when he saw raiders coming. Hejnal does the same for your systems: it sounds as soon as attackers start using a flaw in something you run.</blockquote>
+        <p class="who" data-i18n="q.who">Tobias, founder · Warsaw</p>
+      </div>
+      <div class="contact">
+        <h2 data-i18n="c.title">Join early access</h2>
+        <p style="color:var(--muted)" data-i18n="c.p">We are taking three design partners: a free managed service for three months in exchange for weekly feedback.</p>
+        <div class="copyrow"><code id="mail">hello@hejnal.example</code><button type="button" id="copy" data-i18n="c.copy">Copy address</button></div>
+        <a class="btn primary" style="justify-self:start" href="https://github.com/Legatia/hejnal" data-i18n="c.gh">Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Hejnal · <span data-i18n="ft.l">Open source under Apache-2.0</span></span>
+    <span data-i18n="ft.r">Data: CISA KEV (CC0), NVD, FIRST EPSS, Have I Been Pwned (CC BY 4.0)</span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const pl = {
+    "nav.how": "Jak to działa", "nav.plans": "Plany",
+    "hero.eyebrow": "Wczesne ostrzeganie dla systemów w internecie",
+    "hero.title": "Dowiedz się w ciągu godzin, gdy atakujący zaczną <span class=\"cut\">wykorzystywać coś, czego używasz.</span>",
+    "hero.lede": "Hejnal znajduje Twoje systemy widoczne z internetu, rozpoznaje działające na nich oprogramowanie i sprawdza je pod kątem podatności, które atakujący wykorzystują właśnie teraz. Dostajesz krótką listę poprawek według pilności zamiast 300-stronicowego raportu.",
+    "hero.cta1": "Pobierz narzędzie open source", "hero.cta2": "Dołącz do wczesnego dostępu",
+    "hero.note": "Bezpłatne i otwarte (Apache-2.0). Plany hostowane i zarządzane dla zespołów.",
+    "alert.now": "NAPRAW TERAZ", "alert.week": "W TYM TYGODNIU", "alert.month": "W TYM MIESIĄCU",
+    "alert.r1": "Podatność dodana do katalogu CISA 2 dni temu · używana w atakach ransomware",
+    "alert.r2": "Wersja potwierdzona jako podatna przez NVD · zaktualizuj do najnowszej",
+    "alert.r3": "Rozpoznany po powitaniu serwera poczty · sprawdź aktualizacje bezpieczeństwa dystrybucji",
+    "alert.ex": "Przykładowy wynik dla wymyślonej firmy.",
+    "how.eyebrow": "Jak to działa", "how.title": "Jedna zwykła wizyta na system, trzy odpowiedzi",
+    "how.sub": "Hejnal wysyła to, co wysłałby każdy odwiedzający. Nigdy się nie loguje, nie próbuje exploitów i sprawdza tylko systemy, na które masz pisemną zgodę.",
+    "s1.t": "Znajdź, co wystawiasz", "s1.p": "Twoje domeny, subdomeny z publicznych logów certyfikatów, zakresy IP i odpowiadające porty.",
+    "s2.t": "Rozpoznaj oprogramowanie", "s2.p": "279 produktów: od bramek VPN i firewalli po routery, kamery, serwery poczty, CMS-y i narzędzia programistów, rozpoznawanych po stronach i powitaniach usług.",
+    "s3.t": "Dopasuj to, co atakujący wykorzystują", "s3.p": "Katalog wykorzystywanych podatności CISA, zakresy wersji z NVD i prawdopodobieństwo exploitacji z FIRST, ułożone w cotygodniową listę poprawek i alerty w ciągu godzin.",
+    "f1": "rozpoznawanych produktów, każdy z testową próbką tego, co wysyła",
+    "f2": "z 1767 podatności w katalogu wykorzystywanych podatności CISA jest objętych",
+    "f3": "dni: mediana czasu łatania podatności, którą atakujący już wykorzystują (Verizon DBIR 2026)",
+    "m.l": "47% katalogu objęte", "m.r": "reszta to głównie oprogramowanie na komputerach i telefonach, niewidoczne dla skanu sieci",
+    "r.eyebrow": "Zbudowany, by mu ufać", "r.title": "Bezpieczny z założenia, sprawdzalny z definicji",
+    "r1.t": "Tylko wykrywanie", "r1.p": "Bez exploitów, bez logowania, bez zgadywania haseł. Opcjonalne testy szukają tylko odsłoniętych plików, takich jak .env i .git.",
+    "r2.t": "Każde ustalenie ma źródło", "r2.p": "Każda pozycja wskazuje wpis w katalogu, sprawdzenie wersji i dowód, który Hejnal zobaczył, więc możesz to zweryfikować.",
+    "r3.t": "Pisemna zgoda", "r3.p": "Każdy plik zakresu zapisuje, kto zatwierdził skan i kiedy. Hejnal odmawia celów spoza niego.",
+    "r4.t": "Podpisane, otwarte wydania", "r4.p": "Otwarty kod, podpisane wersje i lista wszystkich komponentów, bo narzędzia bezpieczeństwa też są celem.",
+    "p.eyebrow": "Plany", "p.title": "Uruchom sam albo pozwól, że będziemy czuwać za Ciebie",
+    "t1.n": "Open source", "t1.p": "Bezpłatnie<small>Apache-2.0</small>",
+    "t1.a": "Narzędzie wiersza poleceń, REST API i serwer MCP", "t1.b": "Lista poprawek, raport miesięczny, szkic zgłoszenia NIS2", "t1.c": "Alerty na Slacku, Teams i e-mailem",
+    "t2.n": "Hostowany", "t2.p": "99 € / miesiąc<small>do 250 zasobów w internecie</small>",
+    "t2.a": "Jeden panel dla wszystkich lokalizacji", "t2.b": "Alerty w ciągu godzin od nowej podatności", "t2.c": "Kontrola logowania, dziennik zdarzeń, eksport raportów",
+    "t3.n": "Zarządzany", "t3.p": "od 490 € / miesiąc<small>za organizację</small>",
+    "t3.a": "Wdrażamy poprawki i sprawdzamy ślady włamań", "t3.b": "Wymieniamy ujawnione hasła i klucze", "t3.c": "Przygotowujemy zgłoszenia incydentów NIS2",
+    "t4.n": "Partnerzy", "t4.p": "29 € / miesiąc<small>za organizację klienta</small>",
+    "t4.a": "Dla firm usług IT", "t4.b": "Wielu klientów w jednej instalacji", "t4.c": "Raporty pod Twoją marką",
+    "p.small": "Ceny wczesnego dostępu dla pierwszych klientów. Rdzeń open source pozostaje bezpłatny.",
+    "n.eyebrow": "NIS2 w Polsce", "n.title": "Terminy są ustalone. Ekspozycja to najłatwiejszy początek.",
+    "n.p": "Znowelizowana ustawa o KSC wymaga od objętych podmiotów, i dostawców, na których polegają, wykazania, że zarządzają znanym ryzykiem. Hejnal daje dowody: co było wystawione, kiedy o tym wiedziałeś i kiedy to naprawiono.",
+    "d1": "Znowelizowana ustawa o KSC wchodzi w życie", "d2": "Środki bezpieczeństwa muszą być wdrożone", "d3": "Pierwsze audyty podmiotów kluczowych; kary do 10 mln € lub 2% obrotu",
+    "q": "Krakowski trębacz ostrzegał miasto, gdy widział nadciągających najeźdźców. Hejnal robi to samo dla Twoich systemów: odzywa się, gdy tylko atakujący zaczną wykorzystywać podatność w czymś, czego używasz.",
+    "q.who": "Tobias, założyciel · Warszawa",
+    "c.title": "Dołącz do wczesnego dostępu", "c.p": "Szukamy trzech partnerów: bezpłatna usługa zarządzana przez trzy miesiące w zamian za cotygodniową informację zwrotną.",
+    "c.copy": "Kopiuj adres", "c.gh": "Gwiazdka na GitHubie",
+    "ft.l": "Open source na licencji Apache-2.0", "ft.r": "Dane: CISA KEV (CC0), NVD, FIRST EPSS, Have I Been Pwned (CC BY 4.0)"
+  };
+  const en = {};
+  document.querySelectorAll("[data-i18n]").forEach(el => en[el.dataset.i18n] = el.textContent);
+  document.querySelectorAll("[data-i18n-html]").forEach(el => en[el.dataset.i18nHtml] = el.innerHTML);
+  function set(lang) {
+    const t = lang === "pl" ? pl : en;
+    document.querySelectorAll("[data-i18n]").forEach(el => { const v = t[el.dataset.i18n]; if (v) el.textContent = v; });
+    document.querySelectorAll("[data-i18n-html]").forEach(el => { const v = t[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
+    document.documentElement.lang = lang;
+    document.getElementById("lang-en").setAttribute("aria-pressed", lang === "en");
+    document.getElementById("lang-pl").setAttribute("aria-pressed", lang === "pl");
+    try { localStorage.setItem("hejnal-lang", lang); } catch (e) {}
+  }
+  document.getElementById("lang-en").addEventListener("click", () => set("en"));
+  document.getElementById("lang-pl").addEventListener("click", () => set("pl"));
+  let saved = null;
+  try { saved = localStorage.getItem("hejnal-lang"); } catch (e) {}
+  const start = saved || ((navigator.language || "").toLowerCase().startsWith("pl") ? "pl" : "en");
+  if (start === "pl") set("pl"); else document.documentElement.lang = "en";
+  const btn = document.getElementById("copy");
+  btn.addEventListener("click", () => {
+    const text = document.getElementById("mail").textContent;
+    const done = () => { const old = btn.textContent; btn.textContent = document.documentElement.lang === "pl" ? "Skopiowano" : "Copied"; setTimeout(() => btn.textContent = old, 1500); };
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents(document.getElementById("mail")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+  });
+})();
+</script>
+</body>
+</html>
