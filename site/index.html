@@ -3,163 +3,200 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}</style>
 <title>Hejnal</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Hejnal warns small organisations within hours when attackers start exploiting a flaw in something they run, and tells them what to fix first.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-/* Layout: a night-watch tower. Dark brick band for the alarm, a parchment page for the facts, brass for anything that calls for action. */
+/* Layout: a night watch over your attack surface. One dark field with a faint survey grid; signal red marks exploited flaws, brass marks what you can act on. */
 :root {
-  --bg: #f6f1e8;          /* parchment */
-  --fg: #1d1a17;
-  --muted: #5f574d;
-  --line: #ddd3c3;
-  --panel: #fffaf2;
-  --brick: #8e2b22;       /* Kraków brick gothic */
-  --brick-ink: #fbeee6;
-  --brass: #b9852a;
-  --brass-ink: #1d1a17;
-  --night: #1e2230;
-  --night-ink: #e9e4da;
-  --ok: #2f6b45;
-  --warn: #9a5b00;
-  --crit: #a3261b;
-  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --bg: #0a0d13;
+  --bg-2: #0f141d;
+  --panel: #121926;
+  --line: #1f2a3a;
+  --fg: #e6e9ef;
+  --muted: #8e9aae;
+  --dim: #5b6779;
+  --signal: #ff4d3d;
+  --signal-soft: rgba(255, 77, 61, .16);
+  --brass: #e9b04f;
+  --brass-ink: #14100a;
+  --ok: #55d39a;
+  --warn: #f0b23e;
+  --display: "Chakra Petch", "Bahnschrift", "DIN Alternate", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #16181f; --fg: #ece6db; --muted: #a79e90; --line: #2e3240; --panel: #1d2029;
-  --brick: #9e3328; --brick-ink: #fbeee6; --brass: #d3a04a; --brass-ink: #16181f;
-  --night: #0f1117; --night-ink: #e9e4da; --ok: #6fbf8a; --warn: #e0a54a; --crit: #ef7b6c; color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #16181f; --fg: #ece6db; --muted: #a79e90; --line: #2e3240; --panel: #1d2029;
-  --brick: #9e3328; --brick-ink: #fbeee6; --brass: #d3a04a; --brass-ink: #16181f;
-  --night: #0f1117; --night-ink: #e9e4da; --ok: #6fbf8a; --warn: #e0a54a; --crit: #ef7b6c; color-scheme: dark }
-
 * { box-sizing: border-box }
-html { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px) }
-body { margin: 0 }
-body { background: var(--bg); color: var(--fg); font: 400 1.0625rem/1.6 var(--body); }
-.wrap { max-width: 68rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-h1, h2, h3 { font-family: var(--display); line-height: 1.08; text-wrap: balance; margin: 0 }
-h2 { font-size: clamp(1.6rem, 3.2vw, 2.3rem); font-weight: 800; letter-spacing: -0.01em }
-h3 { font-size: 1.15rem; font-weight: 700 }
+html { scroll-behavior: smooth }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto } }
+body {
+  background: var(--bg); color: var(--fg); font: 400 1.02rem/1.6 var(--body);
+  background-image:
+    linear-gradient(rgba(140, 160, 190, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140, 160, 190, .045) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+.wrap { max-width: 72rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+h1, h2, h3 { font-family: var(--display); line-height: 1.05; text-wrap: balance; margin: 0; letter-spacing: -0.01em }
+h2 { font-size: clamp(1.8rem, 3.6vw, 2.7rem); font-weight: 700 }
+h3 { font-size: 1.12rem; font-weight: 600 }
 p { margin: 0 }
 a { color: inherit }
-.eyebrow { font: 600 .75rem/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted) }
-:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; border-radius: 4px }
+code { font-family: var(--mono); font-size: .92em; color: var(--brass) }
+.tag { font: 500 .72rem/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); display: inline-flex; align-items: center; gap: 8px }
+.tag::before { content: ""; width: 8px; height: 8px; background: var(--signal); box-shadow: 0 0 10px var(--signal) }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 3px }
 
 /* top bar */
-.top { background: var(--brick); color: var(--brick-ink) }
-.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 14px; flex-wrap: wrap }
-.brand { display: flex; align-items: center; gap: 10px; font: 800 1.25rem/1 var(--display); text-decoration: none }
-.brand svg { width: 26px; height: 26px }
-.nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font: 500 .95rem/1 var(--display) }
-.nav a { text-decoration: none; opacity: .9 }
-.nav a:hover { opacity: 1; text-decoration: underline }
-.lang { display: inline-flex; border: 1px solid color-mix(in srgb, var(--brick-ink) 45%, transparent); border-radius: 999px; overflow: hidden }
-.lang button { background: none; border: 0; color: inherit; font: 600 .8rem/1 var(--mono); padding: 7px 11px; cursor: pointer }
-.lang button[aria-pressed="true"] { background: var(--brick-ink); color: var(--brick) }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: rgba(10, 13, 19, .82); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line) }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 21; background: var(--bg) }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 12px; flex-wrap: wrap }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 1.2rem/1 var(--display); text-decoration: none; letter-spacing: .04em }
+.brand svg { width: 26px; height: 26px; color: var(--signal) }
+.status { font: 500 .72rem/1 var(--mono); color: var(--ok); display: inline-flex; align-items: center; gap: 7px }
+.status i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: blink 2s infinite }
+.nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font: 500 .9rem/1 var(--body) }
+.nav a { text-decoration: none; color: var(--muted) }
+.nav a:hover { color: var(--fg) }
+.lang { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden }
+.lang button { background: none; border: 0; color: var(--muted); font: 600 .75rem/1 var(--mono); padding: 7px 10px; cursor: pointer }
+.lang button[aria-pressed="true"] { background: var(--fg); color: var(--bg) }
 
 /* hero */
-.hero { background: var(--brick); color: var(--brick-ink); padding-block: clamp(36px, 7vw, 80px) clamp(40px, 7vw, 84px) }
-.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center }
-.hero h1 { font-size: clamp(2.3rem, 5.6vw, 4.2rem); font-weight: 800; letter-spacing: -0.02em }
-.hero h1 .cut { color: var(--brass) }
-.hero .lede { margin-top: 18px; font-size: 1.15rem; max-width: 34rem; opacity: .95 }
-.cta { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap }
-.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 6px; font: 700 1rem/1 var(--display); text-decoration: none; border: 2px solid transparent }
-.btn.primary { background: var(--brass); color: var(--brass-ink) }
-.btn.ghost { border-color: color-mix(in srgb, var(--brick-ink) 55%, transparent); color: var(--brick-ink) }
-.btn:hover { filter: brightness(1.06) }
-.note { margin-top: 14px; font: 400 .8rem/1.4 var(--mono); opacity: .8 }
+.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line) }
+#radar { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .9 }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--bg) 0%, rgba(10,13,19,.88) 38%, rgba(10,13,19,.35) 70%, rgba(10,13,19,.6) 100%); pointer-events: none }
+.hero .wrap { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; padding-block: clamp(48px, 8vw, 104px) }
+.hero h1 { font-size: clamp(2.4rem, 5.8vw, 4.6rem); font-weight: 700; margin-top: 18px }
+.hero h1 .hot { color: var(--signal); text-shadow: 0 0 28px rgba(255, 77, 61, .45) }
+.lede { margin-top: 20px; font-size: 1.12rem; color: #c3cad6; max-width: 34rem }
+.cta { margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap }
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 18px; border-radius: 4px; font: 600 .98rem/1 var(--display); letter-spacing: .03em; text-decoration: none; border: 1px solid transparent; transition: transform .15s ease, box-shadow .15s ease }
+.btn.primary { background: var(--brass); color: var(--brass-ink); box-shadow: 0 0 0 0 rgba(233, 176, 79, .5) }
+.btn.primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(233, 176, 79, .25) }
+.btn.ghost { border-color: var(--line); color: var(--fg); background: rgba(18, 25, 38, .6) }
+.btn.ghost:hover { border-color: var(--muted) }
+.install { margin-top: 18px; display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; font: 400 .82rem/1.4 var(--mono); color: var(--muted); background: rgba(18, 25, 38, .7); border: 1px solid var(--line); padding: 9px 12px; border-radius: 4px; max-width: 100% }
+.install code { color: var(--fg); overflow-wrap: anywhere }
+.install button { background: none; border: 1px solid var(--line); color: var(--muted); font: 500 .72rem/1 var(--mono); padding: 5px 8px; border-radius: 3px; cursor: pointer }
 
-/* the alert card in the hero */
-.alert { background: var(--night); color: var(--night-ink); border-radius: 10px; padding: 18px 18px 14px; box-shadow: 0 18px 40px rgba(0,0,0,.28); font: 400 .86rem/1.5 var(--mono); min-width: 0 }
-.alert .bar { display: flex; justify-content: space-between; gap: 10px; color: #9aa3b5; font-size: .75rem; margin-bottom: 10px; flex-wrap: wrap }
-.alert .row { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; padding: 10px 0; border-top: 1px solid #2c3242 }
-.pill { font: 700 .68rem/1 var(--mono); letter-spacing: .06em; padding: 5px 7px; border-radius: 4px; white-space: nowrap; align-self: start }
-.pill.now { background: #c2392c; color: #fff }
-.pill.week { background: #c98a1f; color: #1d1a17 }
-.pill.month { background: #3b4457; color: #e9e4da }
-.alert b { color: #fff; font-weight: 600 }
-.alert .meta { color: #9aa3b5; display: block; overflow-wrap: anywhere }
-.alert .ex { margin-top: 8px; color: #7d8597; font-size: .72rem }
+/* terminal */
+.term { background: rgba(8, 11, 17, .94); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 77, 61, .06); min-width: 0; overflow: hidden }
+.term .bar { display: flex; align-items: center; gap: 7px; padding: 10px 12px; border-bottom: 1px solid var(--line); font: 400 .72rem/1 var(--mono); color: var(--dim) }
+.term .bar i { width: 10px; height: 10px; border-radius: 50%; background: #2a3445 }
+.term .bar span { margin-left: auto }
+.term pre { margin: 0; padding: 14px 16px 16px; font: 400 .8rem/1.62 var(--mono); color: #b8c2d2; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 23.5em }
+.term .p { color: var(--ok) }
+.term .c { color: var(--fg) }
+.term .d { color: var(--dim) }
+.term .r { color: var(--signal); font-weight: 600 }
+.term .y { color: var(--warn); font-weight: 600 }
+.term .b { color: var(--brass) }
+.term .ok { color: var(--ok) }
+.caret { display: inline-block; width: .55em; height: 1.05em; vertical-align: -.15em; background: var(--fg); animation: blink 1s steps(1) infinite }
+@keyframes blink { 50% { opacity: 0 } }
 
-/* the broken note: hejnał stops mid-phrase */
-.staff { display: block; width: 100%; height: 40px; margin-top: 30px; color: var(--brick-ink); opacity: .55 }
+/* ticker */
+.ticker { border-bottom: 1px solid var(--line); background: var(--bg-2); overflow: hidden; white-space: nowrap; font: 500 .8rem/1 var(--mono); color: var(--muted) }
+.ticker .run { display: inline-flex; gap: 34px; padding-block: 13px; animation: tick 60s linear infinite; padding-left: 34px }
+.ticker b { color: var(--signal); font-weight: 600; margin-right: 8px }
+@keyframes tick { to { transform: translateX(-50%) } }
 
-section { padding-block: clamp(48px, 7vw, 84px) }
-.head { display: grid; gap: 10px; max-width: 44rem; margin-bottom: 30px }
-.head p { color: var(--muted) }
+section { padding-block: clamp(56px, 8vw, 100px); border-bottom: 1px solid var(--line) }
+.head { display: grid; gap: 12px; max-width: 46rem; margin-bottom: 36px }
+.head p { color: var(--muted); font-size: 1.05rem }
 
-/* steps: a real sequence */
-.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; counter-reset: s; list-style: none; padding: 0; margin: 0 }
-.steps li { border-top: 3px solid var(--brick); padding-top: 14px; display: grid; gap: 8px; min-width: 0 }
-.steps li::before { counter-increment: s; content: "Step " counter(s); font: 600 .75rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--brick) }
-:root[lang="pl"] .steps li::before { content: "Krok " counter(s) }
-.steps p { color: var(--muted) }
+/* pipeline */
+.pipe { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px }
+.pipe svg.wire { position: absolute; left: 0; right: 0; top: 30px; width: 100%; height: 4px; overflow: visible }
+.wire line { stroke: var(--line); stroke-width: 2 }
+.wire .flow { stroke: var(--signal); stroke-dasharray: 6 26; animation: flow 1.6s linear infinite }
+@keyframes flow { to { stroke-dashoffset: -32 } }
+.stage { position: relative; display: grid; gap: 10px; align-content: start; min-width: 0 }
+.node { width: 60px; height: 60px; border-radius: 10px; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); font: 700 .8rem/1 var(--mono); color: var(--brass); position: relative }
+.stage:last-child .node { border-color: var(--signal); color: var(--signal); box-shadow: 0 0 24px var(--signal-soft) }
+.stage .k { font: 500 .7rem/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim) }
+.stage p { color: var(--muted); font-size: .96rem }
 
-/* numbers */
-.facts { background: var(--panel); border-block: 1px solid var(--line) }
-.figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px }
-.fig { display: grid; gap: 6px; min-width: 0 }
-.fig .n { font: 800 clamp(2.2rem, 5vw, 3.2rem)/1 var(--display); color: var(--brick); font-variant-numeric: tabular-nums }
+/* numbers + waffle */
+.nums { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: clamp(24px, 4vw, 56px); align-items: center }
+.figs { display: grid; gap: 26px }
+.fig { display: grid; gap: 4px; border-left: 2px solid var(--line); padding-left: 16px }
+.fig .n { font: 700 clamp(2.6rem, 6vw, 4rem)/1 var(--display); font-variant-numeric: tabular-nums; color: var(--fg) }
+.fig .n.hot { color: var(--signal) }
 .fig p { color: var(--muted) }
-.meter { margin-top: 30px; display: grid; gap: 8px }
-.meter .track { height: 14px; border-radius: 7px; background: var(--line); overflow: hidden }
-.meter .fill { height: 100%; width: 47.3%; background: var(--brick) }
-.meter .lbl { display: flex; justify-content: space-between; gap: 10px; font: 400 .8rem/1.4 var(--mono); color: var(--muted); flex-wrap: wrap }
+.waffle { display: grid; gap: 10px; min-width: 0 }
+#kev { width: 100%; height: auto; display: block; aspect-ratio: 64 / 28; max-width: 100% }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; font: 400 .78rem/1.4 var(--mono); color: var(--muted) }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 7px; vertical-align: -1px; background: var(--signal) }
+.legend span.no::before { background: #263142 }
 
 /* principles */
-.rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 40px }
-.rules div { display: grid; gap: 6px; min-width: 0 }
-.rules p { color: var(--muted) }
+.rules { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line) }
+.rules div { background: var(--bg); padding: 22px; display: grid; gap: 8px; align-content: start; min-width: 0; transition: background .2s ease }
+.rules div:hover { background: var(--panel) }
+.rules .ix { font: 500 .72rem/1 var(--mono); color: var(--signal) }
+.rules p { color: var(--muted); font-size: .95rem }
 
 /* tiers */
-.tiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px }
-.tier { border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 10px; align-content: start; background: var(--bg); min-width: 0 }
-.tier.feat { border: 2px solid var(--brick) }
-.tier .price { font: 800 1.4rem/1.1 var(--display) }
-.tier .price small { font: 400 .8rem/1.3 var(--mono); color: var(--muted); display: block; margin-top: 4px }
-.tier ul { margin: 0; padding-left: 1.1em; color: var(--muted); display: grid; gap: 4px; font-size: .97rem }
-.small { font: 400 .8rem/1.5 var(--mono); color: var(--muted); margin-top: 18px }
+.tiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px }
+.tier { border: 1px solid var(--line); border-radius: 6px; padding: 22px; display: grid; gap: 12px; align-content: start; background: rgba(15, 20, 29, .85); min-width: 0; transition: border-color .2s ease, transform .2s ease }
+.tier:hover { border-color: var(--muted); transform: translateY(-2px) }
+.tier.feat { border-color: var(--brass); box-shadow: 0 0 0 1px rgba(233, 176, 79, .25), 0 20px 50px rgba(0,0,0,.35) }
+.tier .price { font: 700 1.6rem/1.1 var(--display) }
+.tier .price small { font: 400 .76rem/1.3 var(--mono); color: var(--muted); display: block; margin-top: 6px }
+.tier ul { margin: 0; padding: 0; list-style: none; color: var(--muted); display: grid; gap: 7px; font-size: .94rem }
+.tier li::before { content: "› "; color: var(--brass) }
+.small { font: 400 .78rem/1.5 var(--mono); color: var(--dim); margin-top: 18px }
 
-/* nis2 band */
-.nis2 { background: var(--night); color: var(--night-ink) }
-.nis2 .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start }
-.nis2 h2 { color: var(--night-ink) }
-.nis2 .eyebrow { color: #9aa3b5 }
-.dates { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px }
-.dates li { display: grid; grid-template-columns: 8.5rem minmax(0,1fr); gap: 14px; border-left: 3px solid var(--brass); padding-left: 14px }
-.dates time { font: 600 .9rem/1.4 var(--mono); color: var(--brass) }
+/* NIS2 timeline */
+.timeline { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding-top: 34px }
+.timeline::before { content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 2px; background: linear-gradient(90deg, var(--ok), var(--warn), var(--signal)) }
+.tl { position: relative; display: grid; gap: 6px; min-width: 0 }
+.tl::before { content: ""; position: absolute; top: -31px; left: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--bg); border: 2px solid var(--warn) }
+.tl:first-child::before { border-color: var(--ok); background: var(--ok) }
+.tl:last-child::before { border-color: var(--signal) }
+.tl time { font: 600 .95rem/1.3 var(--mono); color: var(--fg) }
+.tl span { color: var(--muted) }
+.now-pin { font: 500 .7rem/1 var(--mono); color: var(--ok); letter-spacing: .1em; text-transform: uppercase }
 
-/* founder + footer */
-.founder .wrap { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 40px; align-items: center }
-.founder blockquote { margin: 0; font: 400 1.35rem/1.45 var(--body); border-left: 4px solid var(--brick); padding-left: 18px }
-.founder .who { margin-top: 12px; font: 600 .9rem/1.4 var(--mono); color: var(--muted) }
-.contact { display: grid; gap: 12px }
+/* founder + contact */
+.founder .wrap { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 48px; align-items: center }
+blockquote { margin: 0; font: 500 clamp(1.25rem, 2.4vw, 1.6rem)/1.4 var(--display); border-left: 3px solid var(--signal); padding-left: 20px }
+.who { margin-top: 14px; font: 500 .85rem/1.4 var(--mono); color: var(--muted) }
+.contact { display: grid; gap: 14px }
+.contact p { color: var(--muted) }
 .copyrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
-.copyrow code { font: 400 .95rem/1 var(--mono); background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; overflow-wrap: anywhere }
-.copyrow button { font: 600 .85rem/1 var(--display); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer }
-footer { border-top: 1px solid var(--line); padding-block: 26px; color: var(--muted); font: 400 .82rem/1.6 var(--mono) }
+.copyrow code { color: var(--fg); background: var(--panel); border: 1px solid var(--line); padding: 11px 13px; border-radius: 4px; overflow-wrap: anywhere }
+.copyrow button { font: 600 .85rem/1 var(--display); padding: 11px 13px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer }
+footer { padding-block: 26px; color: var(--dim); font: 400 .78rem/1.6 var(--mono) }
 footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap }
 
-@media (max-width: 860px) {
-  .hero .wrap, .nis2 .wrap, .founder .wrap { grid-template-columns: minmax(0, 1fr) }
-  .tiers { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+/* reveal: content is visible at rest; JS only adds a short lift when it scrolls in */
+.lift { transition: transform .7s cubic-bezier(.2, .7, .2, 1) }
+.lift.pre { transform: translateY(14px) }
+
+@media (max-width: 900px) {
+  .hero .wrap, .nums, .founder .wrap { grid-template-columns: minmax(0, 1fr) }
+  .hero::after { background: linear-gradient(180deg, rgba(10,13,19,.75), rgba(10,13,19,.92)) }
+  .pipe, .rules, .tiers { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .pipe svg.wire { display: none }
 }
 @media (max-width: 560px) {
-  .steps, .figures, .rules, .tiers { grid-template-columns: minmax(0, 1fr) }
-  .dates li { grid-template-columns: minmax(0, 1fr); gap: 2px }
-  .nav a.hide-sm { display: none }
+  .pipe, .rules, .tiers, .timeline { grid-template-columns: minmax(0, 1fr) }
+  .timeline { padding-top: 0; padding-left: 26px }
+  .timeline::before { left: 6px; right: auto; top: 0; bottom: 0; width: 2px; height: auto; background: linear-gradient(180deg, var(--ok), var(--warn), var(--signal)) }
+  .tl::before { top: 4px; left: -26px }
+  .nav a.hide-sm, .status { display: none }
 }
-@media (prefers-reduced-motion: no-preference) {
-  .meter .fill { animation: grow 1.2s ease-out both }
-  @keyframes grow { from { width: 0 } to { width: 47.3% } }
+@media (prefers-reduced-motion: reduce) {
+  .ticker .run, .wire .flow, .caret, .status i { animation: none }
+  .lift, .lift.pre { transform: none; transition: none }
 }
 </style>
 </head>
@@ -168,11 +205,13 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 <header class="top">
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Hejnal">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M4 13h10l12-7v20l-12-7H4z"/><path fill="currentColor" d="M7 19h4l2 7H9z"/></svg>
-      Hejnal
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M3 13h10l13-7v20l-13-7H3z"/><path fill="currentColor" d="M6 19h4l2 7H8z"/><path d="M28.5 11a7 7 0 0 1 0 10" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      HEJNAL
     </a>
+    <span class="status"><i></i><span data-i18n="status">catalog synced · watching</span></span>
     <nav class="nav" aria-label="Sections">
       <a class="hide-sm" href="#how" data-i18n="nav.how">How it works</a>
+      <a class="hide-sm" href="#coverage" data-i18n="nav.cov">Coverage</a>
       <a class="hide-sm" href="#plans" data-i18n="nav.plans">Plans</a>
       <a href="https://github.com/Legatia/hejnal">GitHub</a>
       <span class="lang" role="group" aria-label="Language">
@@ -184,122 +223,140 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 </header>
 
 <main id="top">
-  <section class="hero">
+  <section class="hero" style="padding:0">
+    <canvas id="radar" aria-hidden="true"></canvas>
     <div class="wrap">
-      <div>
-        <p class="eyebrow" style="color:inherit;opacity:.8" data-i18n="hero.eyebrow">Early warning for internet-facing systems</p>
-        <h1 style="margin-top:14px" data-i18n-html="hero.title">Know within hours when attackers start <span class="cut">exploiting something you run.</span></h1>
-        <p class="lede" data-i18n="hero.lede">Hejnal finds your internet-facing systems, recognises the software on them and checks it against the flaws attackers are exploiting right now. You get a short, ranked fix list instead of a 300-page scan report.</p>
+      <div class="lift">
+        <p class="tag" data-i18n="hero.tag">Exploited-flaw early warning</p>
+        <h1 data-i18n-html="hero.title">Attackers found a new hole. <span class="hot">You hear about it first.</span></h1>
+        <p class="lede" data-i18n="hero.lede">Hejnal maps what you expose to the internet, recognises the software behind it and matches it against the flaws attackers are exploiting right now. Within hours you get a short, ranked list of what to fix.</p>
         <div class="cta">
-          <a class="btn primary" href="https://github.com/Legatia/hejnal" data-i18n="hero.cta1">Get the open-source tool</a>
-          <a class="btn ghost" href="#contact" data-i18n="hero.cta2">Join early access</a>
+          <a class="btn primary" href="#contact" data-i18n="hero.cta2">Join early access</a>
+          <a class="btn ghost" href="https://github.com/Legatia/hejnal" data-i18n="hero.cta1">View on GitHub</a>
         </div>
-        <p class="note" data-i18n="hero.note">Free and open source (Apache-2.0). Hosted and managed plans for teams.</p>
+        <div class="install"><span>$</span><code id="cmd">go install github.com/Legatia/hejnal/cmd/hejnal@latest</code><button type="button" id="copy-cmd" data-i18n="copy">copy</button></div>
       </div>
 
-      <div class="alert" role="img" aria-label="Example alert from Hejnal">
-        <div class="bar"><span>hejnal · fix list</span><span>example.pl · 06:00</span></div>
-        <div class="row"><span class="pill now" data-i18n="alert.now">FIX NOW</span><span><b>Ivanti Connect Secure</b> · vpn.example.pl:443<span class="meta" data-i18n="alert.r1">Exploited flaw added to CISA's catalog 2 days ago · used in ransomware attacks</span></span></div>
-        <div class="row"><span class="pill week" data-i18n="alert.week">THIS WEEK</span><span><b>WordPress 6.4.3</b> · www.example.pl:443<span class="meta" data-i18n="alert.r2">Version confirmed affected by NVD · patch to the latest release</span></span></div>
-        <div class="row"><span class="pill month" data-i18n="alert.month">THIS MONTH</span><span><b>Exim 4.94.2</b> · mx.example.pl:25<span class="meta" data-i18n="alert.r3">Recognised from its mail greeting · check your distribution's security updates</span></span></div>
-        <p class="ex" data-i18n="alert.ex">Example output for a made-up company.</p>
+      <div class="term lift" role="img" aria-label="Example terminal session: hejnal run finds three exploited flaws">
+        <div class="bar"><i></i><i></i><i></i><span>hejnal run · example.pl</span></div>
+<pre id="tty"><span class="p">$</span> <span class="c">hejnal run -checks</span>
+<span class="d">scope    example.pl · authorised by A. Nowak, 2026-11-02</span>
+<span class="d">feeds    CISA KEV 1,767 · EPSS 2026-11-07 · NVD</span>
+discover 3 domains → 41 names (certificate logs) → 19 live
+identify 279 rules → 23 products on 19 services
+match    <span class="r">3 exploited flaws</span> · 1 exposed file
+
+<span class="r">FIX NOW</span>    Ivanti Connect Secure   vpn.example.pl:443
+           <span class="d">added to KEV 2 days ago · used by ransomware</span>
+<span class="y">THIS WEEK</span>  WordPress 6.4.3         www.example.pl:443
+           <span class="d">version confirmed affected (NVD)</span>
+<span class="y">THIS WEEK</span>  /.env readable          shop.example.pl:443
+<span class="b">LATER</span>      Exim 4.94.2             mx.example.pl:25
+           <span class="d">seen in mail greeting · check distro updates</span>
+
+<span class="ok">✓</span> fix list → .hejnal/fixlist.md · alert sent to #security
+<span class="p">$</span> <span class="caret"></span></pre>
       </div>
     </div>
-    <div class="wrap">
-      <svg class="staff" viewBox="0 0 600 40" preserveAspectRatio="none" aria-hidden="true">
-        <g fill="none" stroke="currentColor" stroke-width="1"><path d="M0 8H600M0 16H600M0 24H600M0 32H600"/></g>
-        <g fill="currentColor"><ellipse cx="40" cy="28" rx="6" ry="4.5"/><ellipse cx="100" cy="20" rx="6" ry="4.5"/><ellipse cx="160" cy="12" rx="6" ry="4.5"/><ellipse cx="220" cy="16" rx="6" ry="4.5"/><ellipse cx="280" cy="8" rx="6" ry="4.5"/><ellipse cx="340" cy="12" rx="6" ry="4.5"/></g>
-        <path d="M352 12 L372 12" stroke="currentColor" stroke-width="2" stroke-dasharray="3 4"/>
-      </svg>
-    </div>
   </section>
+
+  <div class="ticker" aria-label="Recently exploited products Hejnal recognises">
+    <div class="run" id="ticker">
+      <span><b>KEV</b>Ivanti Connect Secure</span><span><b>KEV</b>Citrix NetScaler</span><span><b>KEV</b>Fortinet FortiOS</span><span><b>KEV</b>Cisco IOS XE</span><span><b>KEV</b>Palo Alto GlobalProtect</span><span><b>KEV</b>MOVEit Transfer</span><span><b>KEV</b>Confluence</span><span><b>KEV</b>Exchange</span><span><b>KEV</b>SAP NetWeaver</span><span><b>KEV</b>VMware ESXi</span><span><b>KEV</b>Veeam</span><span><b>KEV</b>MikroTik RouterOS</span><span><b>KEV</b>Hikvision</span><span><b>KEV</b>Next.js</span><span><b>KEV</b>Langflow</span><span><b>KEV</b>Exim</span>
+    </div>
+  </div>
 
   <section id="how">
     <div class="wrap">
-      <div class="head">
-        <p class="eyebrow" data-i18n="how.eyebrow">How it works</p>
-        <h2 data-i18n="how.title">One ordinary visit per system, three questions answered</h2>
+      <div class="head lift">
+        <p class="tag" data-i18n="how.tag">How it works</p>
+        <h2 data-i18n="how.title">From your domain name to a fix list, in four steps</h2>
         <p data-i18n="how.sub">Hejnal sends what any visitor sends. It never logs in, never tries an exploit, and only checks systems you have authorised in writing.</p>
       </div>
-      <ol class="steps">
-        <li><h3 data-i18n="s1.t">Find what you expose</h3><p data-i18n="s1.p">Your domains, subdomains from public certificate logs, your IP ranges and the ports that answer.</p></li>
-        <li><h3 data-i18n="s2.t">Recognise the software</h3><p data-i18n="s2.p">279 products, from VPN gateways and firewalls to routers, cameras, mail servers, CMSs and developer tools, read from web pages and service greetings.</p></li>
-        <li><h3 data-i18n="s3.t">Match what attackers exploit</h3><p data-i18n="s3.p">CISA's catalog of exploited flaws, version ranges from NVD and exploit likelihood from FIRST, ranked into a weekly fix list and alerts within hours.</p></li>
-      </ol>
+      <div class="pipe">
+        <svg class="wire" viewBox="0 0 1000 4" preserveAspectRatio="none" aria-hidden="true"><line x1="30" y1="2" x2="970" y2="2"/><line class="flow" x1="30" y1="2" x2="970" y2="2"/></svg>
+        <div class="stage lift"><div class="node">01</div><span class="k" data-i18n="s1.k">Discover</span><h3 data-i18n="s1.t">Find what you expose</h3><p data-i18n="s1.p">Domains, subdomains from public certificate logs, IP ranges and the ports that answer.</p></div>
+        <div class="stage lift"><div class="node">02</div><span class="k" data-i18n="s2.k">Identify</span><h3 data-i18n="s2.t">Recognise the software</h3><p data-i18n="s2.p">279 products from web pages and service greetings: VPNs, firewalls, routers, cameras, mail servers, CMSs, developer tools.</p></div>
+        <div class="stage lift"><div class="node">03</div><span class="k" data-i18n="s3.k">Match</span><h3 data-i18n="s3.t">Check what attackers exploit</h3><p data-i18n="s3.p">CISA's catalog of exploited flaws, NVD version ranges and FIRST exploit likelihood, every morning.</p></div>
+        <div class="stage lift"><div class="node">!</div><span class="k" data-i18n="s4.k">Alert</span><h3 data-i18n="s4.t">Tell you what to fix first</h3><p data-i18n="s4.p">A ranked fix list in English or Polish, alerts in Slack, Teams or email, a REST API and an MCP server for AI agents.</p></div>
+      </div>
     </div>
   </section>
 
-  <section class="facts">
-    <div class="wrap">
-      <div class="figures">
-        <div class="fig"><span class="n">279</span><p data-i18n="f1">products recognised, each with a test sample of what it sends</p></div>
-        <div class="fig"><span class="n">836</span><p data-i18n="f2">of the 1,767 flaws in CISA's catalog of exploited vulnerabilities are covered</p></div>
-        <div class="fig"><span class="n">43</span><p data-i18n="f3">days: the median time to patch a flaw attackers already exploit (Verizon DBIR 2026)</p></div>
+  <section id="coverage">
+    <div class="wrap nums">
+      <div class="figs">
+        <div class="head lift" style="margin:0">
+          <p class="tag" data-i18n="cov.tag">Coverage</p>
+          <h2 data-i18n="cov.title">Every square is a flaw attackers have used</h2>
+        </div>
+        <div class="fig lift"><span class="n" data-count="279">279</span><p data-i18n="f1">products recognised, each with a test sample of what it sends</p></div>
+        <div class="fig lift"><span class="n hot" data-count="836">836</span><p data-i18n="f2">of the 1,767 flaws in CISA's catalog of exploited vulnerabilities are covered</p></div>
+        <div class="fig lift"><span class="n" data-count="43">43</span><p data-i18n="f3">days: the median time to patch a flaw attackers already exploit (Verizon DBIR 2026)</p></div>
       </div>
-      <div class="meter" aria-label="Coverage of CISA's catalog">
-        <div class="track"><div class="fill"></div></div>
-        <div class="lbl"><span data-i18n="m.l">47% of the catalog covered</span><span data-i18n="m.r">most of the rest is desktop and phone software no network scan can see</span></div>
+      <div class="waffle lift">
+        <canvas id="kev" width="1280" height="560" role="img" aria-label="1,767 squares, one per flaw in CISA's catalog; 836 lit red are covered by Hejnal"></canvas>
+        <div class="legend"><span data-i18n="lg.on">covered by Hejnal (836)</span><span class="no" data-i18n="lg.off">mostly desktop and phone software no network scan can see (931)</span></div>
       </div>
     </div>
   </section>
 
   <section>
     <div class="wrap">
-      <div class="head">
-        <p class="eyebrow" data-i18n="r.eyebrow">Built to be trusted</p>
+      <div class="head lift">
+        <p class="tag" data-i18n="r.tag">Built to be trusted</p>
         <h2 data-i18n="r.title">Safe by design, traceable by default</h2>
       </div>
       <div class="rules">
-        <div><h3 data-i18n="r1.t">Detection only</h3><p data-i18n="r1.p">No exploits, no logins, no brute force. Optional checks only look for exposed files such as <code>.env</code> and <code>.git</code>.</p></div>
-        <div><h3 data-i18n="r2.t">Every finding has a source</h3><p data-i18n="r2.p">Each item links to the catalog entry, the version check and the evidence Hejnal saw, so you can verify it yourself.</p></div>
-        <div><h3 data-i18n="r3.t">Written authorisation</h3><p data-i18n="r3.p">Every scope file records who approved the scan and when. Hejnal refuses targets outside it.</p></div>
-        <div><h3 data-i18n="r4.t">Signed, open releases</h3><p data-i18n="r4.p">Open-source code, signed builds and a list of every component, because security tools are targets too.</p></div>
+        <div><span class="ix">detect-only</span><h3 data-i18n="r1.t">No exploits, no logins</h3><p data-i18n="r1.p">Optional checks only look for exposed files such as .env and .git.</p></div>
+        <div><span class="ix">evidence</span><h3 data-i18n="r2.t">Every finding has a source</h3><p data-i18n="r2.p">Each item links to the catalog entry, the version check and what Hejnal saw.</p></div>
+        <div><span class="ix">scope.json</span><h3 data-i18n="r3.t">Written authorisation</h3><p data-i18n="r3.p">Every scope records who approved the scan and when. Targets outside it are refused.</p></div>
+        <div><span class="ix">sigstore</span><h3 data-i18n="r4.t">Signed, open releases</h3><p data-i18n="r4.p">Open-source code, signed builds and a list of every component.</p></div>
       </div>
     </div>
   </section>
 
-  <section id="plans" class="facts">
+  <section id="plans">
     <div class="wrap">
-      <div class="head">
-        <p class="eyebrow" data-i18n="p.eyebrow">Plans</p>
-        <h2 data-i18n="p.title">Run it yourself, or let us watch for you</h2>
+      <div class="head lift">
+        <p class="tag" data-i18n="p.tag">Plans</p>
+        <h2 data-i18n="p.title">Run it yourself, or let us keep watch</h2>
       </div>
       <div class="tiers">
-        <div class="tier"><h3 data-i18n="t1.n">Open source</h3><p class="price" data-i18n-html="t1.p">Free<small>Apache-2.0</small></p><ul><li data-i18n="t1.a">Command-line tool, REST API and MCP server</li><li data-i18n="t1.b">Fix list, monthly report, NIS2 draft</li><li data-i18n="t1.c">Slack, Teams and email alerts</li></ul></div>
-        <div class="tier feat"><h3 data-i18n="t2.n">Hosted</h3><p class="price" data-i18n-html="t2.p">€99 / month<small>up to 250 internet-facing assets</small></p><ul><li data-i18n="t2.a">One dashboard across sites</li><li data-i18n="t2.b">Alerts within hours of a new exploited flaw</li><li data-i18n="t2.c">Sign-in controls, audit trail, report exports</li></ul></div>
-        <div class="tier"><h3 data-i18n="t3.n">Managed</h3><p class="price" data-i18n-html="t3.p">from €490 / month<small>per organisation</small></p><ul><li data-i18n="t3.a">We apply fixes and check for break-ins</li><li data-i18n="t3.b">We rotate exposed passwords and keys</li><li data-i18n="t3.c">We draft your NIS2 incident reports</li></ul></div>
-        <div class="tier"><h3 data-i18n="t4.n">Partners</h3><p class="price" data-i18n-html="t4.p">€29 / month<small>per client organisation</small></p><ul><li data-i18n="t4.a">For IT service firms</li><li data-i18n="t4.b">Many clients in one installation</li><li data-i18n="t4.c">Reports under your own brand</li></ul></div>
+        <div class="tier lift"><h3 data-i18n="t1.n">Open source</h3><p class="price" data-i18n-html="t1.p">Free<small>Apache-2.0</small></p><ul><li data-i18n="t1.a">CLI, REST API and MCP server</li><li data-i18n="t1.b">Fix list, monthly report, NIS2 draft</li><li data-i18n="t1.c">Slack, Teams and email alerts</li></ul></div>
+        <div class="tier feat lift"><h3 data-i18n="t2.n">Hosted</h3><p class="price" data-i18n-html="t2.p">€99 / month<small>up to 250 internet-facing assets</small></p><ul><li data-i18n="t2.a">One dashboard across sites</li><li data-i18n="t2.b">Alerts within hours of a new exploited flaw</li><li data-i18n="t2.c">Sign-in controls, audit trail, exports</li></ul></div>
+        <div class="tier lift"><h3 data-i18n="t3.n">Managed</h3><p class="price" data-i18n-html="t3.p">from €490 / month<small>per organisation</small></p><ul><li data-i18n="t3.a">We apply fixes and check for break-ins</li><li data-i18n="t3.b">We rotate exposed passwords and keys</li><li data-i18n="t3.c">We draft your NIS2 incident reports</li></ul></div>
+        <div class="tier lift"><h3 data-i18n="t4.n">Partners</h3><p class="price" data-i18n-html="t4.p">€29 / month<small>per client organisation</small></p><ul><li data-i18n="t4.a">For IT service firms</li><li data-i18n="t4.b">Many clients in one installation</li><li data-i18n="t4.c">Reports under your own brand</li></ul></div>
       </div>
       <p class="small" data-i18n="p.small">Early-access prices for the first customers. The open-source core stays free.</p>
     </div>
   </section>
 
-  <section class="nis2">
+  <section>
     <div class="wrap">
-      <div class="head" style="margin:0">
-        <p class="eyebrow" data-i18n="n.eyebrow">NIS2 in Poland</p>
-        <h2 data-i18n="n.title">The deadlines are set. Exposure is the easiest place to start.</h2>
-        <p style="color:#b9b2a6" data-i18n="n.p">The amended KSC act makes covered organisations, and the suppliers they rely on, show they manage known risks. Hejnal gives you the evidence: what was exposed, when you knew, and when it was fixed.</p>
+      <div class="head lift">
+        <p class="tag" data-i18n="n.tag">NIS2 in Poland</p>
+        <h2 data-i18n="n.title">The clock is already running</h2>
+        <p data-i18n="n.p">The amended KSC act makes covered organisations, and the suppliers they rely on, show they manage known risks. Hejnal keeps the evidence: what was exposed, when you knew and when it was fixed.</p>
       </div>
-      <ul class="dates">
-        <li><time datetime="2026-04-03">3 April 2026</time><span data-i18n="d1">Amended KSC act in force</span></li>
-        <li><time datetime="2027-04-03">3 April 2027</time><span data-i18n="d2">Security measures must be in place</span></li>
-        <li><time datetime="2028-04">April 2028</time><span data-i18n="d3">First audits for essential entities; fines up to €10 million or 2% of turnover</span></li>
-      </ul>
+      <div class="timeline">
+        <div class="tl lift"><span class="now-pin" data-i18n="d0">in force</span><time datetime="2026-04-03">3 April 2026</time><span data-i18n="d1">Amended KSC act takes effect</span></div>
+        <div class="tl lift"><time datetime="2027-04-03">3 April 2027</time><span data-i18n="d2">Security measures must be in place</span></div>
+        <div class="tl lift"><time datetime="2028-04">April 2028</time><span data-i18n="d3">First audits for essential entities; fines up to €10 million or 2% of turnover</span></div>
+      </div>
     </div>
   </section>
 
   <section id="contact" class="founder">
     <div class="wrap">
-      <div>
-        <blockquote data-i18n="q">Kraków's trumpeter warned the city when he saw raiders coming. Hejnal does the same for your systems: it sounds as soon as attackers start using a flaw in something you run.</blockquote>
-        <p class="who" data-i18n="q.who">Tobias, founder · Warsaw</p>
+      <div class="lift">
+        <blockquote data-i18n="q">Kraków's trumpeter warned the city the moment he saw raiders coming. Hejnal does the same for your systems.</blockquote>
+        <p class="who" data-i18n="q.who">Tobias, founder · Legatia Solutions · Warsaw</p>
       </div>
-      <div class="contact">
+      <div class="contact lift">
         <h2 data-i18n="c.title">Join early access</h2>
-        <p style="color:var(--muted)" data-i18n="c.p">We are taking three design partners: a free managed service for three months in exchange for weekly feedback.</p>
-        <div class="copyrow"><code id="mail">hello@hejnal.example</code><button type="button" id="copy" data-i18n="c.copy">Copy address</button></div>
-        <a class="btn primary" style="justify-self:start" href="https://github.com/Legatia/hejnal" data-i18n="c.gh">Star on GitHub</a>
+        <p data-i18n="c.p">We are taking three design partners: a free managed service for three months in exchange for weekly feedback.</p>
+        <div class="copyrow"><code id="mail">hejnal@legatia.solutions</code><button type="button" id="copy-mail" data-i18n="c.copy">Copy address</button></div>
       </div>
     </div>
   </section>
@@ -307,62 +364,57 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 
 <footer>
   <div class="wrap">
-    <span>© 2026 Hejnal · <span data-i18n="ft.l">Open source under Apache-2.0</span></span>
+    <span>© 2026 Legatia Solutions · Hejnal · <span data-i18n="ft.l">open source under Apache-2.0</span></span>
     <span data-i18n="ft.r">Data: CISA KEV (CC0), NVD, FIRST EPSS, Have I Been Pwned (CC BY 4.0)</span>
   </div>
 </footer>
 
 <script>
 (() => {
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- language ---------- */
   const pl = {
-    "nav.how": "Jak to działa", "nav.plans": "Plany",
-    "hero.eyebrow": "Wczesne ostrzeganie dla systemów w internecie",
-    "hero.title": "Dowiedz się w ciągu godzin, gdy atakujący zaczną <span class=\"cut\">wykorzystywać coś, czego używasz.</span>",
-    "hero.lede": "Hejnal znajduje Twoje systemy widoczne z internetu, rozpoznaje działające na nich oprogramowanie i sprawdza je pod kątem podatności, które atakujący wykorzystują właśnie teraz. Dostajesz krótką listę poprawek według pilności zamiast 300-stronicowego raportu.",
-    "hero.cta1": "Pobierz narzędzie open source", "hero.cta2": "Dołącz do wczesnego dostępu",
-    "hero.note": "Bezpłatne i otwarte (Apache-2.0). Plany hostowane i zarządzane dla zespołów.",
-    "alert.now": "NAPRAW TERAZ", "alert.week": "W TYM TYGODNIU", "alert.month": "W TYM MIESIĄCU",
-    "alert.r1": "Podatność dodana do katalogu CISA 2 dni temu · używana w atakach ransomware",
-    "alert.r2": "Wersja potwierdzona jako podatna przez NVD · zaktualizuj do najnowszej",
-    "alert.r3": "Rozpoznany po powitaniu serwera poczty · sprawdź aktualizacje bezpieczeństwa dystrybucji",
-    "alert.ex": "Przykładowy wynik dla wymyślonej firmy.",
-    "how.eyebrow": "Jak to działa", "how.title": "Jedna zwykła wizyta na system, trzy odpowiedzi",
+    "status": "katalog aktualny · czuwam",
+    "nav.how": "Jak to działa", "nav.cov": "Zasięg", "nav.plans": "Plany",
+    "hero.tag": "Wczesne ostrzeganie o wykorzystywanych podatnościach",
+    "hero.title": "Atakujący znaleźli nową lukę. <span class=\"hot\">Ty dowiadujesz się pierwszy.</span>",
+    "hero.lede": "Hejnal mapuje to, co wystawiasz do internetu, rozpoznaje stojące za tym oprogramowanie i porównuje je z podatnościami, które atakujący wykorzystują właśnie teraz. W ciągu godzin dostajesz krótką listę poprawek według pilności.",
+    "hero.cta1": "Zobacz na GitHubie", "hero.cta2": "Dołącz do wczesnego dostępu", "copy": "kopiuj",
+    "how.tag": "Jak to działa", "how.title": "Od nazwy domeny do listy poprawek w czterech krokach",
     "how.sub": "Hejnal wysyła to, co wysłałby każdy odwiedzający. Nigdy się nie loguje, nie próbuje exploitów i sprawdza tylko systemy, na które masz pisemną zgodę.",
-    "s1.t": "Znajdź, co wystawiasz", "s1.p": "Twoje domeny, subdomeny z publicznych logów certyfikatów, zakresy IP i odpowiadające porty.",
-    "s2.t": "Rozpoznaj oprogramowanie", "s2.p": "279 produktów: od bramek VPN i firewalli po routery, kamery, serwery poczty, CMS-y i narzędzia programistów, rozpoznawanych po stronach i powitaniach usług.",
-    "s3.t": "Dopasuj to, co atakujący wykorzystują", "s3.p": "Katalog wykorzystywanych podatności CISA, zakresy wersji z NVD i prawdopodobieństwo exploitacji z FIRST, ułożone w cotygodniową listę poprawek i alerty w ciągu godzin.",
+    "s1.k": "Odkryj", "s1.t": "Znajdź, co wystawiasz", "s1.p": "Domeny, subdomeny z publicznych logów certyfikatów, zakresy IP i odpowiadające porty.",
+    "s2.k": "Rozpoznaj", "s2.t": "Rozpoznaj oprogramowanie", "s2.p": "279 produktów ze stron i powitań usług: VPN-y, firewalle, routery, kamery, serwery poczty, CMS-y, narzędzia programistów.",
+    "s3.k": "Dopasuj", "s3.t": "Sprawdź, co atakujący wykorzystują", "s3.p": "Katalog wykorzystywanych podatności CISA, zakresy wersji z NVD i prawdopodobieństwo exploitacji z FIRST, codziennie rano.",
+    "s4.k": "Alarm", "s4.t": "Powiedz, co naprawić najpierw", "s4.p": "Lista poprawek po polsku lub angielsku, alerty na Slacku, Teams lub e-mailem, REST API i serwer MCP dla agentów AI.",
+    "cov.tag": "Zasięg", "cov.title": "Każdy kwadrat to podatność, którą atakujący wykorzystali",
     "f1": "rozpoznawanych produktów, każdy z testową próbką tego, co wysyła",
     "f2": "z 1767 podatności w katalogu wykorzystywanych podatności CISA jest objętych",
     "f3": "dni: mediana czasu łatania podatności, którą atakujący już wykorzystują (Verizon DBIR 2026)",
-    "m.l": "47% katalogu objęte", "m.r": "reszta to głównie oprogramowanie na komputerach i telefonach, niewidoczne dla skanu sieci",
-    "r.eyebrow": "Zbudowany, by mu ufać", "r.title": "Bezpieczny z założenia, sprawdzalny z definicji",
-    "r1.t": "Tylko wykrywanie", "r1.p": "Bez exploitów, bez logowania, bez zgadywania haseł. Opcjonalne testy szukają tylko odsłoniętych plików, takich jak .env i .git.",
-    "r2.t": "Każde ustalenie ma źródło", "r2.p": "Każda pozycja wskazuje wpis w katalogu, sprawdzenie wersji i dowód, który Hejnal zobaczył, więc możesz to zweryfikować.",
-    "r3.t": "Pisemna zgoda", "r3.p": "Każdy plik zakresu zapisuje, kto zatwierdził skan i kiedy. Hejnal odmawia celów spoza niego.",
-    "r4.t": "Podpisane, otwarte wydania", "r4.p": "Otwarty kod, podpisane wersje i lista wszystkich komponentów, bo narzędzia bezpieczeństwa też są celem.",
-    "p.eyebrow": "Plany", "p.title": "Uruchom sam albo pozwól, że będziemy czuwać za Ciebie",
-    "t1.n": "Open source", "t1.p": "Bezpłatnie<small>Apache-2.0</small>",
-    "t1.a": "Narzędzie wiersza poleceń, REST API i serwer MCP", "t1.b": "Lista poprawek, raport miesięczny, szkic zgłoszenia NIS2", "t1.c": "Alerty na Slacku, Teams i e-mailem",
-    "t2.n": "Hostowany", "t2.p": "99 € / miesiąc<small>do 250 zasobów w internecie</small>",
-    "t2.a": "Jeden panel dla wszystkich lokalizacji", "t2.b": "Alerty w ciągu godzin od nowej podatności", "t2.c": "Kontrola logowania, dziennik zdarzeń, eksport raportów",
-    "t3.n": "Zarządzany", "t3.p": "od 490 € / miesiąc<small>za organizację</small>",
-    "t3.a": "Wdrażamy poprawki i sprawdzamy ślady włamań", "t3.b": "Wymieniamy ujawnione hasła i klucze", "t3.c": "Przygotowujemy zgłoszenia incydentów NIS2",
-    "t4.n": "Partnerzy", "t4.p": "29 € / miesiąc<small>za organizację klienta</small>",
-    "t4.a": "Dla firm usług IT", "t4.b": "Wielu klientów w jednej instalacji", "t4.c": "Raporty pod Twoją marką",
+    "lg.on": "objęte przez Hejnal (836)", "lg.off": "głównie oprogramowanie na komputerach i telefonach, niewidoczne dla skanu sieci (931)",
+    "r.tag": "Zbudowany, by mu ufać", "r.title": "Bezpieczny z założenia, sprawdzalny z definicji",
+    "r1.t": "Bez exploitów, bez logowania", "r1.p": "Opcjonalne testy szukają tylko odsłoniętych plików, takich jak .env i .git.",
+    "r2.t": "Każde ustalenie ma źródło", "r2.p": "Każda pozycja wskazuje wpis w katalogu, sprawdzenie wersji i to, co Hejnal zobaczył.",
+    "r3.t": "Pisemna zgoda", "r3.p": "Każdy zakres zapisuje, kto zatwierdził skan i kiedy. Cele spoza niego są odrzucane.",
+    "r4.t": "Podpisane, otwarte wydania", "r4.p": "Otwarty kod, podpisane wersje i lista wszystkich komponentów.",
+    "p.tag": "Plany", "p.title": "Uruchom sam albo pozwól nam czuwać",
+    "t1.n": "Open source", "t1.p": "Bezpłatnie<small>Apache-2.0</small>", "t1.a": "CLI, REST API i serwer MCP", "t1.b": "Lista poprawek, raport miesięczny, szkic zgłoszenia NIS2", "t1.c": "Alerty na Slacku, Teams i e-mailem",
+    "t2.n": "Hostowany", "t2.p": "99 € / miesiąc<small>do 250 zasobów w internecie</small>", "t2.a": "Jeden panel dla wszystkich lokalizacji", "t2.b": "Alerty w ciągu godzin od nowej podatności", "t2.c": "Kontrola logowania, dziennik zdarzeń, eksport",
+    "t3.n": "Zarządzany", "t3.p": "od 490 € / miesiąc<small>za organizację</small>", "t3.a": "Wdrażamy poprawki i sprawdzamy ślady włamań", "t3.b": "Wymieniamy ujawnione hasła i klucze", "t3.c": "Przygotowujemy zgłoszenia incydentów NIS2",
+    "t4.n": "Partnerzy", "t4.p": "29 € / miesiąc<small>za organizację klienta</small>", "t4.a": "Dla firm usług IT", "t4.b": "Wielu klientów w jednej instalacji", "t4.c": "Raporty pod Twoją marką",
     "p.small": "Ceny wczesnego dostępu dla pierwszych klientów. Rdzeń open source pozostaje bezpłatny.",
-    "n.eyebrow": "NIS2 w Polsce", "n.title": "Terminy są ustalone. Ekspozycja to najłatwiejszy początek.",
-    "n.p": "Znowelizowana ustawa o KSC wymaga od objętych podmiotów, i dostawców, na których polegają, wykazania, że zarządzają znanym ryzykiem. Hejnal daje dowody: co było wystawione, kiedy o tym wiedziałeś i kiedy to naprawiono.",
-    "d1": "Znowelizowana ustawa o KSC wchodzi w życie", "d2": "Środki bezpieczeństwa muszą być wdrożone", "d3": "Pierwsze audyty podmiotów kluczowych; kary do 10 mln € lub 2% obrotu",
-    "q": "Krakowski trębacz ostrzegał miasto, gdy widział nadciągających najeźdźców. Hejnal robi to samo dla Twoich systemów: odzywa się, gdy tylko atakujący zaczną wykorzystywać podatność w czymś, czego używasz.",
-    "q.who": "Tobias, założyciel · Warszawa",
+    "n.tag": "NIS2 w Polsce", "n.title": "Zegar już tyka",
+    "n.p": "Znowelizowana ustawa o KSC wymaga od objętych podmiotów, i ich dostawców, wykazania, że zarządzają znanym ryzykiem. Hejnal przechowuje dowody: co było wystawione, kiedy o tym wiedziałeś i kiedy to naprawiono.",
+    "d0": "obowiązuje", "d1": "Znowelizowana ustawa o KSC wchodzi w życie", "d2": "Środki bezpieczeństwa muszą być wdrożone", "d3": "Pierwsze audyty podmiotów kluczowych; kary do 10 mln € lub 2% obrotu",
+    "q": "Krakowski trębacz ostrzegał miasto, gdy tylko zobaczył nadciągających najeźdźców. Hejnal robi to samo dla Twoich systemów.",
+    "q.who": "Tobias, założyciel · Legatia Solutions · Warszawa",
     "c.title": "Dołącz do wczesnego dostępu", "c.p": "Szukamy trzech partnerów: bezpłatna usługa zarządzana przez trzy miesiące w zamian za cotygodniową informację zwrotną.",
-    "c.copy": "Kopiuj adres", "c.gh": "Gwiazdka na GitHubie",
-    "ft.l": "Open source na licencji Apache-2.0", "ft.r": "Dane: CISA KEV (CC0), NVD, FIRST EPSS, Have I Been Pwned (CC BY 4.0)"
+    "c.copy": "Kopiuj adres", "ft.l": "open source na licencji Apache-2.0", "ft.r": "Dane: CISA KEV (CC0), NVD, FIRST EPSS, Have I Been Pwned (CC BY 4.0)"
   };
   const en = {};
   document.querySelectorAll("[data-i18n]").forEach(el => en[el.dataset.i18n] = el.textContent);
   document.querySelectorAll("[data-i18n-html]").forEach(el => en[el.dataset.i18nHtml] = el.innerHTML);
-  function set(lang) {
+  function setLang(lang) {
     const t = lang === "pl" ? pl : en;
     document.querySelectorAll("[data-i18n]").forEach(el => { const v = t[el.dataset.i18n]; if (v) el.textContent = v; });
     document.querySelectorAll("[data-i18n-html]").forEach(el => { const v = t[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
@@ -371,19 +423,132 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
     document.getElementById("lang-pl").setAttribute("aria-pressed", lang === "pl");
     try { localStorage.setItem("hejnal-lang", lang); } catch (e) {}
   }
-  document.getElementById("lang-en").addEventListener("click", () => set("en"));
-  document.getElementById("lang-pl").addEventListener("click", () => set("pl"));
-  let saved = null;
-  try { saved = localStorage.getItem("hejnal-lang"); } catch (e) {}
-  const start = saved || ((navigator.language || "").toLowerCase().startsWith("pl") ? "pl" : "en");
-  if (start === "pl") set("pl"); else document.documentElement.lang = "en";
-  const btn = document.getElementById("copy");
-  btn.addEventListener("click", () => {
-    const text = document.getElementById("mail").textContent;
-    const done = () => { const old = btn.textContent; btn.textContent = document.documentElement.lang === "pl" ? "Skopiowano" : "Copied"; setTimeout(() => btn.textContent = old, 1500); };
-    const fallback = () => { const r = document.createRange(); r.selectNodeContents(document.getElementById("mail")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
-    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
-  });
+  document.getElementById("lang-en").onclick = () => setLang("en");
+  document.getElementById("lang-pl").onclick = () => setLang("pl");
+  let saved = null; try { saved = localStorage.getItem("hejnal-lang"); } catch (e) {}
+  if ((saved || ((navigator.language || "").toLowerCase().startsWith("pl") ? "pl" : "en")) === "pl") setLang("pl"); else document.documentElement.lang = "en";
+
+  /* ---------- copy buttons ---------- */
+  function copier(btnId, srcId) {
+    const btn = document.getElementById(btnId), src = document.getElementById(srcId);
+    btn.addEventListener("click", () => {
+      const old = btn.textContent;
+      const select = () => { const r = document.createRange(); r.selectNodeContents(src); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+      const ok = () => { btn.textContent = document.documentElement.lang === "pl" ? "skopiowano" : "copied"; setTimeout(() => btn.textContent = old, 1400); };
+      try { navigator.clipboard.writeText(src.textContent).then(ok, select); } catch (e) { select(); }
+    });
+  }
+  copier("copy-cmd", "cmd"); copier("copy-mail", "mail");
+
+  /* ---------- duplicate the ticker so it loops seamlessly ---------- */
+  const tk = document.getElementById("ticker"); tk.innerHTML += tk.innerHTML;
+
+  /* ---------- terminal replay (the full session is already in the page) ---------- */
+  const tty = document.getElementById("tty");
+  if (!reduce) {
+    const lines = tty.innerHTML.split("\n");
+    const delays = lines.map((l, i) => i === 0 ? 0 : /discover|identify|match/.test(l) ? 520 : /FIX NOW|THIS WEEK|LATER/.test(l) ? 260 : 90);
+    let started = false;
+    const play = () => {
+      if (started) return; started = true;
+      tty.innerHTML = "";
+      let i = 0;
+      const next = () => {
+        if (i >= lines.length) return;
+        tty.innerHTML += (i ? "\n" : "") + lines[i];
+        i++;
+        setTimeout(next, delays[i] || 90);
+      };
+      setTimeout(next, 250);
+    };
+    setTimeout(play, 700);
+  }
+
+  /* ---------- radar: hosts on your attack surface, a sweep finds the exploited ones ---------- */
+  const cv = document.getElementById("radar"), ctx = cv.getContext("2d");
+  let W = 0, H = 0, dpr = 1, nodes = [], t0 = performance.now();
+  function rnd(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+  function layout() {
+    const r = cv.getBoundingClientRect(); dpr = Math.min(2, devicePixelRatio || 1);
+    W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const R = rnd(7), cx = W * 0.72, cy = H * 0.52, n = W < 700 ? 34 : 60;
+    nodes = [];
+    for (let i = 0; i < n; i++) {
+      const a = R() * Math.PI * 2, d = 40 + Math.pow(R(), 0.8) * Math.min(W, H) * 0.62;
+      nodes.push({ x: cx + Math.cos(a) * d * 1.25, y: cy + Math.sin(a) * d * 0.8, a: (a + Math.PI * 2) % (Math.PI * 2), hot: i % 13 === 4, warm: i % 9 === 2, seen: -1e9 });
+    }
+    nodes.cx = cx; nodes.cy = cy;
+  }
+  function frame(now) {
+    const t = (now - t0) / 1000, sweep = (t * 0.9) % (Math.PI * 2);
+    ctx.clearRect(0, 0, W, H);
+    const { cx, cy } = nodes, maxR = Math.hypot(W, H);
+    ctx.strokeStyle = "rgba(140,160,190,0.10)"; ctx.lineWidth = 1;
+    for (let r = 90; r < maxR; r += 90) { ctx.beginPath(); ctx.ellipse(cx, cy, r * 1.25, r * 0.8, 0, 0, Math.PI * 2); ctx.stroke(); }
+    // links between nearby hosts
+    ctx.strokeStyle = "rgba(140,160,190,0.07)";
+    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j]; if (Math.hypot(a.x - b.x, a.y - b.y) < 120) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    }
+    // sweep wedge
+    if (!reduce) {
+      const g = ctx.createConicGradient ? ctx.createConicGradient(sweep - 0.6, cx, cy) : null;
+      if (g) { g.addColorStop(0, "rgba(255,77,61,0)"); g.addColorStop(0.09, "rgba(255,77,61,0.10)"); g.addColorStop(0.0955, "rgba(255,77,61,0)"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+    }
+    for (const n of nodes) {
+      let da = (sweep - n.a + Math.PI * 4) % (Math.PI * 2);
+      if (!reduce && da < 0.05) n.seen = t;
+      const since = reduce ? 0.3 : t - n.seen, glow = Math.max(0, 1 - since / 2.4);
+      const col = n.hot ? "255,77,61" : n.warm ? "240,178,62" : "150,170,200";
+      ctx.fillStyle = `rgba(${col},${(n.hot ? 0.55 : 0.35) + glow * 0.45})`;
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.hot ? 3.4 : 2.2, 0, Math.PI * 2); ctx.fill();
+      if (n.hot && glow > 0) {
+        ctx.strokeStyle = `rgba(255,77,61,${glow * 0.8})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(n.x, n.y, 4 + (1 - glow) * 22, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = `rgba(255,120,105,${glow})`; ctx.font = "500 11px 'IBM Plex Mono', monospace";
+        ctx.fillText("KEV", n.x + 9, n.y - 7);
+      }
+    }
+    if (!reduce && !document.hidden) requestAnimationFrame(frame);
+  }
+  layout(); requestAnimationFrame(frame);
+  addEventListener("resize", () => { layout(); if (reduce) requestAnimationFrame(frame); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !reduce) requestAnimationFrame(frame); });
+
+  /* ---------- KEV waffle: 1,767 squares, 836 covered ---------- */
+  const kv = document.getElementById("kev"), kx = kv.getContext("2d");
+  const COLS = 64, TOTAL = 1767, COVERED = 836, cell = 20, gap = 4;
+  const order = Array.from({ length: TOTAL }, (_, i) => i);
+  const R2 = rnd(42); const covered = new Set();
+  // spread covered flaws through the grid the way they spread through the catalog's years
+  for (const i of order.sort(() => R2() - 0.5).slice(0, COVERED)) covered.add(i);
+  function drawWaffle(p) {
+    kx.clearRect(0, 0, kv.width, kv.height);
+    for (let i = 0; i < TOTAL; i++) {
+      const c = i % COLS, r = Math.floor(i / COLS);
+      const lit = covered.has(i) && (c + r * 0.6) / (COLS + 17) <= p;
+      kx.fillStyle = lit ? "#ff4d3d" : "#1c2534";
+      kx.fillRect(c * cell, r * cell, cell - gap, cell - gap);
+    }
+  }
+  drawWaffle(1);
+
+  /* ---------- scroll-ins: count-ups, waffle sweep, small lift ---------- */
+  const lifts = [...document.querySelectorAll(".lift")];
+  if (!reduce && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver(es => es.forEach(e => {
+      if (!e.isIntersecting) return;
+      const el = e.target; io.unobserve(el);
+      el.classList.remove("pre");
+      el.querySelectorAll("[data-count]").forEach(n => {
+        const end = +n.dataset.count, t1 = performance.now();
+        const step = now => { const k = Math.min(1, (now - t1) / 1100); n.textContent = Math.round(end * (1 - Math.pow(1 - k, 3))).toLocaleString("en"); if (k < 1) requestAnimationFrame(step); };
+        requestAnimationFrame(step);
+      });
+      if (el.querySelector("#kev")) { const t1 = performance.now(); const go = now => { const k = Math.min(1, (now - t1) / 1600); drawWaffle(k); if (k < 1) requestAnimationFrame(go); }; requestAnimationFrame(go); }
+    }), { threshold: 0.25 });
+    lifts.forEach(el => { const r = el.getBoundingClientRect(); if (r.top > innerHeight) el.classList.add("pre"); io.observe(el); });
+  }
 })();
 </script>
 </body>
