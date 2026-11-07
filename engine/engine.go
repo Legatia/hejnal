@@ -17,6 +17,7 @@ import (
 
 	"github.com/Legatia/hejnal/discover"
 	"github.com/Legatia/hejnal/epss"
+	"github.com/Legatia/hejnal/euvd"
 	"github.com/Legatia/hejnal/fingerprint"
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/kev"
@@ -33,6 +34,10 @@ const (
 	KEVMaxAge = 6 * time.Hour
 	// epssMaxAgeDays is how old, in days, a cached EPSS score may be.
 	epssMaxAgeDays = 2
+	// euvdRecordMaxAge is how long a downloaded EUVD record is used before
+	// refreshing, and euvdRecordBudget how many records one run downloads.
+	euvdRecordMaxAge = 7 * 24 * time.Hour
+	euvdRecordBudget = 50
 )
 
 // Config configures an engine. Only StateDir is required.
@@ -51,6 +56,14 @@ type Config struct {
 	NVDURL  string
 	// NVDKey raises NVD's rate limit, so version checks finish sooner.
 	NVDKey string
+	// EUVDURL and EUVDRecordURL are ENISA's EUVD endpoints for its list of
+	// exploited vulnerabilities and for single records.
+	EUVDURL       string
+	EUVDRecordURL string
+	// EUVDFile reads ENISA's list from a file instead of downloading it.
+	// With KEVFile or EUVDFile set, Hejnal downloads nothing from ENISA and
+	// uses the saved copy of the list, if there is one.
+	EUVDFile string
 
 	// Offline never downloads feeds and uses cached copies only.
 	Offline bool
@@ -58,6 +71,8 @@ type Config struct {
 	NoCT    bool
 	// NoNVD skips comparing versions with NVD's affected ranges.
 	NoNVD bool
+	// NoEUVD leaves out ENISA's list of exploited vulnerabilities.
+	NoEUVD bool
 	// Checks turns on the opt-in checks for exposed files and versions.
 	Checks bool
 
@@ -90,6 +105,12 @@ func New(cfg Config) (*Engine, error) {
 	}
 	if cfg.KEVURL == "" {
 		cfg.KEVURL = kev.DefaultURL
+	}
+	if cfg.EUVDURL == "" {
+		cfg.EUVDURL = euvd.DefaultURL
+	}
+	if cfg.EUVDRecordURL == "" {
+		cfg.EUVDRecordURL = euvd.DefaultRecordURL
 	}
 	if cfg.EPSSURL == "" {
 		cfg.EPSSURL = epss.DefaultAPI
@@ -164,15 +185,36 @@ func (e *Engine) Discover(ctx context.Context, s *scope.Scope) (*inventory.Inven
 
 func (e *Engine) kevPath() string { return filepath.Join(e.cfg.CacheDir, "kev.json") }
 
-// RefreshCatalog downloads the KEV catalog into the cache.
+// RefreshCatalog downloads the KEV catalog and ENISA's list into the cache,
+// and returns the catalog with ENISA's list merged in.
 func (e *Engine) RefreshCatalog(ctx context.Context) (*kev.Catalog, error) {
-	return kev.Fetch(ctx, e.cfg.HTTPClient, e.cfg.KEVURL, version.UserAgent(), e.kevPath())
+	cat, err := kev.Fetch(ctx, e.cfg.HTTPClient, e.cfg.KEVURL, version.UserAgent(), e.kevPath())
+	if err != nil {
+		return nil, err
+	}
+	if !e.cfg.NoEUVD {
+		if _, err := euvd.Fetch(ctx, e.cfg.HTTPClient, e.cfg.EUVDURL, version.UserAgent(), e.euvdPath()); err != nil {
+			e.cfg.Logf("could not download ENISA's list of exploited vulnerabilities (%v)", err)
+		}
+	}
+	e.addEUVD(ctx, cat)
+	return cat, nil
 }
 
-// Catalog returns the KEV catalog: from KEVFile if set, from the cache while
-// it is fresh, and otherwise downloaded. A failed download falls back to the
-// cached copy.
+// Catalog returns the KEV catalog with ENISA's list merged in. CISA's catalog
+// comes from KEVFile if set, from the cache while it is fresh, and otherwise
+// is downloaded; a failed download falls back to the cached copy. ENISA's
+// list is optional: without it, the catalog is CISA's alone.
 func (e *Engine) Catalog(ctx context.Context) (*kev.Catalog, error) {
+	cat, err := e.cisaCatalog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	e.addEUVD(ctx, cat)
+	return cat, nil
+}
+
+func (e *Engine) cisaCatalog(ctx context.Context) (*kev.Catalog, error) {
 	if e.cfg.KEVFile != "" {
 		return kev.Load(e.cfg.KEVFile)
 	}
@@ -189,7 +231,7 @@ func (e *Engine) Catalog(ctx context.Context) (*kev.Catalog, error) {
 			return cat, nil
 		}
 	}
-	cat, err := e.RefreshCatalog(ctx)
+	cat, err := kev.Fetch(ctx, e.cfg.HTTPClient, e.cfg.KEVURL, version.UserAgent(), path)
 	if err != nil {
 		if cached, cerr := kev.Load(path); cerr == nil {
 			e.cfg.Logf("could not refresh the KEV catalog (%v); using cached catalog %s", err, cached.CatalogVersion)
@@ -199,6 +241,118 @@ func (e *Engine) Catalog(ctx context.Context) (*kev.Catalog, error) {
 	}
 	e.cfg.Logf("downloaded CISA KEV catalog %s (%d flaws)", cat.CatalogVersion, len(cat.Vulnerabilities))
 	return cat, nil
+}
+
+func (e *Engine) euvdPath() string { return filepath.Join(e.cfg.CacheDir, "euvd-kev.json") }
+
+// euvdOnline reports whether Hejnal may download from ENISA: not offline,
+// and not reading the feeds from files.
+func (e *Engine) euvdOnline() bool {
+	return !e.cfg.Offline && e.cfg.KEVFile == "" && e.cfg.EUVDFile == ""
+}
+
+// addEUVD merges ENISA's list of exploited vulnerabilities into cat.
+func (e *Engine) addEUVD(ctx context.Context, cat *kev.Catalog) {
+	if e.cfg.NoEUVD || cat.EUVDDate != "" {
+		return
+	}
+	entries, date, err := e.euvdList(ctx)
+	if err != nil {
+		// Reading feeds from files with no saved copy of ENISA's list is
+		// a choice, not a problem.
+		if !(errors.Is(err, os.ErrNotExist) && !e.euvdOnline()) {
+			e.cfg.Logf("ENISA's list of exploited vulnerabilities is not available (%v); using CISA's catalog alone", err)
+		}
+		return
+	}
+	records := e.euvdRecords(ctx, euvd.ENISAOnly(cat, entries))
+	euvd.Merge(cat, entries, records)
+	cat.EUVDDate = date
+}
+
+// euvdList returns ENISA's list and its date. ENISA publishes it every day
+// at 07:00 UTC, so a copy saved since then is current.
+func (e *Engine) euvdList(ctx context.Context) ([]euvd.Entry, string, error) {
+	path := e.euvdPath()
+	if e.cfg.EUVDFile != "" {
+		path = e.cfg.EUVDFile
+	}
+	load := func() ([]euvd.Entry, string, error) {
+		fi, err := os.Stat(path)
+		if err != nil {
+			return nil, "", err
+		}
+		entries, err := euvd.Load(path)
+		if err != nil {
+			return nil, "", err
+		}
+		return entries, euvd.Published(fi.ModTime()).Format("2006-01-02"), nil
+	}
+	if !e.euvdOnline() {
+		return load()
+	}
+	if fi, err := os.Stat(path); err == nil && !fi.ModTime().Before(euvd.Published(time.Now())) {
+		if entries, date, err := load(); err == nil {
+			return entries, date, nil
+		}
+	}
+	entries, err := euvd.Fetch(ctx, e.cfg.HTTPClient, e.cfg.EUVDURL, version.UserAgent(), path)
+	if err != nil {
+		if cached, date, cerr := load(); cerr == nil {
+			e.cfg.Logf("could not refresh ENISA's list of exploited vulnerabilities (%v); using the copy of %s", err, date)
+			return cached, date, nil
+		}
+		return nil, "", err
+	}
+	only := 0
+	for _, x := range entries {
+		if !slices.Contains(x.Sources, euvd.SourceCISA) {
+			only++
+		}
+	}
+	e.cfg.Logf("downloaded ENISA's list of exploited vulnerabilities (%d flaws, %d not in CISA's list)", len(entries), only)
+	return entries, euvd.Published(time.Now()).Format("2006-01-02"), nil
+}
+
+// euvdRecords returns the EUVD records of flaws only ENISA lists, for their
+// description and advisories, refreshing stale ones while online.
+func (e *Engine) euvdRecords(ctx context.Context, entries []euvd.Entry) map[string]*euvd.Record {
+	if len(entries) == 0 {
+		return nil
+	}
+	cache := euvd.Cache{Dir: filepath.Join(e.cfg.CacheDir, "euvd")}
+	out := map[string]*euvd.Record{}
+	var fetch []string
+	for _, x := range entries {
+		rec, fetched, ok := cache.Get(x.EUVDID)
+		if ok {
+			out[x.EUVDID] = rec
+		}
+		if !ok || time.Since(fetched) > euvdRecordMaxAge {
+			fetch = append(fetch, x.EUVDID)
+		}
+	}
+	if !e.euvdOnline() {
+		return out
+	}
+	for i, id := range fetch {
+		if i == euvdRecordBudget {
+			break
+		}
+		rec, err := euvd.FetchRecord(ctx, e.cfg.HTTPClient, e.cfg.EUVDRecordURL, version.UserAgent(), id)
+		if errors.Is(err, euvd.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			e.cfg.Logf("EUVD lookup failed (%v); continuing without details for the rest", err)
+			break
+		}
+		out[id] = rec
+		if err := cache.Put(rec, time.Now()); err != nil {
+			e.cfg.Logf("could not cache EUVD data: %v", err)
+		}
+	}
+	return out
 }
 
 // epssScores returns EPSS scores for the CVEs, refreshing stale ones.
@@ -334,6 +488,7 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 		Organization: inv.Organization,
 		GeneratedAt:  now.UTC(),
 		KEVVersion:   cat.CatalogVersion,
+		EUVDDate:     cat.EUVDDate,
 		Findings:     fs,
 	}
 	snap.Assets, snap.Services, snap.Technologies = inv.Counts()
@@ -443,6 +598,7 @@ func Meta(snap *state.Snapshot, lang string) report.Meta {
 		GeneratedAt:  snap.GeneratedAt,
 		Lang:         lang,
 		KEVVersion:   snap.KEVVersion,
+		EUVDDate:     snap.EUVDDate,
 		EPSSDate:     snap.EPSSDate,
 		Assets:       snap.Assets,
 		Services:     snap.Services,

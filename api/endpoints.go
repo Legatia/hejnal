@@ -38,6 +38,7 @@ type findingsResponse struct {
 	Organization string          `json:"organization"`
 	GeneratedAt  time.Time       `json:"generatedAt"`
 	KEVVersion   string          `json:"kevVersion"`
+	EUVDDate     string          `json:"euvdDate,omitempty"`
 	EPSSDate     string          `json:"epssDate,omitempty"`
 	Findings     []match.Finding `json:"findings"`
 }
@@ -69,6 +70,7 @@ func (h *handler) findings(w http.ResponseWriter, r *http.Request) {
 		Organization: snap.Organization,
 		GeneratedAt:  snap.GeneratedAt,
 		KEVVersion:   snap.KEVVersion,
+		EUVDDate:     snap.EUVDDate,
 		EPSSDate:     snap.EPSSDate,
 		Findings:     out,
 	})
@@ -93,7 +95,8 @@ type groupItem struct {
 	Score      int            `json:"score"`
 	// CVEs lists the item's known exploited flaws, most urgent first.
 	CVEs []string `json:"cves"`
-	// NewestDateAdded is when the newest of them was added to CISA's catalog.
+	// NewestDateAdded is when the newest of them was added to CISA's catalog,
+	// or to ENISA's list for a flaw only ENISA lists.
 	NewestDateAdded string `json:"newestDateAdded,omitempty"`
 	// Forensics is set when CISA asks for forensic triage of any of them.
 	Forensics bool `json:"forensics,omitempty"`
@@ -130,6 +133,7 @@ type groupsResponse struct {
 	Organization string         `json:"organization"`
 	GeneratedAt  time.Time      `json:"generatedAt"`
 	KEVVersion   string         `json:"kevVersion"`
+	EUVDDate     string         `json:"euvdDate,omitempty"`
 	Counts       severityCounts `json:"counts"`
 	Groups       []groupItem    `json:"groups"`
 	// AcceptedGroups are the items people accepted with `hejnal accept`.
@@ -164,6 +168,7 @@ func (h *handler) groups(w http.ResponseWriter, r *http.Request) {
 		Organization:   snap.Organization,
 		GeneratedAt:    snap.GeneratedAt,
 		KEVVersion:     snap.KEVVersion,
+		EUVDDate:       snap.EUVDDate,
 		Groups:         []groupItem{},
 		AcceptedGroups: []groupItem{},
 		RuledOut:       len(snap.Findings) - len(active),
@@ -239,6 +244,7 @@ type changesResponse struct {
 	Organization string    `json:"organization"`
 	GeneratedAt  time.Time `json:"generatedAt"`
 	KEVVersion   string    `json:"kevVersion"`
+	EUVDDate     string    `json:"euvdDate,omitempty"`
 	// First is true before anything was reported; then every finding the
 	// version check does not rule out counts as added.
 	First    bool            `json:"first"`
@@ -267,6 +273,7 @@ func (h *handler) changes(w http.ResponseWriter, r *http.Request) {
 		Organization: snap.Organization,
 		GeneratedAt:  snap.GeneratedAt,
 		KEVVersion:   snap.KEVVersion,
+		EUVDDate:     snap.EUVDDate,
 		First:        ch.First,
 		Added:        nonNil(ch.Added),
 		Resolved:     nonNil(ch.Resolved),

@@ -1,4 +1,4 @@
-<!-- Example output of `hejnal run` against test services that mimic a FortiGate VPN, WordPress on PHP and Jenkins, matched against the real CISA KEV catalog 2026.11.03 and NVD records. Host names were changed to example.com. -->
+<!-- Example output of `hejnal run` against test services that mimic a FortiGate VPN, WordPress on PHP and Jenkins, matched against the real CISA KEV catalog 2026.11.03 and NVD records, before ENISA's list was added, so it shows no EUVD IDs. Host names were changed to example.com. -->
 
 # Lista poprawek Hejnal: Example Sp. z o.o.
 
@@ -12,7 +12,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 ### 1. WordPress na www.example.com:443 · `f058ba93`
 
-- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 3. Najnowszą CISA dodała do katalogu 2026-11-03.
+- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 3. Najnowszą wpisano na listę wykorzystywanych podatności 2026-11-03.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
 - **Sprawdź, czy nie doszło do włamania:** Dla co najmniej jednej z tych podatności CISA zaleca analizę powłamaniową. Sama aktualizacja nie wystarczy, jeśli system był wystawiony przed poprawką: poszukaj śladów włamania, takich jak nieznane konta, pliki lub połączenia.
 - **Wykryto pod adresem:** `https://www.example.com/` (`generator WordPress 6.8.1`) · wersja `6.8.1`
@@ -27,7 +27,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 ### 2. PHP na www.example.com:443 · `cbf55259`
 
-- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 2. Najnowszą CISA dodała do katalogu 2026-10-26.
+- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 2. Najnowszą wpisano na listę wykorzystywanych podatności 2026-10-26.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
 - **Sprawdź, czy nie doszło do włamania:** Dla co najmniej jednej z tych podatności CISA zaleca analizę powłamaniową. Sama aktualizacja nie wystarczy, jeśli system był wystawiony przed poprawką: poszukaj śladów włamania, takich jak nieznane konta, pliki lub połączenia.
 - **Wykryto pod adresem:** `https://www.example.com/` (`header X-Powered-By: PHP/8.3.12`) · wersja `8.3.12`
@@ -41,7 +41,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 ### 3. Fortinet FortiGate SSL VPN na vpn.example.com:443 · `bfda06f4`
 
-- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 21. Najnowszą CISA dodała do katalogu 2026-10-16.
+- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 21. Najnowszą wpisano na listę wykorzystywanych podatności 2026-10-16.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
 - **Sprawdź, czy nie doszło do włamania:** Dla co najmniej jednej z tych podatności CISA zaleca analizę powłamaniową. Sama aktualizacja nie wystarczy, jeśli system był wystawiony przed poprawką: poszukaj śladów włamania, takich jak nieznane konta, pliki lub połączenia.
 - **Wykryto pod adresem:** `https://vpn.example.com/remote/login?lang=en` (`path /remote/login`) · wersja nieujawniona
@@ -68,7 +68,7 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 ### 5. Jenkins na ci.example.com:443 · `aa53d21c`
 
-- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 2. Najnowszą CISA dodała do katalogu 2022-04-25.
+- **Dlaczego:** Znane, aktywnie wykorzystywane podatności w tym produkcie: 2. Najnowszą wpisano na listę wykorzystywanych podatności 2022-04-25.
 - **Co zrobić:** Ustal zainstalowaną wersję, porównaj ją z biuletynami producenta poniżej i zaktualizuj do wersji z poprawką. Jeśli poprawki nie ma, zastosuj obejście zalecane przez producenta albo odłącz usługę od internetu.
 - **Wykryto pod adresem:** `https://ci.example.com/` (`header X-Jenkins: 2.462.3`) · wersja `2.462.3`
 - **Podatności:**
@@ -81,4 +81,4 @@ Wygenerowano 2026-11-04 12:42 UTC · Hosty: 3 · Usługi: 3 · Rozpoznane produk
 
 ---
 
-Hejnal sprawdza tylko to, co widzi każdy odwiedzający, wysyłając zwykłe zapytania do usług WWW. Nigdy się nie loguje ani nie próbuje exploitów, więc może przeoczyć podatności, a sprawdzanie wersji opiera się na wersji, którą pokazuje produkt. Dane: katalog CISA Known Exploited Vulnerabilities (CC0), FIRST EPSS i NVD. This product uses the NVD API but is not endorsed or certified by the NVD.
+Hejnal sprawdza tylko to, co widzi każdy odwiedzający, wysyłając zwykłe zapytania do usług WWW. Nigdy się nie loguje ani nie próbuje exploitów, więc może przeoczyć podatności, a sprawdzanie wersji opiera się na wersji, którą pokazuje produkt. Dane: katalog CISA Known Exploited Vulnerabilities (CC0), ENISA European Vulnerability Database (EUVD), FIRST EPSS i NVD. This product uses the NVD API but is not endorsed or certified by the NVD.

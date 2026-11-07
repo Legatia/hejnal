@@ -43,7 +43,18 @@ func NIS2(w io.Writer, fs []match.Finding, m Meta) error {
 			if f.Forensics {
 				triage = tr("nis2.yes")
 			}
-			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", hostPort(f.Host, f.Port), mdEscape(f.Technology), mdEscape(f.CVE), mdEscape(f.DateAdded), triage)
+			flaw := mdEscape(f.CVE)
+			if f.EUVD != "" {
+				flaw += " / " + mdEscape(f.EUVD)
+			}
+			// The first list to include the flaw, which for a European
+			// report is often ENISA's.
+			by := match.ListCISA
+			if f.ENISAOnly() || f.FirstListed() != f.DateAdded {
+				by = match.ListENISA
+			}
+			listed := mdEscape(f.FirstListed()) + " (" + by + ")"
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", hostPort(f.Host, f.Port), mdEscape(f.Technology), flaw, listed, triage)
 		}
 	}
 

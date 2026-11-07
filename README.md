@@ -5,9 +5,9 @@ exploiting right now, and tells you what to fix first.
 
 When a new flaw in a VPN gateway, firewall, mail server or CMS starts being
 exploited, attackers scan the whole internet for it within days. Hejnal
-keeps a map of what your organisation exposes. Each time CISA adds a flaw to
-its catalog of known exploited vulnerabilities, Hejnal checks your systems for
-that product and puts it at the top of your fix list.
+keeps a map of what your organisation exposes. Each time CISA or ENISA adds a
+flaw to its list of known exploited vulnerabilities, Hejnal checks your
+systems for that product and puts it at the top of your fix list.
 
 The name comes from the *hejnał mariacki*, the bugle call played every hour
 from St Mary's Church in Kraków. Legend has it a trumpeter once used it to warn
@@ -35,7 +35,10 @@ the city of an attack.
 3. **Matches it against what is exploited now.** It compares what it found
    with the [CISA Known Exploited Vulnerabilities
    catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
-   (KEV). When a product shows its version, Hejnal compares it with the
+   (KEV) and with the exploited vulnerabilities in ENISA's [European
+   Vulnerability Database](https://euvd.enisa.europa.eu/) (EUVD). Findings
+   show each flaw's EUVD ID, flaws only ENISA lists, and when ENISA listed a
+   flaw before CISA did. When a product shows its version, Hejnal compares it with the
    affected versions recorded by [NVD](https://nvd.nist.gov/), so flaws your
    version is not affected by drop out of the way. It ranks each match by how
    recently the flaw was added, whether the system is an internet-facing
@@ -260,7 +263,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal init` | Writes an example scope file. |
 | `hejnal run` | Discovers, matches, writes the fix list and notifies. |
 | `hejnal discover` | Only finds hosts and identifies software; saves the inventory. |
-| `hejnal feeds` | Downloads the KEV catalog into the cache. |
+| `hejnal feeds` | Downloads CISA's KEV catalog and ENISA's list into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
 | `hejnal report fixlist\|nis2\|monthly` | Prints a report from the saved runs. |
 | `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
@@ -270,8 +273,8 @@ To include leaked secrets and breached accounts, see
 | `hejnal rules` | Lists the products Hejnal recognises. |
 
 Run `hejnal <command> -h` for flags. Useful ones: `-lang en|pl`, `-checks`,
-`-no-ct` to skip certificate transparency, `-no-epss`, `-no-nvd`, `-offline`,
-`-kev-file`, `-concurrency` and `-timeout`.
+`-no-ct` to skip certificate transparency, `-no-epss`, `-no-nvd`, `-no-euvd`,
+`-offline`, `-kev-file`, `-euvd-file`, `-concurrency` and `-timeout`.
 
 ### Files
 
@@ -288,13 +291,13 @@ change it):
 | `fixlist.md` | The fix list from the last `hejnal run`. |
 | `leaks.json`, `breaches.json` | Saved secret scans (secrets partly hidden) and breach counts, included in the next run. |
 | `leaks.key` | The private key for secret fingerprints. |
-| `cache/kev.json`, `cache/epss.json`, `cache/nvd/` | Downloaded feeds. KEV is refreshed after 6 hours, EPSS scores when they are more than two days old, NVD records after a week (a day while NVD has not analysed a flaw yet). |
+| `cache/kev.json`, `cache/euvd-kev.json`, `cache/euvd/`, `cache/epss.json`, `cache/nvd/` | Downloaded feeds. KEV is refreshed after 6 hours, ENISA's list once a day after ENISA publishes it at 07:00 UTC, EUVD records and NVD records after a week (NVD's after a day while NVD has not analysed a flaw yet), EPSS scores when they are more than two days old. |
 
 ### Offline and air-gapped use
 
-Download the catalog on a connected machine with `hejnal feeds`. Copy
-`.hejnal/cache/kev.json` across, then run with `-offline` (or point
-`-kev-file` at the copy). Discovery still needs network access to your own
+Download the feeds on a connected machine with `hejnal feeds`. Copy
+`.hejnal/cache/kev.json` and `.hejnal/cache/euvd-kev.json` across, then run
+with `-offline` (or point `-kev-file` and `-euvd-file` at the copies). Discovery still needs network access to your own
 systems, of course.
 
 ## Leaked secrets and breached accounts
@@ -410,12 +413,32 @@ packages.
 Without a version, a match means: **you run a product attackers are
 exploiting right now; make sure your version has the fix.**
 
+### CISA's and ENISA's lists
+
+ENISA publishes its own list of exploited vulnerabilities in the EUVD, partly
+from European CSIRTs such as CERT Polska. Most of it overlaps with CISA's
+catalog, but not all of it:
+
+- **EUVD IDs.** Every flaw on either list gets its EUVD ID in the fix list,
+  the NIS2 draft, the API and `findings.json`.
+- **Flaws only ENISA lists** are matched like CISA's, using the vendor and
+  product ENISA names and the description from the flaw's EUVD record. They
+  have no CISA due date or ransomware flag. Product names such as "Various"
+  match only when the description names the product.
+- **ENISA first.** When ENISA listed a flaw before CISA, the fix list says so,
+  and the NIS2 draft gives the earlier date.
+- CISA's own catalog decides which flaws CISA lists. A flaw ENISA's data marks
+  as CISA's but CISA has since removed is left out.
+
+ENISA's list is optional: if it cannot be downloaded, Hejnal uses its saved
+copy, or CISA's catalog alone. `-no-euvd` turns it off.
+
 Each match gets a score from 0 to 100:
 
 | Signal | Points |
 |---|---|
 | Base | 60 |
-| Added to KEV in the last 30 days / 90 days / over a year ago | +20 / +10 / −20 |
+| Added to KEV (or to ENISA's list, for flaws only ENISA lists) in the last 30 days / 90 days / over a year ago | +20 / +10 / −20 |
 | Internet-facing gateway, remote-access product, network device or camera | +10 |
 | Known use in ransomware campaigns | +10 |
 | CISA asks for forensic triage | +5 |
@@ -456,7 +479,9 @@ Some fingerprint markers were confirmed against ProjectDiscovery's
 (MIT License).
 
 It uses the CISA Known Exploited Vulnerabilities catalog (public domain, CC0),
-EPSS scores from [FIRST](https://www.first.org/epss/), affected-version data
+ENISA's list of exploited vulnerabilities and EUVD records (Source: ENISA
+European Vulnerability Database (EUVD), reused under [ENISA's legal
+notice](https://www.enisa.europa.eu/about-enisa/legal-notice)), EPSS scores from [FIRST](https://www.first.org/epss/), affected-version data
 from NVD and certificate transparency search from [crt.sh](https://crt.sh/).
 `hejnal leaks breaches` uses [Have I Been Pwned](https://haveibeenpwned.com/)
 (CC BY 4.0).
@@ -475,8 +500,10 @@ naprawić najpierw.
   Ivanti, Citrix, Palo Alto, Cisco), pocztę (Exchange, Zimbra, Roundcube),
   WordPress, PHP, GitLab i Jenkins. Robi to po jednym zwykłym zapytaniu na
   usługę.
-- **Porównuje** je z katalogiem CISA KEV, czyli listą podatności aktywnie
-  wykorzystywanych przez atakujących. Gdy produkt pokazuje wersję, sprawdza
+- **Porównuje** je z katalogiem CISA KEV i z listą wykorzystywanych podatności
+  ENISA w europejskiej bazie EUVD. Pokazuje identyfikatory EUVD, podatności,
+  które zna tylko ENISA, i to, kiedy ENISA wpisała podatność wcześniej niż
+  CISA. Gdy produkt pokazuje wersję, sprawdza
   w NVD, czy ta wersja jest podatna.
 - **Szuka wycieków:** sekretów w kodzie źródłowym (klucze API, tokeny, klucze
   prywatne) i kont z Twoich domen w znanych wyciekach danych (Have I Been

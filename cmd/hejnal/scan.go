@@ -99,9 +99,10 @@ func (a *app) cmdDiscover(ctx context.Context, args []string) error {
 
 func (a *app) cmdFeeds(ctx context.Context, args []string) error {
 	o := &options{}
-	fs := a.flags("feeds", "[flags]", "Download the CISA Known Exploited Vulnerabilities catalog.")
+	fs := a.flags("feeds", "[flags]", "Download CISA's Known Exploited Vulnerabilities catalog and ENISA's list of\nexploited vulnerabilities from the EUVD.")
 	o.stateFlags(fs)
 	o.cacheFlag(fs)
+	fs.BoolVar(&o.noEUVD, "no-euvd", false, "do not download ENISA's list of exploited vulnerabilities")
 	if err := a.parse(fs, args); err != nil {
 		return err
 	}
@@ -113,13 +114,28 @@ func (a *app) cmdFeeds(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.stdout, "CISA KEV catalog %s: %d known exploited flaws.\n", cat.CatalogVersion, len(cat.Vulnerabilities))
+	cisa, enisa, only := 0, 0, 0
+	for _, v := range cat.Vulnerabilities {
+		switch {
+		case v.ENISAOnly:
+			only++
+		default:
+			cisa++
+		}
+		if v.ENISA {
+			enisa++
+		}
+	}
+	fmt.Fprintf(a.stdout, "CISA KEV catalog %s: %d known exploited flaws.\n", cat.CatalogVersion, cisa)
+	if cat.EUVDDate != "" {
+		fmt.Fprintf(a.stdout, "ENISA EUVD list of %s: %d known exploited flaws, %d of them not in CISA's catalog.\n", cat.EUVDDate, enisa, only)
+	}
 	return nil
 }
 
 func (a *app) cmdMatch(ctx context.Context, args []string) error {
 	o := &options{}
-	fs := a.flags("match", "[flags]", "Match the last inventory against the KEV catalog and save the findings.")
+	fs := a.flags("match", "[flags]", "Match the last inventory against the lists of exploited flaws and save the findings.")
 	o.stateFlags(fs)
 	o.feedFlags(fs)
 	o.langFlag(fs)

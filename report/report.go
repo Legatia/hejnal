@@ -20,6 +20,7 @@ type Meta struct {
 	GeneratedAt  time.Time
 	Lang         string
 	KEVVersion   string
+	EUVDDate     string
 	EPSSDate     string
 	Assets       int
 	Services     int
@@ -40,6 +41,9 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 	fmt.Fprintf(&b, "%s\n\n", tr("fix.meta", m.GeneratedAt.UTC().Format("2006-01-02 15:04 UTC"), m.Assets, m.Services, m.Technologies))
 	if m.KEVVersion != "" {
 		b.WriteString(tr("fix.feeds", m.KEVVersion))
+		if m.EUVDDate != "" {
+			b.WriteString(tr("fix.feeds.euvd", m.EUVDDate))
+		}
 		if m.EPSSDate != "" {
 			b.WriteString(tr("fix.feeds.epss", m.EPSSDate))
 		}
@@ -261,7 +265,21 @@ func writeSeen(b *strings.Builder, tr translator, g match.Group, withVersion boo
 }
 
 func flawLine(tr translator, f match.Finding) string {
-	parts := []string{"**" + mdEscape(f.CVE) + "**: " + mdEscape(f.Name), tr("kev.added", mdEscape(f.DateAdded))}
+	id := "**" + mdEscape(f.CVE) + "**"
+	if f.EUVD != "" {
+		id += " (" + mdEscape(f.EUVD) + ")"
+	}
+	parts := []string{id + ": " + mdEscape(f.Name)}
+	if f.ENISAOnly() {
+		parts = append(parts, tr("kev.enisaonly", mdEscape(f.DateAdded)))
+	} else {
+		parts = append(parts, tr("kev.added", mdEscape(f.DateAdded)))
+		if days := daysBetween(f.ENISAEarlier, f.DateAdded); days == 1 {
+			parts = append(parts, tr("kev.enisaearlier1", mdEscape(f.ENISAEarlier)))
+		} else if days > 1 {
+			parts = append(parts, tr("kev.enisaearlier", mdEscape(f.ENISAEarlier), days))
+		}
+	}
 	if f.EPSS > 0 {
 		parts = append(parts, "EPSS "+percent(f.EPSS))
 	}
@@ -280,7 +298,19 @@ func flawLine(tr translator, f match.Finding) string {
 	return strings.Join(parts, " · ")
 }
 
-// newest returns the most recent date a flaw was added to KEV.
+// daysBetween returns the number of days from one YYYY-MM-DD date to a
+// later one, or 0.
+func daysBetween(from, to string) int {
+	a, err1 := time.Parse("2006-01-02", from)
+	b, err2 := time.Parse("2006-01-02", to)
+	if err1 != nil || err2 != nil || !b.After(a) {
+		return 0
+	}
+	return int(b.Sub(a).Hours() / 24)
+}
+
+// newest returns the most recent date a flaw was added to a list of
+// exploited flaws.
 func newest(fs []match.Finding) string {
 	n := ""
 	for _, f := range fs {

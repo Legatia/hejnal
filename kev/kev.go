@@ -30,6 +30,10 @@ type Catalog struct {
 	DateReleased    string          `json:"dateReleased"`
 	Count           int             `json:"count"`
 	Vulnerabilities []Vulnerability `json:"vulnerabilities"`
+	// EUVDDate is the date of ENISA's list of exploited vulnerabilities
+	// merged into the catalog, if any (package euvd). It is not part of
+	// CISA's feed.
+	EUVDDate string `json:"-"`
 }
 
 // Vulnerability is one known-exploited flaw.
@@ -46,6 +50,20 @@ type Vulnerability struct {
 	ForensicTriage             string   `json:"forensicTriage,omitempty"`
 	Notes                      string   `json:"notes"`
 	CWEs                       []string `json:"cwes"`
+
+	// The fields below come from ENISA's list of exploited vulnerabilities
+	// (package euvd), not from CISA's feed.
+
+	// EUVDID is the flaw's ID in ENISA's European Vulnerability Database.
+	EUVDID string `json:"euvdId,omitempty"`
+	// ENISA is set when ENISA's own list includes the flaw.
+	ENISA bool `json:"enisa,omitempty"`
+	// ENISAOnly is set for a flaw ENISA lists and CISA does not. Its
+	// CISA-specific fields, such as RequiredAction and DueDate, are empty.
+	ENISAOnly bool `json:"enisaOnly,omitempty"`
+	// ENISAEarlier is the date ENISA listed the flaw, when that was before
+	// CISA added it.
+	ENISAEarlier string `json:"enisaEarlier,omitempty"`
 }
 
 var (
@@ -149,7 +167,8 @@ func (v Vulnerability) Forensics() bool {
 	return strings.EqualFold(strings.TrimSpace(v.ForensicTriage), "Yes")
 }
 
-// Added returns the date CISA added the flaw to the catalog.
+// Added returns the date the flaw was added to the catalog: by CISA, or by
+// ENISA for a flaw only ENISA lists.
 func (v Vulnerability) Added() (time.Time, bool) {
 	t, err := time.Parse("2006-01-02", v.DateAdded)
 	return t, err == nil

@@ -354,6 +354,7 @@ type findingsData struct {
 	Organization string          `json:"organization"`
 	GeneratedAt  time.Time       `json:"generatedAt"`
 	KEVVersion   string          `json:"kevVersion"`
+	EUVDDate     string          `json:"euvdDate,omitempty"`
 	Total        int             `json:"total"`
 	Returned     int             `json:"returned"`
 	Findings     []match.Finding `json:"findings"`
@@ -397,7 +398,11 @@ func (s *Server) findingsTool(_ context.Context, raw json.RawMessage) toolResult
 	var b strings.Builder
 	fmt.Fprintf(&b, "Matching findings: %d of %d in the run of %s", len(matched), len(snap.Findings), when(snap.GeneratedAt))
 	if snap.KEVVersion != "" {
-		fmt.Fprintf(&b, " (CISA KEV catalog %s)", snap.KEVVersion)
+		fmt.Fprintf(&b, " (CISA KEV catalog %s", snap.KEVVersion)
+		if snap.EUVDDate != "" {
+			fmt.Fprintf(&b, ", ENISA EUVD list of %s", snap.EUVDDate)
+		}
+		b.WriteString(")")
 	}
 	b.WriteString(".\n")
 	if len(shown) < len(matched) {
@@ -412,6 +417,7 @@ func (s *Server) findingsTool(_ context.Context, raw json.RawMessage) toolResult
 			Organization: snap.Organization,
 			GeneratedAt:  snap.GeneratedAt,
 			KEVVersion:   snap.KEVVersion,
+			EUVDDate:     snap.EUVDDate,
 			Total:        len(matched),
 			Returned:     len(shown),
 			Findings:     shown,
@@ -429,7 +435,17 @@ func findingLine(f match.Finding) string {
 		if f.Name != "" {
 			parts = append(parts, f.Name)
 		}
-		parts = append(parts, "added to CISA KEV "+f.DateAdded)
+		if f.ENISAOnly() {
+			parts = append(parts, "listed as exploited by ENISA (not by CISA) "+f.DateAdded)
+		} else {
+			parts = append(parts, "added to CISA KEV "+f.DateAdded)
+		}
+		if f.ENISAEarlier != "" {
+			parts = append(parts, "listed by ENISA earlier, on "+f.ENISAEarlier)
+		}
+		if f.EUVD != "" {
+			parts = append(parts, f.EUVD)
+		}
 		if f.Ransomware {
 			parts = append(parts, "used in ransomware campaigns")
 		}
@@ -781,6 +797,7 @@ type summary struct {
 	Organization string    `json:"organization"`
 	GeneratedAt  time.Time `json:"generatedAt"`
 	KEVVersion   string    `json:"kevVersion"`
+	EUVDDate     string    `json:"euvdDate,omitempty"`
 	EPSSDate     string    `json:"epssDate,omitempty"`
 	Hosts        int       `json:"hosts"`
 	Services     int       `json:"services"`
@@ -812,6 +829,7 @@ func summarize(snap *state.Snapshot, ch engine.Changes) (string, summary) {
 		Organization: snap.Organization,
 		GeneratedAt:  snap.GeneratedAt,
 		KEVVersion:   snap.KEVVersion,
+		EUVDDate:     snap.EUVDDate,
 		EPSSDate:     snap.EPSSDate,
 		Hosts:        snap.Assets,
 		Services:     snap.Services,
@@ -842,6 +860,9 @@ func summarize(snap *state.Snapshot, ch engine.Changes) (string, summary) {
 		when(snap.GeneratedAt), plural(snap.Assets, "host"), plural(snap.Services, "service"), plural(snap.Technologies, "product"))
 	if snap.KEVVersion != "" {
 		fmt.Fprintf(&b, " CISA KEV catalog %s.", snap.KEVVersion)
+		if snap.EUVDDate != "" {
+			fmt.Fprintf(&b, " ENISA EUVD list of %s.", snap.EUVDDate)
+		}
 	}
 	o := sum.Open
 	fmt.Fprintf(&b, "\nOpen items: %d (critical %d · high %d · medium %d · low %d).\n", len(open), o.Critical, o.High, o.Medium, o.Low)
