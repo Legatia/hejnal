@@ -28,6 +28,56 @@ archives:
       - LICENSE
       - README.md
 
+nfpms:
+  # Debian/Ubuntu, Fedora/RHEL and Alpine packages with a daily systemd timer.
+  - id: packages
+    package_name: hejnal
+    ids: [hejnal]
+    vendor: Legatia Solutions
+    homepage: https://hejnal.legatia.solutions
+    maintainer: Legatia Solutions <hejnal@legatia.solutions>
+    description: Early warning when attackers start exploiting software you run.
+    license: Apache-2.0
+    section: net
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    contents:
+      - src: packaging/hejnal.service
+        dst: /usr/lib/systemd/system/hejnal.service
+      - src: packaging/hejnal.timer
+        dst: /usr/lib/systemd/system/hejnal.timer
+      - src: packaging/hejnal.env
+        dst: /etc/hejnal/hejnal.env
+        type: config|noreplace
+        file_info:
+          mode: 0600
+      - src: examples/scope.example.json
+        dst: /usr/share/doc/hejnal/scope.example.json
+      - src: LICENSE
+        dst: /usr/share/doc/hejnal/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/hejnal/README.md
+
+kos:
+  # A small container image with only the binary, for linux/amd64 and arm64.
+  - id: image
+    build: hejnal
+    main: ./cmd/hejnal
+    base_image: gcr.io/distroless/static-debian12:nonroot
+    repositories: [ghcr.io/legatia/hejnal]
+    platforms: [linux/amd64, linux/arm64]
+    tags: ["{{ .Version }}", latest]
+    bare: true
+    preserve_import_paths: false
+    sbom: spdx
+    ldflags:
+      - -s -w -X github.com/Legatia/hejnal/version.Version={{ .Version }}
+    labels:
+      org.opencontainers.image.source: https://github.com/Legatia/hejnal
+      org.opencontainers.image.licenses: Apache-2.0
+      org.opencontainers.image.description: Early warning when attackers start exploiting software you run.
+
 checksum:
   name_template: checksums.txt
 

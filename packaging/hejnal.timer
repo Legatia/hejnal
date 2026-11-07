@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Hejnal every morning
+Documentation=https://github.com/Legatia/hejnal
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
