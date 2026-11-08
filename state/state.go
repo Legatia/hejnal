@@ -21,8 +21,9 @@ const (
 	findingsFile  = "findings.json"
 	reportedFile  = "reported.json"
 	historyDir    = "history"
-	// keepHistory is how many past findings snapshots are kept.
-	keepHistory = 200
+	// keepHistory is how many past findings snapshots are kept: over a year
+	// of daily runs, so the evidence report can cover a full year.
+	keepHistory = 400
 )
 
 // ErrNoInventory is returned before the first discovery run.
@@ -46,6 +47,9 @@ type Snapshot struct {
 	// used, if any.
 	EUVDDate string `json:"euvdDate,omitempty"`
 	EPSSDate string `json:"epssDate,omitempty"`
+	// KEVFlaws is how many known exploited flaws the run checked, from CISA's
+	// and ENISA's lists together.
+	KEVFlaws int `json:"kevFlaws,omitempty"`
 	// Inventory size at the time, for trend reports.
 	Assets       int             `json:"assets"`
 	Services     int             `json:"services"`

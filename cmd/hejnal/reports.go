@@ -21,12 +21,14 @@ func (a *app) cmdReport(args []string) error {
 		kind, args = args[0], args[1:]
 	}
 	o := &options{}
-	fs := a.flags("report", "fixlist|nis2|monthly [flags]",
-		"Print a report from the saved runs:\n  fixlist  what to fix, most urgent first\n  nis2     a draft NIS2 early warning, for use if a system was compromised\n  monthly  exposure, new and fixed items and time to fix for one month")
+	fs := a.flags("report", "fixlist|overview|evidence|nis2|monthly [flags]",
+		"Print a report from the saved runs:\n  fixlist   what to fix, most urgent first\n  overview  one page for decision-makers, as HTML to view, print or save as PDF\n  evidence  proof of monitoring and time to fix, for insurers, auditors and\n            customers' security questionnaires (HTML)\n  nis2      a draft NIS2 early warning, for use if a system was compromised\n  monthly   exposure, new and fixed items and time to fix for one month")
 	o.stateFlags(fs)
 	o.langFlag(fs)
 	fs.StringVar(&o.out, "o", "", "write to this file instead of standard output")
 	month := fs.String("month", "", "month for the monthly report, as YYYY-MM (default: this month)")
+	by := fs.String("by", "", "who prepared the overview or evidence, such as your company's name")
+	since := fs.String("since", "", "first day the evidence covers, as YYYY-MM-DD (default: all saved runs)")
 	if kind == "" {
 		// Allow flags before the report name.
 		if err := fs.Parse(args); err != nil {
@@ -48,12 +50,12 @@ func (a *app) cmdReport(args []string) error {
 		return err
 	}
 	switch kind {
-	case "fixlist", "nis2", "monthly":
+	case "fixlist", "overview", "evidence", "nis2", "monthly":
 	case "":
 		fs.Usage()
 		return errUsage
 	default:
-		return fmt.Errorf("unknown report %q: use fixlist, nis2 or monthly", kind)
+		return fmt.Errorf("unknown report %q: use fixlist, overview, evidence, nis2 or monthly", kind)
 	}
 	store := state.Store{Dir: o.stateDir}
 	snap, err := store.LoadFindings()
@@ -68,6 +70,28 @@ func (a *app) cmdReport(args []string) error {
 	switch kind {
 	case "fixlist":
 		err = report.FixList(&buf, snap.Findings, m)
+	case "overview":
+		inv, ierr := store.LoadInventory()
+		if ierr != nil && !errors.Is(ierr, state.ErrNoInventory) {
+			return ierr
+		}
+		history, herr := store.History()
+		if herr != nil {
+			return herr
+		}
+		err = report.Overview(&buf, snap.Findings, m, report.OverviewOptions{By: *by, Inventory: inv, History: history})
+	case "evidence":
+		var from time.Time
+		if *since != "" {
+			if from, err = time.Parse("2006-01-02", *since); err != nil {
+				return fmt.Errorf("-since must look like 2026-01-31")
+			}
+		}
+		history, herr := store.History()
+		if herr != nil {
+			return herr
+		}
+		err = report.Evidence(&buf, history, m, report.EvidenceOptions{Since: from, By: *by})
 	case "nis2":
 		err = report.NIS2(&buf, snap.Findings, m)
 	case "monthly":

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}: {{.Org}}</title>
+<style>
+{{.CSS}}
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <p class="kicker">Hejnal · {{.Title}}</p>
+  <p class="for">{{.L.for}}</p>
+  <h1>{{.Org}}</h1>
+  <p class="meta"><span>{{.Date}}</span>{{if .By}}<span>{{.By}}</span>{{end}}</p>
+</header>
+<main>
+  <section class="verdict {{.Level}}">
+    <h2>{{.Headline}}</h2>
+    <p>{{.Verdict}}</p>
+  </section>
+
+  <section class="stats">
+    {{range .Stats}}<div class="stat"><b>{{.Value}}</b><span>{{.Label}}</span></div>
+    {{end}}
+  </section>
+
+  {{if .Items}}
+  <h3>{{.L.fixfirst}}</h3>
+  {{range .Items}}
+  <article class="item">
+    <div class="item-head">
+      <span class="n">{{.N}}.</span>
+      <span class="title">{{.Title}}</span>
+      <span class="pill {{.Severity}}">{{.SevLabel}}</span>
+    </div>
+    <dl>
+      <dt>{{$.L.why}}</dt><dd>{{.Why}}</dd>
+      <dt>{{$.L.todo}}</dt><dd>{{.Todo}}</dd>
+    </dl>
+    {{if .Window}}<p class="window">{{.Window}}</p>{{end}}
+    {{if .Seen}}<p class="seen">{{.Seen}}</p>{{end}}
+    {{if .Flaws}}
+    <table class="flaws">
+      <thead><tr><th>{{$.L.flaw}}</th><th>{{$.L.lists}}</th><th>{{$.L.since}}</th></tr></thead>
+      <tbody>
+      {{range .Flaws}}<tr><td>{{.CVE}}{{if .EUVD}}<span class="euvd">{{.EUVD}}</span>{{end}}</td><td>{{.Lists}}</td><td class="num">{{.Since}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{if .MoreFlaws}}<p class="small">{{.MoreFlaws}}</p>{{end}}
+    {{end}}
+    {{if .Forensic}}<p class="forensic"><strong>{{$.L.compromise}}:</strong> {{.Forensic}}</p>{{end}}
+    {{if .Links}}<p class="links">{{$.L.advisories}}: {{range $i, $l := .Links}}{{if $i}} · {{end}}<a href="{{$l}}">{{$l}}</a>{{end}}</p>{{end}}
+  </article>
+  {{end}}
+  {{if .More}}<p class="note">{{.More}}</p>{{end}}
+  {{end}}
+  {{if .Accepted}}<p class="note">{{.Accepted}}</p>{{end}}
+
+  {{if .Categories}}
+  <h3>{{.L.exposed}}</h3>
+  <p class="note">{{.L.exposedintro}}</p>
+  <table>
+    <thead><tr><th>{{.L.type}}</th><th>{{.L.services}}</th><th>{{.L.examples}}</th></tr></thead>
+    <tbody>
+    {{range .Categories}}<tr><td>{{.Label}}</td><td class="num">{{.Services}}</td><td>{{.Examples}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  <h3>{{.L.method}}</h3>
+  <p>{{.Method}}</p>
+  <p class="small">{{.Limits}}</p>
+  {{if .Sources}}<p class="small">{{.Sources}}</p>{{end}}
+</main>
+<footer>{{.Footer}}</footer>
+</div>
+</body>
+</html>

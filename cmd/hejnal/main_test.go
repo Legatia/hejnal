@@ -138,6 +138,27 @@ func TestRunEndToEnd(t *testing.T) {
 	if code, _, _ = h.run("report", "monthly", "-state", h.state, "-month", "Nov"); code != exitError {
 		t.Errorf("a malformed -month was accepted")
 	}
+	overview := filepath.Join(h.dir, "overview.html")
+	if code, _, errOut = h.run("report", "overview", "-state", h.state, "-by", "Legatia Solutions", "-o", overview); code != exitOK {
+		t.Fatalf("overview exit = %d\n%s", code, errOut)
+	}
+	page, err := os.ReadFile(overview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<!doctype html>", "Prepared by Legatia Solutions", "Needs action now", "WordPress on 127.0.0.1",
+		"<td>Websites and CMS</td>", "<span>Exploited flaws checked</span>"} {
+		if !strings.Contains(string(page), want) {
+			t.Errorf("overview is missing %q", want)
+		}
+	}
+	code, out, errOut = h.run("report", "evidence", "-state", h.state, "-lang", "pl")
+	if code != exitOK || !strings.Contains(out, "Dowód monitorowania podatności") || !strings.Contains(out, "WordPress na 127.0.0.1") {
+		t.Errorf("evidence report (exit %d):\n%s\n%s", code, out, errOut)
+	}
+	if code, _, _ = h.run("report", "evidence", "-state", h.state, "-since", "last week"); code != exitError {
+		t.Errorf("a malformed -since was accepted")
+	}
 	outFile := filepath.Join(h.dir, "fix.md")
 	if code, _, _ = h.run("report", "fixlist", "-state", h.state, "-o", outFile); code != exitOK {
 		t.Errorf("report -o exit = %d", code)

@@ -540,6 +540,22 @@ func (g Group) Newest() string {
 	return newest
 }
 
+// GroupKey returns the key of the item a finding belongs to: all known
+// exploited flaws of one product on one service, every place one secret was
+// found, all breaches of one domain, or the finding itself.
+func GroupKey(f Finding) string {
+	switch f.Kind {
+	case KindKEV:
+		return fmt.Sprintf("%s|%s|%d|%s", f.Kind, f.Host, f.Port, f.TechID)
+	case KindSecret:
+		// One secret to replace, wherever it was found.
+		return fmt.Sprintf("%s|%s", f.Kind, f.Fingerprint)
+	case KindBreach:
+		return fmt.Sprintf("%s|%s", f.Kind, f.Host)
+	}
+	return f.Key
+}
+
 // Groups collects findings into items to fix, most urgent first.
 func Groups(fs []Finding) []Group {
 	sorted := slices.Clone(fs)
@@ -547,16 +563,7 @@ func Groups(fs []Finding) []Group {
 	idx := map[string]int{}
 	var out []Group
 	for _, f := range sorted {
-		k := f.Key
-		switch f.Kind {
-		case KindKEV:
-			k = fmt.Sprintf("%s|%s|%d|%s", f.Kind, f.Host, f.Port, f.TechID)
-		case KindSecret:
-			// One secret to replace, wherever it was found.
-			k = fmt.Sprintf("%s|%s", f.Kind, f.Fingerprint)
-		case KindBreach:
-			k = fmt.Sprintf("%s|%s", f.Kind, f.Host)
-		}
+		k := GroupKey(f)
 		i, ok := idx[k]
 		if !ok {
 			i = len(out)
