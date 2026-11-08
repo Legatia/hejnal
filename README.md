@@ -170,6 +170,7 @@ $EDITOR scope.json                 # list your systems and who authorised the ch
 hejnal run -scope scope.json       # discover, match and write .hejnal/fixlist.md
 hejnal report fixlist -lang pl     # the fix list in Polish
 hejnal report overview -o overview.html   # one page for decision-makers
+hejnal report evidence -o evidence.html   # proof of monitoring, for insurers and auditors
 hejnal report monthly              # this month: exposure, found, fixed, time to fix
 hejnal report nis2                 # a NIS2 early-warning draft
 ```
@@ -266,7 +267,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal discover` | Only finds hosts and identifies software; saves the inventory. |
 | `hejnal feeds` | Downloads CISA's KEV catalog and ENISA's list into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
-| `hejnal report fixlist\|overview\|nis2\|monthly` | Prints a report from the saved runs. |
+| `hejnal report fixlist\|overview\|evidence\|nis2\|monthly` | Prints a report from the saved runs. |
 | `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
 | `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
 | `hejnal serve` | Serves the results over a REST API. |
@@ -288,7 +289,7 @@ change it):
 | `findings.json` | Findings from the last run. |
 | `reported.json` | The findings people were last told about, used to tell what is new. |
 | `accepted.json` | Items accepted with `hejnal accept`: which findings, why, by whom and until when. |
-| `history/` | Findings from earlier runs; the last 200 are kept. |
+| `history/` | Findings from earlier runs; the last 400 are kept, over a year of daily runs. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
 | `leaks.json`, `breaches.json` | Saved secret scans (secrets partly hidden) and breach counts, included in the next run. |
 | `leaks.key` | The private key for secret fingerprints. |
@@ -424,6 +425,29 @@ files or scripts; open it in a browser and print or save it as PDF (it is laid
 out for A4). `-by "Your company"` names who prepared it, and `-lang pl`
 writes it in Polish. When nothing matches, it says so plainly, with what was
 checked, instead of an empty page.
+
+### Evidence for insurers, auditors and customers
+
+`hejnal report evidence -o evidence.html` turns the saved runs into proof
+that the organisation monitors its internet-facing systems and fixes what is
+found:
+
+- **How regularly it checked:** runs, average and longest gap between them.
+- **Exposure window:** for each product with exploited flaws, when the flaw
+  was listed, when Hejnal first saw it, when a run found it fixed and how many
+  days it stayed exposed. Items already there at the first run are marked
+  "≥", since they were exposed for longer than Hejnal saw.
+- **Answers for security questionnaires**, worded from the data alone: how
+  often you scan, whether you track exploited flaws, how fast you fix them
+  (median and within 7 and 30 days), and whether accepted risks are
+  documented.
+- **Month by month**, and the accepted risks with their reasons.
+- A SHA-256 fingerprint of the runs used, to check the report against them.
+
+It is not an audit or a certification, and it says so. Times to fix are
+measured between runs, so they include the wait for the next run. `-since
+2026-01-01` limits the period; Hejnal keeps the last 400 runs, over a year of
+daily runs. Same format and options as the overview.
 
 ### CISA's and ENISA's lists
 

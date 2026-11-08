@@ -24,6 +24,11 @@ import (
 //go:embed overview.html
 var overviewHTML string
 
+// pageCSS styles the HTML reports.
+//
+//go:embed report.css
+var pageCSS string
+
 var overviewTmpl = template.Must(template.New("overview").Parse(overviewHTML))
 
 // overviewItems is how many items the overview lists before pointing to the
@@ -72,6 +77,7 @@ type ovCategory struct {
 }
 
 type overviewData struct {
+	CSS                        template.CSS
 	Lang, Title, Org, Date, By string
 	Level                      string
 	Headline, Verdict          string
@@ -93,6 +99,7 @@ func Overview(w io.Writer, fs []match.Finding, m Meta, o OverviewOptions) error 
 		lang = "en"
 	}
 	d := overviewData{
+		CSS:   template.CSS(pageCSS),
 		Lang:  lang,
 		Title: tr("ov.title"),
 		Org:   m.Organization,
