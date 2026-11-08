@@ -21,12 +21,13 @@ func (a *app) cmdReport(args []string) error {
 		kind, args = args[0], args[1:]
 	}
 	o := &options{}
-	fs := a.flags("report", "fixlist|nis2|monthly [flags]",
-		"Print a report from the saved runs:\n  fixlist  what to fix, most urgent first\n  nis2     a draft NIS2 early warning, for use if a system was compromised\n  monthly  exposure, new and fixed items and time to fix for one month")
+	fs := a.flags("report", "fixlist|overview|nis2|monthly [flags]",
+		"Print a report from the saved runs:\n  fixlist   what to fix, most urgent first\n  overview  one page for decision-makers, as HTML to view, print or save as PDF\n  nis2      a draft NIS2 early warning, for use if a system was compromised\n  monthly   exposure, new and fixed items and time to fix for one month")
 	o.stateFlags(fs)
 	o.langFlag(fs)
 	fs.StringVar(&o.out, "o", "", "write to this file instead of standard output")
 	month := fs.String("month", "", "month for the monthly report, as YYYY-MM (default: this month)")
+	by := fs.String("by", "", "who prepared the overview, such as your company's name")
 	if kind == "" {
 		// Allow flags before the report name.
 		if err := fs.Parse(args); err != nil {
@@ -48,12 +49,12 @@ func (a *app) cmdReport(args []string) error {
 		return err
 	}
 	switch kind {
-	case "fixlist", "nis2", "monthly":
+	case "fixlist", "overview", "nis2", "monthly":
 	case "":
 		fs.Usage()
 		return errUsage
 	default:
-		return fmt.Errorf("unknown report %q: use fixlist, nis2 or monthly", kind)
+		return fmt.Errorf("unknown report %q: use fixlist, overview, nis2 or monthly", kind)
 	}
 	store := state.Store{Dir: o.stateDir}
 	snap, err := store.LoadFindings()
@@ -68,6 +69,16 @@ func (a *app) cmdReport(args []string) error {
 	switch kind {
 	case "fixlist":
 		err = report.FixList(&buf, snap.Findings, m)
+	case "overview":
+		inv, ierr := store.LoadInventory()
+		if ierr != nil && !errors.Is(ierr, state.ErrNoInventory) {
+			return ierr
+		}
+		history, herr := store.History()
+		if herr != nil {
+			return herr
+		}
+		err = report.Overview(&buf, snap.Findings, m, report.OverviewOptions{By: *by, Inventory: inv, History: history})
 	case "nis2":
 		err = report.NIS2(&buf, snap.Findings, m)
 	case "monthly":

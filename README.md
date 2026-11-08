@@ -169,6 +169,7 @@ hejnal init                        # writes an example scope.json
 $EDITOR scope.json                 # list your systems and who authorised the checks
 hejnal run -scope scope.json       # discover, match and write .hejnal/fixlist.md
 hejnal report fixlist -lang pl     # the fix list in Polish
+hejnal report overview -o overview.html   # one page for decision-makers
 hejnal report monthly              # this month: exposure, found, fixed, time to fix
 hejnal report nis2                 # a NIS2 early-warning draft
 ```
@@ -265,7 +266,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal discover` | Only finds hosts and identifies software; saves the inventory. |
 | `hejnal feeds` | Downloads CISA's KEV catalog and ENISA's list into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
-| `hejnal report fixlist\|nis2\|monthly` | Prints a report from the saved runs. |
+| `hejnal report fixlist\|overview\|nis2\|monthly` | Prints a report from the saved runs. |
 | `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
 | `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
 | `hejnal serve` | Serves the results over a REST API. |
@@ -412,6 +413,17 @@ packages.
 
 Without a version, a match means: **you run a product attackers are
 exploiting right now; make sure your version has the fix.**
+
+### The overview for decision-makers
+
+`hejnal report overview -o overview.html` writes one self-contained page for
+people who decide rather than fix: a verdict, the five items to fix first, how
+long attackers have been exploiting each flaw, what kinds of product the
+organisation exposes, and how the check was done. It is HTML with no external
+files or scripts; open it in a browser and print or save it as PDF (it is laid
+out for A4). `-by "Your company"` names who prepared it, and `-lang pl`
+writes it in Polish. When nothing matches, it says so plainly, with what was
+checked, instead of an empty page.
 
 ### CISA's and ENISA's lists
 
