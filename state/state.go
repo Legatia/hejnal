@@ -21,8 +21,9 @@ const (
 	findingsFile  = "findings.json"
 	reportedFile  = "reported.json"
 	historyDir    = "history"
-	// keepHistory is how many past findings snapshots are kept.
-	keepHistory = 200
+	// keepHistory is how many past findings snapshots are kept: over a year
+	// of daily runs, so the evidence report can cover a full year.
+	keepHistory = 400
 )
 
 // ErrNoInventory is returned before the first discovery run.

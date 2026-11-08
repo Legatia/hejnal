@@ -152,6 +152,13 @@ func TestRunEndToEnd(t *testing.T) {
 			t.Errorf("overview is missing %q", want)
 		}
 	}
+	code, out, errOut = h.run("report", "evidence", "-state", h.state, "-lang", "pl")
+	if code != exitOK || !strings.Contains(out, "Dowód monitorowania podatności") || !strings.Contains(out, "WordPress na 127.0.0.1") {
+		t.Errorf("evidence report (exit %d):\n%s\n%s", code, out, errOut)
+	}
+	if code, _, _ = h.run("report", "evidence", "-state", h.state, "-since", "last week"); code != exitError {
+		t.Errorf("a malformed -since was accepted")
+	}
 	outFile := filepath.Join(h.dir, "fix.md")
 	if code, _, _ = h.run("report", "fixlist", "-state", h.state, "-o", outFile); code != exitOK {
 		t.Errorf("report -o exit = %d", code)
