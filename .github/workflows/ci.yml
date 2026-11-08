@@ -22,6 +22,40 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+  # Feeds each parser of untrusted input (answers from scanned systems,
+  # downloaded catalogs, scope files) random data for a short while. A
+  # crash fails the job and leaves the input that caused it under
+  # testdata/fuzz, uploaded as an artifact, to add as a regression test.
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Fuzz
+        run: |
+          set -e
+          for target in \
+            "fingerprint FuzzIdentify" "fingerprint FuzzBanner" \
+            "kev FuzzParse" "euvd FuzzParse" "euvd FuzzParseRecord" \
+            "nvd FuzzParseAndCheck" "nvd FuzzParseVersion" \
+            "scope FuzzParse" "leaks FuzzScanReader"; do
+            set -- $target
+            echo "== $1 $2"
+            go test -run='^$' -fuzz="^$2\$" -fuzztime=20s "./$1/"
+          done
+      - name: Keep crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-crashers
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
+
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
