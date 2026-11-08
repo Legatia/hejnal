@@ -489,6 +489,7 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 		GeneratedAt:  now.UTC(),
 		KEVVersion:   cat.CatalogVersion,
 		EUVDDate:     cat.EUVDDate,
+		KEVFlaws:     len(cat.Vulnerabilities),
 		Findings:     fs,
 	}
 	snap.Assets, snap.Services, snap.Technologies = inv.Counts()
@@ -600,6 +601,7 @@ func Meta(snap *state.Snapshot, lang string) report.Meta {
 		KEVVersion:   snap.KEVVersion,
 		EUVDDate:     snap.EUVDDate,
 		EPSSDate:     snap.EPSSDate,
+		KEVFlaws:     snap.KEVFlaws,
 		Assets:       snap.Assets,
 		Services:     snap.Services,
 		Technologies: snap.Technologies,

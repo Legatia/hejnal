@@ -1,6 +1,7 @@
 // Package report writes Hejnal's findings for people: a prioritised fix list,
-// a short summary for chat, and a NIS2 early-warning draft. Reports are
-// Markdown, in English or Polish.
+// a short summary for chat, a monthly report, a NIS2 early-warning draft and
+// a one-page overview for decision-makers. Reports are Markdown, except the
+// overview, which is HTML; all are in English or Polish.
 package report
 
 import (
@@ -22,6 +23,8 @@ type Meta struct {
 	KEVVersion   string
 	EUVDDate     string
 	EPSSDate     string
+	// KEVFlaws is how many known exploited flaws were checked.
+	KEVFlaws     int
 	Assets       int
 	Services     int
 	Technologies int
