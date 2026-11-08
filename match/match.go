@@ -53,6 +53,26 @@ const (
 	ConfidenceObserved = "observed"
 )
 
+// Lists of exploited flaws, for Finding.ListedBy.
+const (
+	ListCISA  = "CISA"
+	ListENISA = "ENISA"
+)
+
+// ENISAOnly reports whether only ENISA lists the flaw as exploited.
+func (f Finding) ENISAOnly() bool {
+	return len(f.ListedBy) == 1 && f.ListedBy[0] == ListENISA
+}
+
+// FirstListed returns the earliest date a list of exploited flaws included
+// the flaw.
+func (f Finding) FirstListed() string {
+	if f.ENISAEarlier != "" && f.ENISAEarlier < f.DateAdded {
+		return f.ENISAEarlier
+	}
+	return f.DateAdded
+}
+
 // RuledOut reports whether the version seen is outside the affected ranges.
 func (f Finding) RuledOut() bool { return f.Confidence == ConfidenceRuledOut }
 
@@ -123,24 +143,33 @@ func ParseSeverity(v string) (Severity, error) {
 
 // Finding is one thing worth acting on.
 type Finding struct {
-	Key            string   `json:"key"`
-	Kind           Kind     `json:"kind"`
-	Host           string   `json:"host"`
-	Port           int      `json:"port"`
-	URL            string   `json:"url,omitempty"`
-	TechID         string   `json:"techId,omitempty"`
-	Technology     string   `json:"technology,omitempty"`
-	Version        string   `json:"version,omitempty"`
-	Category       string   `json:"category,omitempty"`
-	Evidence       string   `json:"evidence,omitempty"`
-	CVE            string   `json:"cve,omitempty"`
-	Vendor         string   `json:"vendor,omitempty"`
-	Product        string   `json:"product,omitempty"`
-	Name           string   `json:"name,omitempty"`
-	Description    string   `json:"description,omitempty"`
-	Action         string   `json:"action,omitempty"`
-	DateAdded      string   `json:"dateAdded,omitempty"`
-	DueDate        string   `json:"dueDate,omitempty"`
+	Key         string `json:"key"`
+	Kind        Kind   `json:"kind"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	URL         string `json:"url,omitempty"`
+	TechID      string `json:"techId,omitempty"`
+	Technology  string `json:"technology,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Evidence    string `json:"evidence,omitempty"`
+	CVE         string `json:"cve,omitempty"`
+	Vendor      string `json:"vendor,omitempty"`
+	Product     string `json:"product,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Action      string `json:"action,omitempty"`
+	DateAdded   string `json:"dateAdded,omitempty"`
+	DueDate     string `json:"dueDate,omitempty"`
+	// EUVD is the flaw's ID in ENISA's European Vulnerability Database.
+	EUVD string `json:"euvd,omitempty"`
+	// ListedBy names the lists of exploited flaws that include it: CISA,
+	// ENISA or both. DateAdded is CISA's date, or ENISA's for a flaw only
+	// ENISA lists.
+	ListedBy []string `json:"listedBy,omitempty"`
+	// ENISAEarlier is the date ENISA listed the flaw, when that was before
+	// CISA added it.
+	ENISAEarlier   string   `json:"enisaEarlier,omitempty"`
 	Ransomware     bool     `json:"ransomware,omitempty"`
 	Forensics      bool     `json:"forensics,omitempty"`
 	EPSS           float64  `json:"epss,omitempty"`
@@ -286,6 +315,9 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 					f.Action = v.RequiredAction
 					f.DateAdded = v.DateAdded
 					f.DueDate = v.DueDate
+					f.EUVD = v.EUVDID
+					f.ListedBy = listedBy(v)
+					f.ENISAEarlier = v.ENISAEarlier
 					f.Ransomware = v.Ransomware()
 					f.Forensics = v.Forensics()
 					f.Links = v.Links()
@@ -304,6 +336,16 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 	}
 	Sort(out)
 	return out
+}
+
+func listedBy(v kev.Vulnerability) []string {
+	switch {
+	case v.ENISAOnly:
+		return []string{ListENISA}
+	case v.ENISA:
+		return []string{ListCISA, ListENISA}
+	}
+	return []string{ListCISA}
 }
 
 // Score rates a known exploited flaw on a product from 0 to 100. Recently
@@ -488,7 +530,8 @@ func (g Group) Forensics() bool {
 	return slices.ContainsFunc(g.Findings, func(f Finding) bool { return f.Forensics })
 }
 
-// Newest returns the most recent date a flaw in the group was added to KEV.
+// Newest returns the most recent date a flaw in the group was added to a list
+// of exploited flaws.
 func (g Group) Newest() string {
 	newest := ""
 	for _, f := range g.Findings {

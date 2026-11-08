@@ -272,3 +272,46 @@ func TestMatchBeforeDiscover(t *testing.T) {
 		t.Errorf("exit %d: %s", code, errOut)
 	}
 }
+
+func TestFeedsDownloadsBothLists(t *testing.T) {
+	kevData, err := os.ReadFile(kevSample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dump, err := os.ReadFile(filepath.Join(filepath.Dir(kevSample), "euvd_kev_sample.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/kev.json":
+			w.Write(kevData)
+		case "/dump":
+			w.Write(dump)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	var out, errOut bytes.Buffer
+	a := newApp(&out, &errOut)
+	a.now = func() time.Time { return testNow }
+	a.kevURL, a.euvdURL, a.euvdRecordURL = srv.URL+"/kev.json", srv.URL+"/dump", srv.URL+"/record"
+	dir := t.TempDir()
+	if code := a.run(context.Background(), []string{"feeds", "-state", dir}); code != exitOK {
+		t.Fatalf("feeds exit %d: %s", code, errOut.String())
+	}
+	// 21 flaws from CISA, and 10 ENISA lists, 7 of them not in this
+	// sample of CISA's catalog.
+	for _, want := range []string{"CISA KEV catalog 2026.11.03: 21 known exploited flaws.",
+		"ENISA EUVD list of " + time.Now().UTC().Add(-7*time.Hour).Format("2006-01-02") + ": 10 known exploited flaws, 7 of them not in CISA's catalog."} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("feeds output is missing %q:\n%s", want, out.String())
+		}
+	}
+	for _, f := range []string{"kev.json", "euvd-kev.json"} {
+		if _, err := os.Stat(filepath.Join(dir, "cache", f)); err != nil {
+			t.Errorf("%s not saved: %v", f, err)
+		}
+	}
+}

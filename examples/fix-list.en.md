@@ -1,4 +1,4 @@
-<!-- Example output of `hejnal run` against test services that mimic a FortiGate VPN, WordPress on PHP and Jenkins, matched against the real CISA KEV catalog 2026.11.03 and NVD records. Host names were changed to example.com. -->
+<!-- Example output of `hejnal run` against test services that mimic a FortiGate VPN, WordPress on PHP and Jenkins, matched against the real CISA KEV catalog 2026.11.03 and NVD records, before ENISA's list was added, so it shows no EUVD IDs. Host names were changed to example.com. -->
 
 # Hejnal fix list: Example Sp. z o.o.
 
@@ -12,7 +12,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 ### 1. WordPress on www.example.com:443 · `f058ba93`
 
-- **Why:** Known exploited flaws in this product: 3. The newest was added to CISA's catalog on 2026-11-03.
+- **Why:** Known exploited flaws in this product: 3. The newest was listed as exploited on 2026-11-03.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
 - **Check for compromise:** CISA asks for forensic triage for at least one of these flaws. Updating is not enough if the system was exposed before the fix: look for signs of compromise, such as unknown accounts, files or connections.
 - **Seen at:** `https://www.example.com/` (`generator WordPress 6.8.1`) · version `6.8.1`
@@ -27,7 +27,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 ### 2. PHP on www.example.com:443 · `cbf55259`
 
-- **Why:** Known exploited flaws in this product: 2. The newest was added to CISA's catalog on 2026-10-26.
+- **Why:** Known exploited flaws in this product: 2. The newest was listed as exploited on 2026-10-26.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
 - **Check for compromise:** CISA asks for forensic triage for at least one of these flaws. Updating is not enough if the system was exposed before the fix: look for signs of compromise, such as unknown accounts, files or connections.
 - **Seen at:** `https://www.example.com/` (`header X-Powered-By: PHP/8.3.12`) · version `8.3.12`
@@ -41,7 +41,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 ### 3. Fortinet FortiGate SSL VPN on vpn.example.com:443 · `bfda06f4`
 
-- **Why:** Known exploited flaws in this product: 21. The newest was added to CISA's catalog on 2026-10-16.
+- **Why:** Known exploited flaws in this product: 21. The newest was listed as exploited on 2026-10-16.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
 - **Check for compromise:** CISA asks for forensic triage for at least one of these flaws. Updating is not enough if the system was exposed before the fix: look for signs of compromise, such as unknown accounts, files or connections.
 - **Seen at:** `https://vpn.example.com/remote/login?lang=en` (`path /remote/login`) · version not shown
@@ -68,7 +68,7 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 ### 5. Jenkins on ci.example.com:443 · `aa53d21c`
 
-- **Why:** Known exploited flaws in this product: 2. The newest was added to CISA's catalog on 2022-04-25.
+- **Why:** Known exploited flaws in this product: 2. The newest was listed as exploited on 2022-04-25.
 - **What to do:** Find the installed version, compare it with the vendor advisories below and update to a fixed release. If no fix exists, follow the vendor's mitigation or take the service off the internet.
 - **Seen at:** `https://ci.example.com/` (`header X-Jenkins: 2.462.3`) · version `2.462.3`
 - **Flaws:**
@@ -81,4 +81,4 @@ Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03.
 
 ---
 
-Hejnal only looks at what any visitor can see, with ordinary requests to each web service. It never logs in or tries exploits, so it can miss flaws, and version checks rely on the version a product shows. Data: CISA Known Exploited Vulnerabilities catalog (CC0), FIRST EPSS and NVD. This product uses the NVD API but is not endorsed or certified by the NVD.
+Hejnal only looks at what any visitor can see, with ordinary requests to each web service. It never logs in or tries exploits, so it can miss flaws, and version checks rely on the version a product shows. Data: CISA Known Exploited Vulnerabilities catalog (CC0), ENISA European Vulnerability Database (EUVD), FIRST EPSS and NVD. This product uses the NVD API but is not endorsed or certified by the NVD.

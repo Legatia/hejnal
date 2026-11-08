@@ -3,7 +3,8 @@
 //
 // It finds the organisation's hosts inside an authorised scope, identifies the
 // software they run, matches it against CISA's Known Exploited
-// Vulnerabilities catalog and writes a prioritised fix list.
+// Vulnerabilities catalog and ENISA's list of exploited vulnerabilities, and
+// writes a prioritised fix list.
 package main
 
 import (
@@ -23,6 +24,7 @@ import (
 	"github.com/Legatia/hejnal/discover"
 	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/epss"
+	"github.com/Legatia/hejnal/euvd"
 	"github.com/Legatia/hejnal/kev"
 	"github.com/Legatia/hejnal/nvd"
 	"github.com/Legatia/hejnal/report"
@@ -42,7 +44,7 @@ Usage:
   hejnal init      [-scope scope.json]          write an example scope file
   hejnal run       [-scope scope.json] [flags]  discover, match and report in one go
   hejnal discover  [-scope scope.json] [flags]  find hosts and identify their software
-  hejnal feeds     [flags]                      download the CISA KEV catalog
+  hejnal feeds     [flags]                      download the CISA and ENISA lists of exploited flaws
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    fixlist|nis2|monthly [flags] print a report from the saved runs
   hejnal accept    -item <id> -reason "..."     record that you checked an item and accept it
@@ -79,6 +81,8 @@ type app struct {
 	client         *http.Client
 	resolver       discover.Resolver // nil uses the system resolver
 	kevURL         string
+	euvdURL        string
+	euvdRecordURL  string
 	epssURL        string
 	ctURL          string
 	nvdURL         string
@@ -89,15 +93,17 @@ type app struct {
 
 func newApp(stdout, stderr io.Writer) *app {
 	return &app{
-		stdout:  stdout,
-		stderr:  stderr,
-		stdin:   os.Stdin,
-		now:     time.Now,
-		client:  &http.Client{Timeout: 2 * time.Minute},
-		kevURL:  kev.DefaultURL,
-		epssURL: epss.DefaultAPI,
-		ctURL:   discover.CrtShURL,
-		nvdURL:  nvd.DefaultAPI,
+		stdout:        stdout,
+		stderr:        stderr,
+		stdin:         os.Stdin,
+		now:           time.Now,
+		client:        &http.Client{Timeout: 2 * time.Minute},
+		kevURL:        kev.DefaultURL,
+		euvdURL:       euvd.DefaultURL,
+		euvdRecordURL: euvd.DefaultRecordURL,
+		epssURL:       epss.DefaultAPI,
+		ctURL:         discover.CrtShURL,
+		nvdURL:        nvd.DefaultAPI,
 	}
 }
 
@@ -158,6 +164,8 @@ type options struct {
 	stateDir    string
 	cacheDir    string
 	kevFile     string
+	euvdFile    string
+	noEUVD      bool
 	offline     bool
 	noEPSS      bool
 	noNVD       bool
@@ -184,6 +192,8 @@ func (o *options) cacheFlag(fs *flag.FlagSet) {
 func (o *options) feedFlags(fs *flag.FlagSet) {
 	o.cacheFlag(fs)
 	fs.StringVar(&o.kevFile, "kev-file", "", "read the KEV catalog from this file instead of downloading it")
+	fs.StringVar(&o.euvdFile, "euvd-file", "", "read ENISA's list of exploited vulnerabilities (EUVD /api/kev/dump) from this file")
+	fs.BoolVar(&o.noEUVD, "no-euvd", false, "do not use ENISA's list of exploited vulnerabilities")
 	fs.BoolVar(&o.offline, "offline", false, "do not download feeds; use the cached copies")
 	fs.BoolVar(&o.noEPSS, "no-epss", false, "do not use EPSS exploit-probability scores")
 	fs.BoolVar(&o.noNVD, "no-nvd", false, "do not compare versions with NVD's affected ranges")
@@ -214,25 +224,29 @@ func (o *options) check() error {
 // engine builds an engine from the flags.
 func (a *app) engine(o *options) (*engine.Engine, error) {
 	return engine.New(engine.Config{
-		StateDir:    o.stateDir,
-		CacheDir:    o.cacheDir,
-		KEVFile:     o.kevFile,
-		KEVURL:      a.kevURL,
-		EPSSURL:     a.epssURL,
-		CTURL:       a.ctURL,
-		Offline:     o.offline,
-		NoEPSS:      o.noEPSS,
-		NoCT:        o.noCT,
-		NoNVD:       o.noNVD,
-		Checks:      o.checks,
-		NVDURL:      a.nvdURL,
-		NVDKey:      os.Getenv("HEJNAL_NVD_API_KEY"),
-		Concurrency: o.concurrency,
-		Timeout:     o.timeout,
-		HTTPClient:  a.client,
-		Resolver:    a.resolver,
-		Now:         a.now,
-		Logf:        a.logf,
+		StateDir:      o.stateDir,
+		CacheDir:      o.cacheDir,
+		KEVFile:       o.kevFile,
+		KEVURL:        a.kevURL,
+		EUVDURL:       a.euvdURL,
+		EUVDRecordURL: a.euvdRecordURL,
+		EUVDFile:      o.euvdFile,
+		NoEUVD:        o.noEUVD,
+		EPSSURL:       a.epssURL,
+		CTURL:         a.ctURL,
+		Offline:       o.offline,
+		NoEPSS:        o.noEPSS,
+		NoCT:          o.noCT,
+		NoNVD:         o.noNVD,
+		Checks:        o.checks,
+		NVDURL:        a.nvdURL,
+		NVDKey:        os.Getenv("HEJNAL_NVD_API_KEY"),
+		Concurrency:   o.concurrency,
+		Timeout:       o.timeout,
+		HTTPClient:    a.client,
+		Resolver:      a.resolver,
+		Now:           a.now,
+		Logf:          a.logf,
 	})
 }
 

@@ -65,7 +65,7 @@ func TestFixListEnglish(t *testing.T) {
 		"**Fix now: 1 · This week: 1 · This month: 1 · Later: 0**",
 		"## Fix now (critical)",
 		"### 1. Fortinet FortiGate SSL VPN on vpn.example.com:443",
-		"Known exploited flaws in this product: 2. The newest was added to CISA's catalog on 2026-10-16.",
+		"Known exploited flaws in this product: 2. The newest was listed as exploited on 2026-10-16.",
 		"**Check for compromise:**",
 		"**CVE-2025-61624**: Fortinet Multiple Products Path Traversal Vulnerability · added 2026-10-16 · EPSS 42% · forensic triage",
 		"used in ransomware campaigns",
@@ -150,7 +150,7 @@ func TestNIS2(t *testing.T) {
 		"within 72 hours",
 		"within one month",
 		"S46",
-		"| vpn.example.com:443 | Fortinet FortiGate SSL VPN | CVE-2025-61624 | 2026-10-16 | yes |",
+		"| vpn.example.com:443 | Fortinet FortiGate SSL VPN | CVE-2025-61624 | 2026-10-16 (CISA) | yes |",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("NIS2 draft is missing %q", want)
@@ -166,6 +166,81 @@ func TestNIS2(t *testing.T) {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("Polish NIS2 draft is missing %q", want)
 		}
+	}
+}
+
+// enisaFindings are flaws from ENISA's list: one only ENISA lists, and one
+// ENISA listed 18 days before CISA.
+func enisaFindings() []match.Finding {
+	return []match.Finding{
+		{
+			Key: "kev|gw.example.com|8291|CVE-2026-67276", Kind: match.KindKEV, Host: "gw.example.com", Port: 8291,
+			URL: "tcp://gw.example.com:8291", TechID: "mikrotik-routeros-services", Technology: "MikroTik RouterOS",
+			CVE: "CVE-2026-67276", EUVD: "EUVD-2026-72024", ListedBy: []string{match.ListENISA},
+			Name: "MikroTik RouterOS vulnerability (MikroTrick)", DateAdded: "2026-09-05",
+			Links: []string{"https://cert.pl/en/posts/2026/09/mikrotik-routeros-cve"},
+			Score: 90, Severity: match.Critical, Confidence: match.ConfidenceProduct,
+		},
+		{
+			Key: "kev|win.example.com|443|CVE-2026-96951", Kind: match.KindKEV, Host: "win.example.com", Port: 443,
+			URL: "https://win.example.com/", TechID: "iis", Technology: "Microsoft IIS",
+			CVE: "CVE-2026-96951", EUVD: "EUVD-2026-100274", ListedBy: []string{match.ListCISA, match.ListENISA},
+			Name: "Microsoft Windows Vulnerability", DateAdded: "2026-10-13", ENISAEarlier: "2026-09-25", Forensics: true,
+			Score: 80, Severity: match.High, Confidence: match.ConfidenceProduct,
+		},
+	}
+}
+
+func TestENISAListings(t *testing.T) {
+	m := meta("en")
+	m.EUVDDate = "2026-11-07"
+	var b strings.Builder
+	if err := FixList(&b, enisaFindings(), m); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		"Sources: CISA Known Exploited Vulnerabilities catalog 2026.11.03, ENISA EUVD list of exploited vulnerabilities of 2026-11-07, FIRST EPSS scores of 2026-11-03.",
+		"**CVE-2026-67276** (EUVD-2026-72024): MikroTik RouterOS vulnerability (MikroTrick) · listed by ENISA, not CISA, on 2026-09-05",
+		"**CVE-2026-96951** (EUVD-2026-100274): Microsoft Windows Vulnerability · added 2026-10-13 · ENISA listed it on 2026-09-25, 18 days before CISA",
+		"<https://cert.pl/en/posts/2026/09/mikrotik-routeros-cve>",
+		"ENISA European Vulnerability Database (EUVD)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("fix list is missing %q:\n%s", want, out)
+		}
+	}
+
+	b.Reset()
+	m.Lang = "pl"
+	FixList(&b, enisaFindings(), m)
+	for _, want := range []string{"lista wykorzystywanych podatności ENISA EUVD z 2026-11-07", "na liście ENISA (nie CISA) od 2026-09-05",
+		"ENISA wpisała ją 2026-09-25, 18 dni przed CISA"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("Polish fix list is missing %q", want)
+		}
+	}
+
+	b.Reset()
+	NIS2(&b, enisaFindings(), meta("en"))
+	for _, want := range []string{
+		"| gw.example.com:8291 | MikroTik RouterOS | CVE-2026-67276 / EUVD-2026-72024 | 2026-09-05 (ENISA) | no |",
+		"| win.example.com:443 | Microsoft IIS | CVE-2026-96951 / EUVD-2026-100274 | 2026-09-25 (ENISA) | yes |",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("NIS2 draft is missing %q:\n%s", want, b.String())
+		}
+	}
+
+	if got := daysBetween("2026-09-23", "2026-09-24"); got != 1 {
+		t.Errorf("daysBetween = %d, want 1", got)
+	}
+	b.Reset()
+	fs := enisaFindings()[1:]
+	fs[0].ENISAEarlier = "2026-10-12"
+	FixList(&b, fs, meta("en"))
+	if !strings.Contains(b.String(), "ENISA listed it on 2026-10-12, a day before CISA") {
+		t.Errorf("one day earlier not said:\n%s", b.String())
 	}
 }
 

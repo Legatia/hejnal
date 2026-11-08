@@ -67,7 +67,10 @@ any redirects inside the scope:
 - `kev` maps the rule to entries in CISA's Known Exploited Vulnerabilities
   catalog by their `vendorProject` and `product` fields. For entries CISA
   files under "Multiple Products", add `text` so that only entries whose name
-  or description mention this product match.
+  or description mention this product match. The same patterns match flaws only
+  ENISA lists in the EUVD, which uses ENISA's spelling of names: check them
+  against `testdata/euvd_kev_sample.json` too. ENISA's generic product names,
+  such as "Various", are read as "Multiple Products".
 - `cpe` lists the product's NVD names as `vendor:product`, the third and
   fourth parts of its CPE names (for example `apache:http_server`). With it,
   Hejnal compares a version it sees with NVD's affected version ranges. List

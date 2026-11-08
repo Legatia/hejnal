@@ -42,7 +42,10 @@ type Snapshot struct {
 	Organization string    `json:"organization"`
 	GeneratedAt  time.Time `json:"generatedAt"`
 	KEVVersion   string    `json:"kevVersion,omitempty"`
-	EPSSDate     string    `json:"epssDate,omitempty"`
+	// EUVDDate is the date of ENISA's list of exploited vulnerabilities
+	// used, if any.
+	EUVDDate string `json:"euvdDate,omitempty"`
+	EPSSDate string `json:"epssDate,omitempty"`
 	// Inventory size at the time, for trend reports.
 	Assets       int             `json:"assets"`
 	Services     int             `json:"services"`
