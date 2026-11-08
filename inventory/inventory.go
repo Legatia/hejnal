@@ -2,7 +2,11 @@
 // organisation: hosts, the services they expose and the software behind them.
 package inventory
 
-import "time"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
 
 // Technology is a product identified on a service.
 type Technology struct {
@@ -66,6 +70,21 @@ type Inventory struct {
 	Organization string    `json:"organization"`
 	GeneratedAt  time.Time `json:"generatedAt"`
 	Assets       []Asset   `json:"assets"`
+	// Mail holds the mail records of each domain in the scope.
+	Mail []MailAuth `json:"mail,omitempty"`
+}
+
+// MailAuth is what a domain's DNS says about who may send its email. SPF
+// and DMARC hold the records found; the Known flags say the lookup
+// answered, so an empty record is really missing rather than unknown.
+type MailAuth struct {
+	Domain     string   `json:"domain"`
+	MX         []string `json:"mx,omitempty"`
+	SPF        string   `json:"spf,omitempty"`
+	SPFKnown   bool     `json:"spfKnown,omitempty"`
+	DMARC      string   `json:"dmarc,omitempty"`
+	DMARCKnown bool     `json:"dmarcKnown,omitempty"`
+	Errors     []string `json:"errors,omitempty"`
 }
 
 // Counts summarises an inventory.
@@ -78,4 +97,37 @@ func (inv *Inventory) Counts() (assets, services, technologies int) {
 		}
 	}
 	return
+}
+
+var (
+	spfAllRE    = regexp.MustCompile(`(?i)(?:^|\s)([-~?+]?)all(?:\s|$)`)
+	spfRedirect = regexp.MustCompile(`(?i)(?:^|\s)redirect=`)
+	dmarcPolicy = regexp.MustCompile(`(?i)(?:^|;)\s*p\s*=\s*(none|quarantine|reject)\s*(?:;|$)`)
+)
+
+// Problems lists what the domain's mail records leave open, as keys:
+// spf-missing, spf-weak (an SPF record that lets every server through or
+// ends without an "all"), dmarc-missing and dmarc-none (a DMARC policy that
+// only watches). Parts whose lookup failed are left out.
+func (m MailAuth) Problems() []string {
+	var out []string
+	if m.SPFKnown {
+		switch {
+		case m.SPF == "":
+			out = append(out, "spf-missing")
+		case !spfRedirect.MatchString(m.SPF):
+			if a := spfAllRE.FindStringSubmatch(m.SPF); a == nil || a[1] == "+" || a[1] == "?" {
+				out = append(out, "spf-weak")
+			}
+		}
+	}
+	if m.DMARCKnown {
+		switch p := dmarcPolicy.FindStringSubmatch(m.DMARC); {
+		case p == nil:
+			out = append(out, "dmarc-missing")
+		case strings.EqualFold(p[1], "none"):
+			out = append(out, "dmarc-none")
+		}
+	}
+	return out
 }

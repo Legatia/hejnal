@@ -383,3 +383,27 @@ func TestStaticCopiesHaveNoKEVFindings(t *testing.T) {
 		}
 	}
 }
+
+func TestTakeoverAndMailFindings(t *testing.T) {
+	inv := &inventory.Inventory{
+		Assets: []inventory.Asset{{Host: "old.example.com", Services: []inventory.Service{{Port: 443, Scheme: "https", URL: "https://old.example.com/",
+			Exposures: []inventory.Exposure{{Kind: "takeover", Path: "/", Evidence: "points to acme.github.io"}, {Kind: "script-secret", Path: "/", Evidence: "x"}}}}}},
+		Mail: []inventory.MailAuth{{Domain: "example.com", SPFKnown: true, DMARC: "v=DMARC1; p=none", DMARCKnown: true}},
+	}
+	got := byKey(Run(inv, nil, nil, Options{Now: now}))
+	if f := got["takeover|old.example.com|443"]; f.Kind != KindTakeover || f.Severity != High {
+		t.Errorf("takeover = %+v", f)
+	}
+	if f := got["exposed-file|old.example.com|443|script-secret"]; f.Severity != Critical {
+		t.Errorf("script secret = %+v", f)
+	}
+	if f := got["email|example.com|spf-missing"]; f.Kind != KindEmail || f.Port != 0 || f.Severity != Medium || !strings.Contains(f.Evidence, "receives no email") {
+		t.Errorf("spf = %+v", f)
+	}
+	if f := got["email|example.com|dmarc-none"]; f.Severity != Low {
+		t.Errorf("dmarc = %+v", f)
+	}
+	if len(got) != 4 {
+		t.Errorf("findings = %v", got)
+	}
+}

@@ -185,6 +185,13 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("file.why."+f.TechID))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("file.todo."+f.TechID))
 		fmt.Fprintf(b, "- **%s:** %s (%s)\n\n", tr("label.seen"), mdCode(f.URL), mdEscape(f.Evidence))
+	case match.KindTakeover, match.KindEmail:
+		f := g.Findings[0]
+		key := kindKey(f)
+		head(tr(key+".title", where))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr(key+".why"))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr(key+".todo"))
+		fmt.Fprintf(b, "- **%s:** %s\n\n", tr("label.seen"), mdEscape(f.Evidence))
 	case match.KindAdminExposed:
 		head(tr("admin.title", mdEscape(g.Technology), where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("admin.why"))
@@ -365,6 +372,9 @@ func percent(p float64) string {
 }
 
 func hostPort(host string, port int) string {
+	if port == 0 {
+		return host // a finding about the domain, such as its mail records
+	}
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
@@ -482,10 +492,20 @@ func itemTitle(tr translator, g match.Group) string {
 		return tr("admin.title", g.Technology, where)
 	case match.KindExposedFile:
 		return tr("file.title."+g.TechID, where)
+	case match.KindTakeover, match.KindEmail:
+		return tr(kindKey(g.Findings[0])+".title", where)
 	case match.KindSecret:
 		return tr("secret.title", g.Technology) + ": " + secretPlace(tr, g.Findings[0], false)
 	case match.KindBreach:
 		return tr("breach.title", g.Host)
 	}
 	return where
+}
+
+// kindKey is the start of the message keys for a takeover or mail finding.
+func kindKey(f match.Finding) string {
+	if f.Kind == match.KindEmail {
+		return "email." + f.TechID
+	}
+	return "takeover"
 }

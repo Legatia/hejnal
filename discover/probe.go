@@ -244,6 +244,8 @@ func (w *webClient) fetch(ctx context.Context, host string, port int, scheme str
 	if f := final.String(); f != svc.URL {
 		svc.FinalURL = f
 	}
+	w.r.surface(host, svc, string(body))
+	w.r.noteScripts(host, port, final, string(body))
 	for i, t := range svc.Technologies {
 		if headers, ok := w.r.opts.Engine.ServerCheck(t.ID); ok && w.staticCopy(ctx, final, t.ID, headers) {
 			svc.Technologies[i].Static = true

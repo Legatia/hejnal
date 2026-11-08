@@ -24,7 +24,7 @@ import (
 // kinds are the finding kinds the kind filter accepts.
 var kinds = []match.Kind{
 	match.KindKEV, match.KindTLSExpired, match.KindTLSExpiring, match.KindAdminExposed,
-	match.KindExposedFile, match.KindSecret, match.KindBreach,
+	match.KindExposedFile, match.KindTakeover, match.KindEmail, match.KindSecret, match.KindBreach,
 }
 
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {

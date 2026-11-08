@@ -88,7 +88,8 @@ func TestChecksFindExposedFilesAndVersions(t *testing.T) {
 	if wp.Version != "6.8.1" || !strings.Contains(wp.Evidence, "/feed/") {
 		t.Errorf("wordpress = %+v, want version 6.8.1 from /feed/", wp)
 	}
-	if len(paths()) > 1+len(exposureChecks)+1 {
+	// "/", the exposure checks, the page's one script and the version check.
+	if len(paths()) > 1+len(exposureChecks)+1+1 {
 		t.Errorf("too many requests: %v", paths())
 	}
 

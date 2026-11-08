@@ -279,6 +279,8 @@ func itemText(tr translator, g match.Group) (why, todo string) {
 		return tr(prefix+".why", f.Subject, date), tr("tls.todo")
 	case match.KindExposedFile:
 		return tr("file.why." + f.TechID), tr("file.todo." + f.TechID)
+	case match.KindTakeover, match.KindEmail:
+		return tr(kindKey(f) + ".why"), tr(kindKey(f) + ".todo")
 	case match.KindAdminExposed:
 		return tr("admin.why"), tr("admin.todo")
 	case match.KindSecret:

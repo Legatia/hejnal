@@ -50,8 +50,23 @@ the city of an attack.
    was compromised, it can draft a NIS2 early warning.
 
 It also flags expired or expiring TLS certificates and admin interfaces it can
-reach, such as Jenkins, phpMyAdmin or a vCenter login. With `-checks` it also
-looks for exposed `.git` directories, `.env` files and server status pages.
+reach, such as Jenkins, phpMyAdmin or a vCenter login. From what each front
+page and the DNS already show, it finds:
+
+- **subdomain takeovers**: a name that points at GitHub Pages, Heroku, S3 or
+  another hosting service where nothing is set up any more, so anyone could
+  claim it;
+- storage buckets and web folders that **list their files**;
+- **staging and test sites** (`staging.`, `dev.`, `preview.` and the like)
+  that answer without a password;
+- **mail records** that let others send email as your domain: no SPF record,
+  an SPF record that lets any server through, and no or a watch-only DMARC
+  policy.
+
+With `-checks` it also looks for exposed `.git` directories, `.env` files and
+server status pages, and reads the scripts each front page loads from its own
+site for **server secrets** shipped to every visitor, such as Stripe secret
+keys, AWS secret keys and GitHub tokens.
 `hejnal leaks` finds secrets in your source code and accounts on your domains
 in known data breaches. A REST API and an MCP server make the results
 available to other tools and to AI assistants.
@@ -93,8 +108,13 @@ prints this every time it runs.
   ordinary `GET` requests per web service to fixed, well-known paths:
   `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
   version page (such as WordPress's `/feed/` or Grafana's `/api/health`) for
-  recognised products that hide their version. It never follows redirects
-  for these, and an exposed `.env` file is counted, never stored.
+  recognised products that hide their version, and up to eight scripts the
+  front page itself loads from the same site. It never follows redirects
+  for these. An exposed `.env` file is counted, never stored; a secret in a
+  script is stored only as its start and length.
+- **DNS is read, never changed.** Mail checks read the domain's MX and TXT
+  records and `_dmarc` record. A lookup that times out is never reported as
+  a missing record.
 - **Private results.** The inventory and findings are written readable only
   by their owner (mode 0600), because they map your attack surface.
 
@@ -497,7 +517,10 @@ Scores of 85 and above are *fix now*, 70 to 84 *this week*, 50 to 69 *this
 month*, and anything lower *later*. Expired certificates score 70, certificates
 expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
 an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
-server status page 50.
+server status page 50, and a server secret in a script 95. A possible
+subdomain takeover scores 80, a public bucket listing 75, a staging site 50
+and a folder listing 45. Missing SPF or an SPF record that lets any server
+through scores 55, a missing DMARC policy 50 and a watch-only one 40.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products
 behind a login page, on ports it does not check, or on hosts it was not told

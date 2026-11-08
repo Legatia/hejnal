@@ -108,6 +108,8 @@ type runner struct {
 	queued   map[string]bool
 	found    map[string]string // in-scope names from certificates and redirects
 	excluded map[netip.Addr]bool
+	cnames   map[string]string   // name → the name it points to
+	scripts  map[string][]string // host|port → scripts its front page loads
 	capped   bool
 }
 
@@ -170,7 +172,13 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return r.inventory(), nil
+	inv := r.inventory()
+	for _, d := range s.Domains {
+		if m, ok := r.mailAuth(ctx, d); ok {
+			inv.Mail = append(inv.Mail, m)
+		}
+	}
+	return inv, nil
 }
 
 func newRunner(opts Options) (*runner, error) {
@@ -210,6 +218,8 @@ func newRunner(opts Options) (*runner, error) {
 		queued:   map[string]bool{},
 		found:    map[string]string{},
 		excluded: map[netip.Addr]bool{},
+		cnames:   map[string]string{},
+		scripts:  map[string][]string{},
 	}
 	r.web = newWebClient(r)
 	return r, nil
@@ -353,6 +363,9 @@ func (r *runner) lookup(ctx context.Context, host string) resolution {
 		res.all = []netip.Addr{ip.WithZone("").Unmap()}
 	} else {
 		res.all, res.err = r.resolveName(ctx, host)
+		if len(res.all) > 0 {
+			r.recordCNAME(ctx, host)
+		}
 	}
 	for _, ip := range res.all {
 		if len(res.allowed) == maxAddrsPerHost {

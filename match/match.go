@@ -29,7 +29,9 @@ const (
 	KindTLSExpired   Kind = "tls-expired"   // certificate has expired
 	KindTLSExpiring  Kind = "tls-expiring"  // certificate expires soon
 	KindAdminExposed Kind = "admin-exposed" // admin interface reachable
-	KindExposedFile  Kind = "exposed-file"  // a file that should not be public, found by -checks
+	KindExposedFile  Kind = "exposed-file"  // a file, listing or test site that should not be public
+	KindTakeover     Kind = "takeover"      // a name pointing at a hosting service where nothing is set up
+	KindEmail        Kind = "email"         // mail records that let others send email as the domain
 	KindSecret       Kind = "secret"        // a secret in source code, found by `hejnal leaks scan`
 	KindBreach       Kind = "breach"        // accounts on a domain in a known data breach
 )
@@ -37,7 +39,15 @@ const (
 // exposureScores rates exposed files: environment files usually hold
 // passwords and keys, a .git directory gives away source code and often
 // credentials, and a server status page shows live requests.
-var exposureScores = map[string]int{"env": 90, "git": 75, "server-status": 50}
+// A secret in a script is out already, a public bucket listing usually
+// gives away private files, and a staging site often runs with test
+// accounts and debug output.
+var exposureScores = map[string]int{"env": 90, "git": 75, "server-status": 50,
+	"script-secret": 95, "bucket-listing": 75, "directory-listing": 45, "non-production": 50}
+
+// emailScores rates mail records by how easily they let others send email
+// as the domain.
+var emailScores = map[string]int{"spf-missing": 55, "spf-weak": 55, "dmarc-missing": 50, "dmarc-none": 40}
 
 // Confidence says how sure Hejnal is.
 const (
@@ -262,6 +272,16 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 				emit(f)
 			}
 			for _, x := range s.Exposures {
+				if x.Kind == "takeover" {
+					// Anyone could serve pages, and read cookies set for
+					// the parent domain, under this name.
+					emit(Finding{
+						Key: fmt.Sprintf("%s|%s|%d", KindTakeover, a.Host, s.Port), Kind: KindTakeover,
+						Host: a.Host, Port: s.Port, URL: s.URL, Evidence: x.Evidence,
+						Score: 80, Severity: SeverityFor(80), Confidence: ConfidenceObserved,
+					})
+					continue
+				}
 				score, ok := exposureScores[x.Kind]
 				if !ok {
 					score = 50
@@ -339,8 +359,28 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 			}
 		}
 	}
+	for _, m := range inv.Mail {
+		for _, p := range m.Problems() {
+			ev := "SPF: " + orNone(m.SPF) + " · DMARC: " + orNone(m.DMARC)
+			if len(m.MX) == 0 {
+				ev += " · the domain receives no email"
+			}
+			emit(Finding{
+				Key: fmt.Sprintf("%s|%s|%s", KindEmail, m.Domain, p), Kind: KindEmail,
+				Host: m.Domain, TechID: p, Evidence: ev,
+				Score: emailScores[p], Severity: SeverityFor(emailScores[p]), Confidence: ConfidenceObserved,
+			})
+		}
+	}
 	Sort(out)
 	return out
+}
+
+func orNone(record string) string {
+	if record == "" {
+		return "none"
+	}
+	return record
 }
 
 func listedBy(v kev.Vulnerability) []string {
