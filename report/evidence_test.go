@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -170,5 +171,43 @@ func TestEvidencePolishAndPeriods(t *testing.T) {
 	Evidence(&b, nil, meta("en"), EvidenceOptions{})
 	if !strings.Contains(b.String(), "No saved runs in this period yet.") {
 		t.Errorf("empty evidence:\n%s", b.String())
+	}
+}
+
+func TestEvidenceControlsAndJSON(t *testing.T) {
+	m := meta("en")
+	m.Organization = "Acme"
+	var b strings.Builder
+	if err := Evidence(&b, evidenceHistory(), m, EvidenceOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Controls this evidence supports", "CC7.1", "A.8.8", "Art. 21(2)(e)"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	b.Reset()
+	if err := EvidenceJSON(&b, evidenceHistory(), m, EvidenceOptions{By: "Legatia"}); err != nil {
+		t.Fatal(err)
+	}
+	var rec EvidenceRecord
+	if err := json.Unmarshal([]byte(b.String()), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Schema != EvidenceSchema || rec.Runs.Count != 30 || rec.Runs.AverageDaysApart != 2.1 || rec.PreparedBy != "Legatia" ||
+		len(rec.Exploited) != 3 || len(rec.Controls) != 5 || rec.Fingerprint == "" {
+		t.Fatalf("record = %+v", rec)
+	}
+	fixed := 0
+	for _, it := range rec.Exploited {
+		if len(it.CVEs) == 0 || it.ID == "" {
+			t.Errorf("item = %+v", it)
+		}
+		if it.Status == "fixed" && it.Fixed != nil {
+			fixed++
+		}
+	}
+	if fixed != 2 {
+		t.Errorf("%d fixed, want 2", fixed)
 	}
 }

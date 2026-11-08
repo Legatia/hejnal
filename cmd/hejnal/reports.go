@@ -29,6 +29,7 @@ func (a *app) cmdReport(args []string) error {
 	month := fs.String("month", "", "month for the monthly report, as YYYY-MM (default: this month)")
 	by := fs.String("by", "", "who prepared the overview or evidence, such as your company's name")
 	since := fs.String("since", "", "first day the evidence covers, as YYYY-MM-DD (default: all saved runs)")
+	format := fs.String("format", "html", "evidence format: html, or json for compliance tools")
 	if kind == "" {
 		// Allow flags before the report name.
 		if err := fs.Parse(args); err != nil {
@@ -91,7 +92,15 @@ func (a *app) cmdReport(args []string) error {
 		if herr != nil {
 			return herr
 		}
-		err = report.Evidence(&buf, history, m, report.EvidenceOptions{Since: from, By: *by})
+		eo := report.EvidenceOptions{Since: from, By: *by}
+		switch *format {
+		case "html":
+			err = report.Evidence(&buf, history, m, eo)
+		case "json":
+			err = report.EvidenceJSON(&buf, history, m, eo)
+		default:
+			return fmt.Errorf("-format must be html or json")
+		}
 	case "nis2":
 		err = report.NIS2(&buf, snap.Findings, m)
 	case "monthly":

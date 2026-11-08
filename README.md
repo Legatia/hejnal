@@ -475,7 +475,15 @@ found:
   (median and within 7 and 30 days), and whether accepted risks are
   documented.
 - **Month by month**, and the accepted risks with their reasons.
+- **Controls it supports**, for auditors: SOC 2 CC7.1 and CC4.1, ISO/IEC
+  27001:2022 A.8.8 and A.5.7, and NIS2 Article 21(2)(e), each with what in
+  the report speaks to it. Whether a control is met stays the auditor's call.
 - A SHA-256 fingerprint of the runs used, to check the report against them.
+
+`-format json` writes the same evidence as data (schema
+`https://github.com/Legatia/hejnal/evidence/v1`): the runs, every item's
+exposure with its CVEs and dates, the accepted risks and the controls, for
+compliance tools and audit workpapers.
 
 It is not an audit or a certification, and it says so. Times to fix are
 measured between runs, so they include the wait for the next run. `-since
