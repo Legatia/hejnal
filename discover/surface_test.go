@@ -235,3 +235,35 @@ func keys(m map[string]inventory.Exposure) []string {
 	}
 	return out
 }
+
+// Names from a DNS provider are looked at, and only within the scope.
+func TestNames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "<html><title>Acme</title></html>")
+	}))
+	defer srv.Close()
+	port := portOf(t, srv.URL)
+	res := fakeResolver{"example.test": {"127.0.0.1"}, "intranet-old.example.test": {"127.0.0.1"}, "other.test": {"127.0.0.1"}}
+	inv, err := Run(context.Background(), Options{
+		Scope:    testScope(t, []string{"example.test"}, []string{"127.0.0.1"}, []int{port}, nil),
+		Engine:   engine(t),
+		Resolver: res,
+		Names:    []string{"intranet-old.example.test", "other.test"},
+		WebPorts: []int{port},
+		Timeout:  3 * time.Second,
+		Now:      func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]string{}
+	for _, a := range inv.Assets {
+		found[a.Host] = a.Source
+	}
+	if found["intranet-old.example.test"] != SourceDNS {
+		t.Errorf("the provider's name was not looked at: %v", found)
+	}
+	if _, ok := found["other.test"]; ok {
+		t.Error("a name outside the scope was looked at")
+	}
+}

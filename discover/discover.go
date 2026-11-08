@@ -33,6 +33,7 @@ const (
 	SourceTLS      = "tls-san"  // a name in a certificate Hejnal was shown
 	SourceRedirect = "redirect" // an in-scope host a service redirected to
 	SourceRange    = "range"    // an address in an authorised IP range
+	SourceDNS      = "dns"      // a name from the DNS provider's records
 )
 
 const (
@@ -78,6 +79,9 @@ type Options struct {
 	WebPorts []int
 	// MaxHosts caps how many hosts one run looks at.
 	MaxHosts int
+	// Names are more names to look at, such as the records a DNS provider
+	// holds. Names outside the scope are ignored, like any other.
+	Names []string
 	// Checks turns on the opt-in checks: a few more GET requests to fixed
 	// paths, for exposed files and product versions.
 	Checks bool
@@ -154,6 +158,9 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 			}
 			opts.Logf("certificate transparency: %d more names under %s", len(batch)-before, d)
 		}
+	}
+	for _, n := range opts.Names {
+		add(n, SourceDNS, opts.WebPorts)
 	}
 	for _, a := range s.Addresses() {
 		add(a.String(), SourceRange, s.Ports)

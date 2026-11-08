@@ -619,6 +619,7 @@ var sources = map[string]string{
 	"tls-san":  "name in a certificate",
 	"redirect": "redirect target",
 	"range":    "address in an authorised range",
+	"dns":      "record at the DNS provider",
 }
 
 func (s *Server) inventoryTool(_ context.Context, raw json.RawMessage) toolResult {
