@@ -116,6 +116,9 @@ cosign verify-blob \
 sha256sum --ignore-missing -c checksums.txt
 ```
 
+The bundle is in Sigstore's current format (v0.3), which needs cosign 3 or
+later; cosign 2 rejects it.
+
 ### Linux packages with a daily timer
 
 Each release also has `.deb`, `.rpm` and `.apk` packages. They install the
@@ -414,6 +417,16 @@ packages.
 
 Without a version, a match means: **you run a product attackers are
 exploiting right now; make sure your version has the fix.**
+
+Some flaws are in an application server, not in the pages it sends. For
+those products Hejnal asks for the page a second time, the way a browser
+does while it navigates the application, and a plain file server ignores
+the difference. For Next.js's App Router it sends `RSC: 1`: the Next.js
+server answers with its component payload (or a redirect adding `_rsc`),
+while a static export on a file server or CDN sends the same HTML page. A
+static export is still listed, marked as static files, but gets no KEV
+finding: there is no server for the React Server Components flaw to reach.
+Any other answer, including an error, counts as the application.
 
 ### The overview for decision-makers
 

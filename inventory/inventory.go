@@ -13,7 +13,10 @@ type Technology struct {
 	Admin    bool   `json:"admin,omitempty"`
 	// Packaged is set for Linux distribution builds, which get security
 	// fixes without a new upstream version number.
-	Packaged bool   `json:"packaged,omitempty"`
+	Packaged bool `json:"packaged,omitempty"`
+	// Static is set when the pages come from a plain file server, such as
+	// a static export, so flaws in the application cannot be reached.
+	Static   bool   `json:"static,omitempty"`
 	Evidence string `json:"evidence"`
 }
 

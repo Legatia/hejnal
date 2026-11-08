@@ -471,3 +471,50 @@ func TestHelpers(t *testing.T) {
 		t.Errorf("hostPort = %q", got)
 	}
 }
+
+// A Next.js app router page served by the application keeps its product;
+// the same page as a static export on a file server is marked static.
+func TestServerCheckTellsStaticExportsApart(t *testing.T) {
+	page := `<html><head><title>Shop</title></head><body><script>self.__next_f=self.__next_f||[]</script></body></html>`
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("RSC") == "1" {
+			w.Header().Set("Content-Type", "text/x-component")
+			fmt.Fprint(w, "0:{}")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, page)
+	}))
+	defer app.Close()
+	static := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, page)
+	}))
+	defer static.Close()
+	appPort, staticPort := portOf(t, app.URL), portOf(t, static.URL)
+	inv, err := Run(context.Background(), Options{
+		Scope:    testScope(t, nil, []string{"127.0.0.1"}, []int{appPort, staticPort}, nil),
+		Engine:   engine(t),
+		Resolver: fakeResolver{},
+		WebPorts: []int{appPort, staticPort},
+		Timeout:  3 * time.Second,
+		Now:      func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int]bool{}
+	for _, s := range assetMap(inv)["127.0.0.1"].Services {
+		for _, tech := range s.Technologies {
+			if tech.ID == "nextjs-app-router" {
+				got[s.Port] = tech.Static
+			}
+		}
+	}
+	if st, ok := got[appPort]; !ok || st {
+		t.Errorf("application: found %v, static %v", ok, st)
+	}
+	if st, ok := got[staticPort]; !ok || !st {
+		t.Errorf("static export: found %v, static %v", ok, st)
+	}
+}

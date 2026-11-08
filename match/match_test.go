@@ -3,6 +3,7 @@ package match
 import (
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,5 +355,31 @@ func TestVersionChecksUseTheEdition(t *testing.T) {
 	}
 	if f := jenkins("2.441"); f.Confidence != ConfidenceVersion {
 		t.Errorf("weekly 2.441 = %s, want version-confirmed", f.Confidence)
+	}
+}
+
+// A product served as static files has no reachable application: no KEV
+// finding, but the service is still listed.
+func TestStaticCopiesHaveNoKEVFindings(t *testing.T) {
+	cat, err := kev.Parse(strings.NewReader(`{"title":"t","catalogVersion":"1","dateReleased":"2026-11-01T00:00:00.000Z","count":1,"vulnerabilities":[
+		{"cveID":"CVE-2025-55182","vendorProject":"Meta","product":"React Server Components","vulnerabilityName":"Meta React Server Components Remote Code Execution Vulnerability","dateAdded":"2025-12-05","shortDescription":"x","requiredAction":"Apply mitigations.","dueDate":"2025-12-12","knownRansomwareCampaignUse":"Unknown","notes":""}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, _ := fingerprint.Default()
+	next := tech("nextjs-app-router", "Next.js App Router", "framework", "", false)
+	inv := func(static bool) *inventory.Inventory {
+		n := next
+		n.Static = static
+		return &inventory.Inventory{Assets: []inventory.Asset{{Host: "www.example.com", Services: []inventory.Service{{
+			Port: 443, Scheme: "https", URL: "https://www.example.com/", Technologies: []inventory.Technology{n}}}}}}
+	}
+	if fs := Run(inv(false), cat, eng, Options{Now: now}); len(fs) == 0 || fs[0].CVE != "CVE-2025-55182" {
+		t.Fatalf("application: %+v", fs)
+	}
+	for _, f := range Run(inv(true), cat, eng, Options{Now: now}) {
+		if f.Kind == KindKEV {
+			t.Errorf("static copy: %+v", f)
+		}
 	}
 }

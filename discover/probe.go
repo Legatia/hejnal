@@ -162,6 +162,33 @@ func schemesFor(port int) []string {
 	return []string{"https", "http"}
 }
 
+// staticCopy asks for the page again with a rule's server check headers,
+// as a browser does when it navigates in the application, and reports
+// whether a plain file server answered. Errors and redirects count as the
+// application, so a flaw is never hidden by a failed check.
+func (w *webClient) staticCopy(ctx context.Context, page *url.URL, id string, headers map[string]string) bool {
+	client := &http.Client{
+		Transport:     w.transport,
+		Timeout:       2 * w.r.opts.Timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, page.String(), nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("User-Agent", w.r.opts.UserAgent)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	return w.r.opts.Engine.StaticCopy(id, resp.StatusCode, fingerprint.NewResponse(resp.Header, page.Path, string(body)))
+}
+
 // fetch sends one GET request for "/". It follows redirects only on the same
 // host and to ports allowed for it. A redirect to another host is not
 // followed: an in-scope target is noted and gets its own GET / in the next
@@ -216,6 +243,12 @@ func (w *webClient) fetch(ctx context.Context, host string, port int, scheme str
 	}
 	if f := final.String(); f != svc.URL {
 		svc.FinalURL = f
+	}
+	for i, t := range svc.Technologies {
+		if headers, ok := w.r.opts.Engine.ServerCheck(t.ID); ok && w.staticCopy(ctx, final, t.ID, headers) {
+			svc.Technologies[i].Static = true
+			svc.Technologies[i].Evidence += "; static files: no application answered the server check"
+		}
 	}
 
 	// The certificate on the first hop belongs to the port being probed.

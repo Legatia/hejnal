@@ -301,6 +301,11 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 					emit(f)
 				}
 				for _, i := range kevFor(t.ID) {
+					if t.Static {
+						// The pages are static files: the application
+						// the flaw is in does not run here.
+						break
+					}
 					v := cat.Vulnerabilities[i]
 					f := base
 					f.Kind = KindKEV

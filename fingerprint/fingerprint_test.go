@@ -394,3 +394,58 @@ func TestSamples(t *testing.T) {
 		}
 	}
 }
+
+// A page titled RouterOS is MikroTik's only with MikroTik's logo on it.
+func TestRouterOSTitleNeedsTheLogo(t *testing.T) {
+	e := engine(t)
+	if _, ok := identify(e, header(), "/", "<html><head><title>RouterOS</title></head><body>Our router guide</body></html>")["mikrotik-routeros"]; ok {
+		t.Error("a page merely titled RouterOS was taken for WebFig")
+	}
+}
+
+func TestServerCheck(t *testing.T) {
+	e := engine(t)
+	headers, ok := e.ServerCheck("nextjs-app-router")
+	if !ok || headers["RSC"] != "1" {
+		t.Fatalf("server check = %v, %v", headers, ok)
+	}
+	if _, ok := e.ServerCheck("wordpress"); ok {
+		t.Error("WordPress has a server check")
+	}
+	html := NewResponse(header("Content-Type", "text/html; charset=utf-8"), "/", "<html></html>")
+	cases := []struct {
+		name   string
+		status int
+		r      Response
+		static bool
+	}{
+		{"file server ignores the header", 200, html, true},
+		{"application answers with the component payload", 200, NewResponse(header("Content-Type", "text/x-component"), "/", "0:{}"), false},
+		{"application redirects to add _rsc", 307, NewResponse(header("Location", "/?_rsc=abc12"), "/", ""), false},
+		{"error page is not proof of a file server", 404, html, false},
+		{"other answer", 200, NewResponse(header("Content-Type", "application/json"), "/", "{}"), false},
+	}
+	for _, c := range cases {
+		if got := e.StaticCopy("nextjs-app-router", c.status, c.r); got != c.static {
+			t.Errorf("%s: static = %v", c.name, got)
+		}
+	}
+	if e.StaticCopy("wordpress", 200, html) {
+		t.Error("a rule without a server check reported a static copy")
+	}
+}
+
+func TestLoadRejectsBadServerChecks(t *testing.T) {
+	for name, check := range map[string]string{
+		"no headers":      `{"server": [{"source": "body", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
+		"no server match": `{"headers": {"X-A": "1"}, "static": {"source": "body", "regex": "y"}}`,
+		"cookie header":   `{"headers": {"Cookie": "a=b"}, "server": [{"source": "body", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
+		"header newline":  `{"headers": {"X-A": "1\r\nX-B: 2"}, "server": [{"source": "body", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
+		"bad source":      `{"headers": {"X-A": "1"}, "server": [{"source": "cookie", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
+	} {
+		doc := `{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "server": ` + check + `}]}`
+		if _, err := Load([]byte(doc)); err == nil {
+			t.Errorf("%s: Load succeeded", name)
+		}
+	}
+}
