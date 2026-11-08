@@ -462,6 +462,15 @@ func ItemTitle(g match.Group, lang string) string {
 	return itemTitle(newTranslator(lang), g)
 }
 
+// ItemText says why an item matters and what to do about it, as plain
+// text in the given language, for trackers and other tools.
+func ItemText(g match.Group, lang string) (why, todo string) {
+	if len(g.Findings) == 0 {
+		return "", ""
+	}
+	return itemText(newTranslator(lang), g)
+}
+
 // groupTitle names an item in plain text, with its first flaws for known
 // exploited ones.
 func groupTitle(tr translator, g match.Group) string {

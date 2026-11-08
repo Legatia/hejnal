@@ -402,3 +402,14 @@ func TestFixListTakeoverAndMail(t *testing.T) {
 		}
 	}
 }
+
+func TestItemText(t *testing.T) {
+	g := match.Group{Kind: match.KindAdminExposed, Findings: []match.Finding{{Kind: match.KindAdminExposed}}}
+	why, todo := ItemText(g, "en")
+	if why == "" || todo == "" || strings.Contains(why, "admin.why") {
+		t.Errorf("ItemText = %q, %q", why, todo)
+	}
+	if why, todo := ItemText(match.Group{}, "en"); why+todo != "" {
+		t.Errorf("an empty group has text: %q %q", why, todo)
+	}
+}
