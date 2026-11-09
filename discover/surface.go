@@ -3,6 +3,7 @@ package discover
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"html"
@@ -28,7 +29,43 @@ const (
 	ExposureBucketListing = "bucket-listing"
 	ExposureDirListing    = "directory-listing"
 	ExposureNonProduction = "non-production"
+	// ExposureForeignHost is a name of yours whose address answers with a
+	// certificate for other names: usually an address you gave back to a
+	// cloud provider, now someone else's. Rating companies count what
+	// answers there as yours, and its new holder can serve pages on your
+	// name.
+	ExposureForeignHost = "foreign-host"
 )
+
+// foreignHost reports whether host, a name, answers with a certificate for
+// neither it nor any name in the scope, and returns the certificate's names.
+func (r *runner) foreignHost(host string, leaf *x509.Certificate) (string, bool) {
+	if leaf == nil || net.ParseIP(host) != nil || leaf.VerifyHostname(host) == nil {
+		return "", false
+	}
+	names := leaf.DNSNames
+	if len(names) == 0 && leaf.Subject.CommonName != "" {
+		names = []string{leaf.Subject.CommonName}
+	}
+	if len(names) == 0 {
+		return "", false
+	}
+	for _, n := range names {
+		n = strings.TrimPrefix(strings.ToLower(n), "*.")
+		// A certificate naming any of your names is yours, merely wrong for
+		// this one; a self-made certificate for localhost and the like says
+		// nothing either way.
+		if r.s.HostInScope(n) || !strings.Contains(n, ".") || n == "localhost.localdomain" {
+			return "", false
+		}
+	}
+	shown := names[:min(len(names), 3)]
+	ev := strings.Join(shown, ", ")
+	if len(names) > len(shown) {
+		ev += fmt.Sprintf(" and %d more", len(names)-len(shown))
+	}
+	return clipRecord(ev), true
+}
 
 // DNSRecords is what a resolver offers besides addresses. The system
 // resolver has it; a resolver without it skips the checks that need it.

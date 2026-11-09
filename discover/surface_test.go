@@ -2,6 +2,7 @@ package discover
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net"
@@ -265,5 +266,39 @@ func TestNames(t *testing.T) {
 	}
 	if _, ok := found["other.test"]; ok {
 		t.Error("a name outside the scope was looked at")
+	}
+}
+
+func TestForeignHost(t *testing.T) {
+	r := &runner{s: testScope(t, []string{"example.test"}, nil, []int{443}, nil)}
+	parse := func(names ...string) *x509.Certificate {
+		c, err := x509.ParseCertificate(testCert(t, names, testNow.Add(24*time.Hour)).Certificate[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	cases := []struct {
+		host  string
+		cert  *x509.Certificate
+		want  bool
+		names string
+	}{
+		{"old-api.example.test", parse("shop.someone-else.test", "www.someone-else.test"), true, "shop.someone-else.test, www.someone-else.test"},
+		{"a.example.test", parse("x1.other.test", "x2.other.test", "x3.other.test", "x4.other.test"), true, "x1.other.test, x2.other.test, x3.other.test and 1 more"},
+		// The certificate covers the name.
+		{"www.example.test", parse("*.example.test"), false, ""},
+		// A certificate for another of your names: yours, merely wrong here.
+		{"cdn.example.test", parse("www.example.test", "elsewhere.test"), false, ""},
+		// Self-made certificates for local names prove nothing.
+		{"nas.example.test", parse("localhost"), false, ""},
+		// Addresses are not names anyone rates you by.
+		{"127.0.0.1", parse("someone-else.test"), false, ""},
+	}
+	for _, c := range cases {
+		names, ok := r.foreignHost(c.host, c.cert)
+		if ok != c.want || names != c.names {
+			t.Errorf("%s: %q, %v", c.host, names, ok)
+		}
 	}
 }

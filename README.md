@@ -61,7 +61,12 @@ page and the DNS already show, it finds:
   that answer without a password;
 - **mail records** that let others send email as your domain: no SPF record,
   an SPF record that lets any server through, and no or a watch-only DMARC
-  policy.
+  policy;
+- **names pointing at someone else's server**: a name of yours whose address
+  answers with a certificate for other companies' names and none of yours.
+  Usually it is a cloud address you gave back and someone else now rents:
+  they can serve pages on your name, and security-rating companies count
+  that server's flaws against you.
 
 With `-checks` it also looks for exposed `.git` directories, `.env` files and
 server status pages, and reads the scripts each front page loads from its own
@@ -70,6 +75,26 @@ keys, AWS secret keys and GitHub tokens.
 `hejnal leaks` finds secrets in your source code and accounts on your domains
 in known data breaches. A REST API and an MCP server make the results
 available to other tools and to AI assistants.
+
+Every item says **how sure** Hejnal is and how you can **see it yourself**:
+what answered and what it said, the version it showed, whether NVD lists
+that version as affected and since when the flaw is known to be exploited,
+with a ✓ for each step Hejnal saw and a ? for each it could not check from
+outside, then the `curl`, `openssl` or `dig` command that shows the same
+thing without Hejnal. The verdict is *confirmed*, *likely* (one step cannot
+be checked from outside, such as a version the product hides) or *check it*
+(something outside Hejnal's view may rule it out, such as fixes a Linux
+distribution backports). The fix list starts with **where to start**: the
+urgent items, most urgent first, with a rough effort for each and in all,
+then the quick wins of 30 minutes or less.
+
+**Hejnal is not a penetration test.** It never logs in, guesses passwords
+or tries exploits, so it finds known problems anyone can see from outside
+and misses what a tester would find by attacking. What it gives you is
+continuous, dated evidence that you watch your exposure and fix what is
+exploited, which is what SOC 2 (CC7.1), ISO 27001 (A.8.8) and NIS2 ask for
+between yearly tests, and a way to make those tests cheaper by fixing the
+obvious first.
 
 See an [example fix list](examples/fix-list.en.md) (and [in
 Polish](examples/fix-list.pl.md)).
@@ -527,7 +552,8 @@ expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
 an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
 server status page 50, and a server secret in a script 95. A possible
 subdomain takeover scores 80, a public bucket listing 75, a staging site 50
-and a folder listing 45. Missing SPF or an SPF record that lets any server
+and a folder listing 45. A name pointing at someone else's server scores 55.
+Missing SPF or an SPF record that lets any server
 through scores 55, a missing DMARC policy 50 and a watch-only one 40.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products

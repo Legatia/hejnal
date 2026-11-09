@@ -554,6 +554,7 @@ var fileKinds = map[string]string{
 	"bucket-listing":    "Public storage bucket listing",
 	"directory-listing": "Public folder listing",
 	"non-production":    "Staging or test site open to anyone",
+	"foreign-host":      "Name of yours pointing at someone else's server",
 }
 
 var emailKinds = map[string]string{
@@ -800,6 +801,10 @@ type item struct {
 	Score      int            `json:"score"`
 	CVEs       []string       `json:"cves,omitempty"`
 	Title      string         `json:"title"`
+	// Verdict is how sure Hejnal is: confirmed, likely or check.
+	Verdict string `json:"verdict"`
+	// EffortMinutes is a rough estimate of the work to fix the item.
+	EffortMinutes int `json:"effortMinutes"`
 }
 
 type severityCounts struct {
@@ -922,7 +927,8 @@ func items(groups []match.Group) []item {
 	out := []item{}
 	for _, g := range groups {
 		it := item{ID: g.ID(), Key: g.Key, Kind: g.Kind, Host: g.Host, Port: g.Port, Technology: g.Technology, Version: g.Version,
-			Severity: g.Severity, Score: g.Score, Title: title(g)}
+			Severity: g.Severity, Score: g.Score, Title: title(g),
+			Verdict: report.ProofOf(g, "en").Verdict, EffortMinutes: report.Effort(g)}
 		for _, f := range g.Findings {
 			if f.CVE != "" {
 				it.CVEs = append(it.CVEs, f.CVE)
