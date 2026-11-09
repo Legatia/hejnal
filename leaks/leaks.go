@@ -83,6 +83,12 @@ type Options struct {
 	// Skipped, when set, is told about files that were not scanned because
 	// they are too large.
 	Skipped func(path string, size int64)
+	// CompleteKeys reports a private key only as a complete block: its BEGIN
+	// line, key data that is valid base64 of a key's size and form, and the
+	// END line that matches. Files shipped to browsers, such as a site's
+	// scripts, carry header strings, excerpts and placeholders from
+	// libraries and documentation far more often than real keys.
+	CompleteKeys bool
 }
 
 var defaultSkipDirs = []string{".git", ".hejnal", "node_modules", "vendor", "dist", "build", ".venv", "venv", "__pycache__"}
@@ -167,8 +173,9 @@ var trivialValues = []string{"password", "passwd", "pass", "pwd", "secret", "tok
 // Azure Storage emulator (Azurite) key is listed by fingerprint, so that this
 // file does not itself look like it leaks an Azure key.
 var knownExamples = map[string]bool{
-	"AKIA" + "IOSFODNN7EXAMPLE": true, // AWS documentation
-	"0011cc25eb432071":          true, // Azurite's well-known account key
+	"AKIA" + "IOSFODNN7EXAMPLE":                     true, // AWS documentation
+	"wJalrXUtnFEMI/K7MDENG/" + "bPxRfiCYEXAMPLEKEY": true, // AWS documentation
+	"0011cc25eb432071":                              true, // Azurite's well-known account key
 }
 
 // placeholder reports whether a matched secret is an example value. token

@@ -2,8 +2,10 @@ package discover
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -77,13 +79,25 @@ func allCipherSuites() []uint16 {
 }
 
 // dial is the single point where discovery opens connections. It refuses any
-// host or port outside the scope and only uses addresses checked by lookup.
+// host or port outside the scope, and under Options.TiedOnly any name whose
+// certificate does not tie it to the scope, and only uses addresses checked
+// by lookup.
 func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
 	}
 	host = normalizeHost(host)
+	if w.r.untied(host) {
+		return nil, fmt.Errorf("%w: no certificate ties %s to the scope's domains", ErrOutOfScope, host)
+	}
+	return w.connect(ctx, host, port)
+}
+
+// connect opens a TCP connection after checking the host and port against
+// the scope, using only addresses checked by lookup. Only dial and the TLS
+// handshake that ties a name to the scope use it.
+func (w *webClient) connect(ctx context.Context, host, port string) (net.Conn, error) {
 	if !w.r.s.HostInScope(host) {
 		return nil, fmt.Errorf("%w: %s", ErrOutOfScope, host)
 	}
@@ -107,6 +121,32 @@ func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) 
 		last = err
 	}
 	return nil, last
+}
+
+// tiePort is the port whose certificate ties a name to the scope under
+// Options.TiedOnly. Tests change it.
+var tiePort = 443
+
+// tie does the TLS handshake on tiePort of a name under Options.TiedOnly,
+// sending nothing else, and records whether the certificate ties the name
+// to the scope.
+func (w *webClient) tie(ctx context.Context, host string) {
+	ctx, cancel := context.WithTimeout(ctx, 2*w.r.opts.Timeout)
+	defer cancel()
+	var t tie
+	if c, err := w.connect(ctx, host, strconv.Itoa(tiePort)); err == nil {
+		cfg := w.transport.TLSClientConfig.Clone()
+		cfg.ServerName = host
+		tc := tls.Client(c, cfg)
+		if tc.HandshakeContext(ctx) == nil {
+			t.chain = tc.ConnectionState().PeerCertificates
+		}
+		tc.Close()
+	}
+	t.tied = len(t.chain) > 0 && w.r.certTied(host, t.chain[0])
+	w.r.mu.Lock()
+	w.r.ties[host] = t
+	w.r.mu.Unlock()
 }
 
 // probe checks one port. It returns nil when the port is closed. However a
@@ -164,15 +204,24 @@ func schemesFor(port int) []string {
 
 // staticCopy asks for the page again with a rule's server check headers,
 // as a browser does when it navigates in the application, and reports
-// whether a plain file server answered. Errors and redirects count as the
-// application, so a flaw is never hidden by a failed check.
-func (w *webClient) staticCopy(ctx context.Context, page *url.URL, id string, headers map[string]string) bool {
+// whether a plain file server answered. A query parameter with a random
+// value, when the rule names one, keeps a cache in front of the
+// application from answering with the page it already holds. Errors and
+// redirects count as the application, so a flaw is never hidden by a failed
+// check.
+func (w *webClient) staticCopy(ctx context.Context, page *url.URL, id string, headers map[string]string, query string) bool {
 	client := &http.Client{
 		Transport:     w.transport,
 		Timeout:       2 * w.r.opts.Timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, page.String(), nil)
+	u := *page
+	if query != "" {
+		q := u.Query()
+		q.Set(query, cacheBuster())
+		u.RawQuery = q.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return false
 	}
@@ -187,6 +236,13 @@ func (w *webClient) staticCopy(ctx context.Context, page *url.URL, id string, he
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	return w.r.opts.Engine.StaticCopy(id, resp.StatusCode, fingerprint.NewResponse(resp.Header, page.Path, string(body)))
+}
+
+// cacheBuster returns a short random value no cache has seen.
+func cacheBuster() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // fetch sends one GET request for "/". It follows redirects only on the same
@@ -244,10 +300,10 @@ func (w *webClient) fetch(ctx context.Context, host string, port int, scheme str
 	if f := final.String(); f != svc.URL {
 		svc.FinalURL = f
 	}
-	w.r.surface(host, svc, string(body))
+	w.r.surface(host, svc, header, string(body))
 	w.r.noteScripts(host, port, final, string(body))
 	for i, t := range svc.Technologies {
-		if headers, ok := w.r.opts.Engine.ServerCheck(t.ID); ok && w.staticCopy(ctx, final, t.ID, headers) {
+		if headers, query, ok := w.r.opts.Engine.ServerCheck(t.ID); ok && w.staticCopy(ctx, final, t.ID, headers, query) {
 			svc.Technologies[i].Static = true
 			svc.Technologies[i].Evidence += "; static files: no application answered the server check"
 		}

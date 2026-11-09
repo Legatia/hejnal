@@ -553,15 +553,16 @@ var fileKinds = map[string]string{
 	"script-secret":     "Server secret in the site's JavaScript",
 	"bucket-listing":    "Public storage bucket listing",
 	"directory-listing": "Public folder listing",
-	"non-production":    "Staging or test site open to anyone",
+	"non-production":    "Possible staging or test site open to anyone",
 	"foreign-host":      "Name of yours pointing at someone else's server",
 }
 
 var emailKinds = map[string]string{
-	"spf-missing":   "No SPF record",
-	"spf-weak":      "SPF record lets any server send",
-	"dmarc-missing": "No DMARC policy",
-	"dmarc-none":    "DMARC policy only monitors",
+	"spf-missing":       "No SPF record",
+	"spf-missing-dmarc": "No SPF record (DMARC enforced)",
+	"spf-weak":          "SPF record lets any server send",
+	"dmarc-missing":     "No DMARC policy",
+	"dmarc-none":        "DMARC policy only monitors",
 }
 
 func fileKind(check string) string {

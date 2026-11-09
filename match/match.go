@@ -46,8 +46,9 @@ var exposureScores = map[string]int{"env": 90, "git": 75, "server-status": 50,
 	"script-secret": 95, "bucket-listing": 75, "directory-listing": 45, "non-production": 50, "foreign-host": 55}
 
 // emailScores rates mail records by how easily they let others send email
-// as the domain.
-var emailScores = map[string]int{"spf-missing": 55, "spf-weak": 55, "dmarc-missing": 50, "dmarc-none": 40}
+// as the domain. A missing SPF record matters little where an enforced
+// DMARC policy already turns fake email away.
+var emailScores = map[string]int{"spf-missing": 55, "spf-missing-dmarc": 30, "spf-weak": 55, "dmarc-missing": 50, "dmarc-none": 40}
 
 // Confidence says how sure Hejnal is.
 const (
@@ -362,6 +363,9 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 	for _, m := range inv.Mail {
 		for _, p := range m.Problems() {
 			ev := "SPF: " + orNone(m.SPF) + " · DMARC: " + orNone(m.DMARC)
+			if m.DMARCDomain != "" {
+				ev = "SPF: " + orNone(m.SPF) + " · DMARC: none of its own; " + m.DMARCDomain + "'s applies: " + m.DMARC
+			}
 			if len(m.MX) == 0 {
 				ev += " · the domain receives no email"
 			}

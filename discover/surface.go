@@ -14,14 +14,17 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/leaks"
 )
 
 // Checks on what a web service's front page already shows, and on a
-// domain's DNS records. None of them sends a request beyond those discovery
-// makes anyway.
+// domain's DNS records. The front-page checks read the answer to the GET /
+// discovery sends anyway, and the DNS checks only look records up. Only the
+// script check, one of the opt-in checks, sends requests of its own: for
+// the scripts the front page loads.
 
 // Exposure kinds found from the front page.
 const (
@@ -89,12 +92,15 @@ type takeoverService struct {
 
 // takeoverServices lists only services where claiming a dangling name is
 // known to work and the answer is unmistakable; services that verify
-// ownership, or whose error pages are ambiguous, are left out.
+// ownership, or whose error pages are ambiguous, are left out. So are
+// Heroku's herokudns.com and herokussl.com targets: Heroku makes up a new
+// random one for every custom domain, so nobody can get the one a name
+// still points to.
 var takeoverServices = []takeoverService{
 	{name: "GitHub Pages", cname: regexp.MustCompile(`(?i)\.github\.io\.?$`),
 		addrs: []netip.Prefix{netip.MustParsePrefix("185.199.108.0/22")},
 		body:  regexp.MustCompile(`There isn't a GitHub Pages site here\.`)},
-	{name: "Heroku", cname: regexp.MustCompile(`(?i)\.(herokuapp|herokudns|herokussl)\.com\.?$`),
+	{name: "Heroku", cname: regexp.MustCompile(`(?i)\.herokuapp\.com\.?$`),
 		body: regexp.MustCompile(`(?i)<title>No such app</title>|herokucdn\.com/error-pages/no-such-app\.html`)},
 	{name: "Amazon S3", cname: regexp.MustCompile(`(?i)(^|\.)s3([.-][a-z0-9-]+)*\.amazonaws\.com\.?$`),
 		body: regexp.MustCompile(`<Code>NoSuchBucket</Code>`)},
@@ -171,9 +177,81 @@ func nonProductionName(host string) bool {
 	return false
 }
 
+// productionNames returns the names a staging or test copy at host is
+// likely a copy of: the parent name, its www name, and the name without
+// the staging part, so "api-staging.example.com" gives "example.com",
+// "www.example.com" and "api.example.com".
+func productionNames(host string) []string {
+	first, parent, _ := strings.Cut(host, ".")
+	if !strings.Contains(parent, ".") {
+		return nil
+	}
+	out := []string{parent, "www." + parent}
+	var keep []string
+	for _, part := range strings.Split(first, "-") {
+		if !nonProduction[strings.TrimRight(part, "0123456789")] {
+			keep = append(keep, part)
+		}
+	}
+	if len(keep) > 0 {
+		out = append(out, strings.Join(keep, "-")+"."+parent)
+	}
+	return out
+}
+
+var (
+	// noindexRE matches a robots meta tag that keeps search engines away,
+	// as preview and staging deployments usually have.
+	noindexRE = regexp.MustCompile(`(?i)<meta\b[^>]*\bname\s*=\s*["']?(?:robots|googlebot)\b[^>]*\bcontent\s*=\s*["'][^"']*\bnoindex|<meta\b[^>]*\bcontent\s*=\s*["'][^"']*\bnoindex[^>]*\bname\s*=\s*["']?(?:robots|googlebot)\b`)
+	// testTitleRE matches a page title that calls the site a copy for
+	// testing: "Acme (staging)", "[UAT] Acme", "Acme test environment".
+	// Words that also name public sites, such as "dev" for a developer
+	// portal, "QA" for questions and answers or "sandbox" for an API
+	// sandbox, count only in brackets.
+	testTitleRE = regexp.MustCompile(`(?i)\bstaging\b|\bpre-?prod(?:uction)?\b|\buat\b|\b(?:test|testing|dev|development|qa)\s+(?:environment|server|instance|system|site)\b|[\[(]\s*(?:dev|test|testing|qa|stage|stg|preview|sandbox)\s*[\])]`)
+	// stagingTextRE matches a page that says it is a staging copy.
+	stagingTextRE = regexp.MustCompile(`(?i)\b(?:staging|pre-?production)\s+(?:environment|server|site|system|instance)\b`)
+	passwordRE    = regexp.MustCompile(`(?i)<input\b[^>]*\btype\s*=\s*["']?password\b`)
+	hiddenRE      = regexp.MustCompile(`(?is)<(script|style|noscript|template|head)\b.*?</(?:script|style|noscript|template|head)\s*>`)
+	tagRE         = regexp.MustCompile(`(?s)<[^>]*>`)
+)
+
+// shell reports whether a page shows next to no text of its own, as a
+// single-page application's start page does before its scripts run. Such a
+// page looks the same whether or not the application then asks for a login.
+func shell(body string) bool {
+	text := tagRE.ReplaceAllString(hiddenRE.ReplaceAllString(body, " "), " ")
+	letters := 0
+	for _, c := range html.UnescapeString(text) {
+		if unicode.IsLetter(c) {
+			letters++
+		}
+	}
+	return letters < 40
+}
+
+// nonProductionSign returns what on a front page, besides the name, marks
+// a staging or test copy. ok is false for a page that cannot show it: a
+// login, or a page without text of its own, since Hejnal cannot see past a
+// login. A page with no sign may still show the live site's page.
+func nonProductionSign(header http.Header, title, body string) (sign string, ok bool) {
+	if loginTitleRE.MatchString(title) || passwordRE.MatchString(body) || shell(body) {
+		return "", false
+	}
+	switch {
+	case strings.Contains(strings.ToLower(strings.Join(header.Values("X-Robots-Tag"), ",")), "noindex"), noindexRE.MatchString(body):
+		return "asks search engines not to index it", true
+	case testTitleRE.MatchString(title):
+		return fmt.Sprintf("its title %q names it a test copy", truncate(title, 80)), true
+	case stagingTextRE.MatchString(tagRE.ReplaceAllString(hiddenRE.ReplaceAllString(body, " "), " ")):
+		return "the page calls itself a staging site", true
+	}
+	return "", true
+}
+
 // surface adds the exposures the front page shows. svc is the service's
-// answer to GET /, body its start.
-func (r *runner) surface(host string, svc *inventory.Service, body string) {
+// answer to GET /, header its headers and body its start.
+func (r *runner) surface(host string, svc *inventory.Service, header http.Header, body string) {
 	cname, addrs := r.records(host)
 	if name, ok := takeover(cname, addrs, body); ok {
 		where := cname
@@ -190,10 +268,59 @@ func (r *runner) surface(host string, svc *inventory.Service, body string) {
 	if kind, ev := listing(body); kind != "" {
 		svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: kind, Path: "/", Evidence: ev})
 	}
-	if nonProductionName(host) && !loginTitleRE.MatchString(svc.Title) {
-		svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: ExposureNonProduction, Path: "/",
-			Evidence: fmt.Sprintf("%q answers anyone without a password", host)})
+	if !nonProductionName(host) {
+		return
 	}
+	switch sign, ok := nonProductionSign(header, svc.Title, body); {
+	case !ok:
+	case sign != "":
+		svc.Exposures = append(svc.Exposures, nonProductionExposure(host, sign))
+	case strings.TrimSpace(svc.Title) != "":
+		// Whether it shows the live site's page is known once that site
+		// was looked at too.
+		r.mu.Lock()
+		r.copies = append(r.copies, copyCandidate{host: host, port: svc.Port, title: svc.Title})
+		r.mu.Unlock()
+	}
+}
+
+func nonProductionExposure(host, sign string) inventory.Exposure {
+	return inventory.Exposure{Kind: ExposureNonProduction, Path: "/",
+		Evidence: fmt.Sprintf("the name %q suggests a staging or test copy; its front page answers without a password and %s", host, sign)}
+}
+
+// copyCandidate is a front page on a staging or test name that showed no
+// sign of its own, kept to compare with the live site's page.
+type copyCandidate struct {
+	host  string
+	port  int
+	title string
+}
+
+// markCopies flags the staging or test names that show the same page title
+// as the live site they are named after.
+func (r *runner) markCopies() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.copies {
+		for _, name := range productionNames(c.host) {
+			live := r.assets[name]
+			if live == nil || !slices.ContainsFunc(live.Services, func(s inventory.Service) bool {
+				return s.Status == http.StatusOK && strings.EqualFold(strings.TrimSpace(s.Title), strings.TrimSpace(c.title))
+			}) {
+				continue
+			}
+			if a := r.assets[c.host]; a != nil {
+				for i, s := range a.Services {
+					if s.Port == c.port && !slices.ContainsFunc(s.Exposures, func(x inventory.Exposure) bool { return x.Kind == ExposureNonProduction }) {
+						a.Services[i].Exposures = append(a.Services[i].Exposures, nonProductionExposure(c.host, "shows the same page title as "+name))
+					}
+				}
+			}
+			break
+		}
+	}
+	r.copies = nil
 }
 
 // records returns the name host points to, if any, and the addresses it
@@ -255,34 +382,65 @@ func (r *runner) mailAuth(ctx context.Context, domain string) (inventory.MailAut
 	}); err != nil && !notFound(err) {
 		m.Errors = append(m.Errors, "MX lookup failed")
 	}
-	for _, q := range []struct {
-		name, prefix string
-		out          *string
-		known        *bool
-	}{
-		{domain + ".", "v=spf1", &m.SPF, &m.SPFKnown},
-		{"_dmarc." + domain + ".", "v=DMARC1", &m.DMARC, &m.DMARCKnown},
-	} {
+	// txt returns the record of a kind at name, and whether the lookup
+	// answered.
+	txt := func(name, prefix string) (string, bool) {
+		var rec string
 		err := lookup(func(c context.Context) error {
-			txts, err := recs.LookupTXT(c, q.name)
+			txts, err := recs.LookupTXT(c, name+".")
 			for _, t := range txts {
 				t = strings.TrimSpace(t)
-				if len(t) >= len(q.prefix) && strings.EqualFold(t[:len(q.prefix)], q.prefix) &&
-					(len(t) == len(q.prefix) || t[len(q.prefix)] == ' ' || t[len(q.prefix)] == ';') {
-					*q.out = clipRecord(t)
+				if len(t) >= len(prefix) && strings.EqualFold(t[:len(prefix)], prefix) &&
+					(len(t) == len(prefix) || t[len(prefix)] == ' ' || t[len(prefix)] == ';') {
+					rec = clipRecord(t)
 					break
 				}
 			}
 			return err
 		})
-		switch {
-		case err == nil, notFound(err):
-			*q.known = true
-		default:
-			m.Errors = append(m.Errors, "TXT lookup of "+strings.TrimSuffix(q.name, ".")+" failed")
+		if err != nil && !notFound(err) {
+			m.Errors = append(m.Errors, "TXT lookup of "+name+" failed")
+			return "", false
+		}
+		return rec, true
+	}
+	m.SPF, m.SPFKnown = txt(domain, "v=spf1")
+	m.DMARC, m.DMARCKnown = txt("_dmarc."+domain, "v=DMARC1")
+	if m.DMARCKnown && m.DMARC == "" {
+		// Receivers fall back to a parent domain's record, so a subdomain
+		// without its own is covered by its organisation's.
+		for _, parent := range dmarcParents(domain) {
+			rec, known := txt("_dmarc."+parent, "v=DMARC1")
+			if !known {
+				m.DMARCKnown = false
+				break
+			}
+			if rec != "" {
+				m.DMARC, m.DMARCDomain = rec, parent
+				break
+			}
 		}
 	}
 	return m, true
+}
+
+// dmarcParents returns the parent domains whose DMARC record applies to
+// domain when it has none of its own, nearest first. It walks up the name
+// as DMARCbis's tree walk does, rather than consulting a list of public
+// suffixes: at most seven labels, and never the top-level domain alone.
+// The first record found is the organisation's, or a nearer one that
+// covers this part of it.
+func dmarcParents(domain string) []string {
+	labels := strings.Split(domain, ".")
+	start := 1
+	if len(labels) >= 8 {
+		start = len(labels) - 7
+	}
+	var out []string
+	for i := start; i <= len(labels)-2; i++ {
+		out = append(out, strings.Join(labels[i:], "."))
+	}
+	return out
 }
 
 func clipRecord(s string) string {
@@ -369,7 +527,9 @@ func (w *webClient) scriptSecrets(ctx context.Context, host string, port int, sv
 		if err != nil || status != http.StatusOK {
 			continue
 		}
-		ls, _ := leaks.ScanReader(p, bytes.NewReader(body), leaks.Options{})
+		// Scripts carry libraries' key headers, excerpts and placeholders;
+		// only a complete private key counts.
+		ls, _ := leaks.ScanReader(p, bytes.NewReader(body), leaks.Options{CompleteKeys: true})
 		for _, l := range ls {
 			if !serverSecrets[l.RuleID] || seen[l.Fingerprint] {
 				continue

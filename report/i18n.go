@@ -292,9 +292,9 @@ var messages = map[string]map[string]string{
 		"file.title.directory-listing": "Public folder listing on %s",
 		"file.why.directory-listing":   "The web server lists every file in the folder, including ones never linked, such as backups and exports.",
 		"file.todo.directory-listing":  "Turn off folder listing in the web server (for example Options -Indexes in Apache, autoindex off in nginx) and remove files that should not be public.",
-		"file.title.non-production":    "Staging or test site open to anyone on %s",
-		"file.why.non-production":      "Copies of a site for testing often run with debug output, test accounts and weaker settings, and attackers look for them by name.",
-		"file.todo.non-production":     "Put the site behind a login or your company network (for example password protection on preview deployments), or take it down when it is not in use.",
+		"file.title.non-production":    "Possible staging or test site open to anyone on %s",
+		"file.why.non-production":      "The name suggests a staging or test copy, and its front page answers without a password. Hejnal guesses this from the name and the page, so check whether the site is meant to be public. Copies for testing often run with debug output, test accounts and weaker settings, and attackers look for them by name.",
+		"file.todo.non-production":     "If it is a test copy, put it behind a login or your company network (for example password protection on preview deployments), or take it down when it is not in use. If it is meant to be public, accept the item.",
 		"file.title.foreign-host":      "%s points at a server that is not yours",
 		"file.why.foreign-host":        "The address this name points to answers with a certificate for other companies' names. Usually it is a cloud address you gave back, now rented by someone else: they can serve pages on your name, and security-rating companies count that server's flaws against you.",
 		"file.todo.foreign-host":       "If you no longer use the name, delete its DNS record; if you do, point it at your current server. If the server is yours after all, give it a certificate for this name.",
@@ -311,7 +311,7 @@ var messages = map[string]map[string]string{
 		"email.dmarc-missing.why":      "Without DMARC, receiving servers have no instruction to reject email that fails SPF and DKIM, and you get no reports of who sends as you.",
 		"email.dmarc-missing.todo":     "Publish a TXT record at _dmarc with v=DMARC1; p=none; rua=mailto:your address to start receiving reports, then move to p=quarantine and p=reject.",
 		"email.dmarc-none.title":       "DMARC policy of %s only monitors",
-		"email.dmarc-none.why":         "The DMARC policy is p=none, so fake email in the domain's name is still delivered.",
+		"email.dmarc-none.why":         "The DMARC policy that applies is none (p=none, or sp=none on the parent domain for a subdomain without its own record), so fake email in the domain's name is still delivered.",
 		"email.dmarc-none.todo":        "Once the reports show your own services pass, change the policy to p=quarantine and then p=reject.",
 		"mon.title":                    "Hejnal monthly report, %s",
 		"mon.noruns":                   "Hejnal did not run in this month.",
@@ -370,6 +370,11 @@ var messages = map[string]map[string]string{
 		"nis2.c2":                      "Indicators of compromise (IP addresses, files, accounts)",
 		"nis2.c3":                      "Containment steps taken (updated, isolated, passwords and keys changed)",
 		"nis2.c4":                      "Whether personal data was affected: a GDPR breach notification to the data protection authority (UODO in Poland) within 72 hours is a separate duty",
+
+		// No SPF record where an enforced DMARC policy applies.
+		"email.spf-missing-dmarc.title": "No SPF record for %s",
+		"email.spf-missing-dmarc.why":   "The DMARC policy that applies already tells receivers to quarantine or reject email that fails it, so fake email in the domain's name is turned away. Without SPF, though, your own email passes DMARC only when it is DKIM-signed, and receivers that check SPF alone cannot tell your servers from others.",
+		"email.spf-missing-dmarc.todo":  "Publish an SPF record listing the services that send your email, ending with -all or ~all. If the domain sends no email, publish v=spf1 -all.",
 	},
 	"pl": {
 		"fix.title":      "Lista poprawek Hejnal",
@@ -649,9 +654,9 @@ var messages = map[string]map[string]string{
 		"file.title.directory-listing": "Publiczna lista plików katalogu na %s",
 		"file.why.directory-listing":   "Serwer WWW wyświetla wszystkie pliki w katalogu, także te, do których nic nie linkuje, na przykład kopie zapasowe i eksporty.",
 		"file.todo.directory-listing":  "Wyłącz listowanie katalogów w serwerze WWW (na przykład Options -Indexes w Apache, autoindex off w nginx) i usuń pliki, które nie powinny być publiczne.",
-		"file.title.non-production":    "Testowa wersja serwisu dostępna dla każdego na %s",
-		"file.why.non-production":      "Kopie serwisu do testów często działają z komunikatami diagnostycznymi, kontami testowymi i słabszymi ustawieniami, a atakujący szukają ich po nazwie.",
-		"file.todo.non-production":     "Zabezpiecz serwis logowaniem albo udostępnij go tylko w sieci firmy (na przykład hasło na wdrożeniach podglądowych) lub wyłącz go, gdy nie jest używany.",
+		"file.title.non-production":    "Prawdopodobnie testowa wersja serwisu dostępna dla każdego na %s",
+		"file.why.non-production":      "Nazwa wskazuje na wersję testową, a strona główna otwiera się bez hasła. Hejnal wnioskuje to z nazwy i strony, więc sprawdź, czy serwis ma być publiczny. Kopie serwisu do testów często działają z komunikatami diagnostycznymi, kontami testowymi i słabszymi ustawieniami, a atakujący szukają ich po nazwie.",
+		"file.todo.non-production":     "Jeśli to wersja testowa, zabezpiecz ją logowaniem albo udostępnij tylko w sieci firmy (na przykład hasło na wdrożeniach podglądowych) lub wyłącz, gdy nie jest używana. Jeśli ma być publiczna, zaakceptuj ten punkt.",
 		"file.title.foreign-host":      "%s wskazuje na serwer, który nie jest Twój",
 		"file.why.foreign-host":        "Adres, na który wskazuje ta nazwa, odpowiada certyfikatem wystawionym na nazwy innych firm. Zwykle to adres w chmurze, który oddaliście i który wynajmuje teraz ktoś inny: może on publikować strony pod Waszą nazwą, a firmy oceniające bezpieczeństwo liczą luki tego serwera na Wasze konto.",
 		"file.todo.foreign-host":       "Jeśli nazwa nie jest już używana, usuńcie jej rekord DNS; jeśli jest, skierujcie ją na obecny serwer. Jeśli serwer jednak należy do Was, wystawcie mu certyfikat na tę nazwę.",
@@ -668,7 +673,7 @@ var messages = map[string]map[string]string{
 		"email.dmarc-missing.why":      "Bez DMARC serwery odbiorców nie mają polecenia odrzucać poczty, która nie przechodzi SPF i DKIM, a Ty nie dostajesz raportów, kto wysyła w Twoim imieniu.",
 		"email.dmarc-missing.todo":     "Opublikuj rekord TXT pod _dmarc z v=DMARC1; p=none; rua=mailto:Twój adres, żeby zacząć dostawać raporty, a potem przejdź na p=quarantine i p=reject.",
 		"email.dmarc-none.title":       "Polityka DMARC domeny %s tylko obserwuje",
-		"email.dmarc-none.why":         "Polityka DMARC to p=none, więc fałszywe wiadomości w imieniu domeny nadal są doręczane.",
+		"email.dmarc-none.why":         "Obowiązująca polityka DMARC to none (p=none albo, dla subdomeny bez własnego rekordu, sp=none w domenie nadrzędnej), więc fałszywe wiadomości w imieniu domeny nadal są doręczane.",
 		"email.dmarc-none.todo":        "Gdy raporty pokażą, że Twoje usługi przechodzą weryfikację, zmień politykę na p=quarantine, a potem p=reject.",
 		"mon.title":                    "Raport miesięczny Hejnal, %s",
 		"mon.noruns":                   "Hejnal nie działał w tym miesiącu.",
@@ -727,6 +732,11 @@ var messages = map[string]map[string]string{
 		"nis2.c2":                      "Wskaźniki naruszenia (adresy IP, pliki, konta)",
 		"nis2.c3":                      "Podjęte działania (aktualizacja, izolacja, zmiana haseł i kluczy)",
 		"nis2.c4":                      "Czy naruszono dane osobowe: zgłoszenie do UODO w ciągu 72 godzin na podstawie RODO to osobny obowiązek",
+
+		// Brak SPF przy egzekwowanej polityce DMARC.
+		"email.spf-missing-dmarc.title": "Brak rekordu SPF dla %s",
+		"email.spf-missing-dmarc.why":   "Obowiązująca polityka DMARC już każe odbiorcom kierować do kwarantanny lub odrzucać pocztę, która jej nie spełnia, więc fałszywe wiadomości w imieniu domeny są zatrzymywane. Bez SPF Twoja własna poczta przechodzi jednak DMARC tylko z podpisem DKIM, a odbiorcy, którzy sprawdzają tylko SPF, nie odróżnią Twoich serwerów od innych.",
+		"email.spf-missing-dmarc.todo":  "Opublikuj rekord SPF z usługami, które wysyłają Twoją pocztę, zakończony -all lub ~all. Jeśli domena nie wysyła poczty, opublikuj v=spf1 -all.",
 	},
 }
 

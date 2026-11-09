@@ -407,3 +407,15 @@ func TestTakeoverAndMailFindings(t *testing.T) {
 		t.Errorf("findings = %v", got)
 	}
 }
+
+// Without SPF but under an enforced DMARC policy, here a parent domain's,
+// the item is low and says where the policy comes from.
+func TestMailUnderParentDMARC(t *testing.T) {
+	inv := &inventory.Inventory{Mail: []inventory.MailAuth{{Domain: "shop.example.com", MX: []string{"mx.example.com"}, SPFKnown: true,
+		DMARC: "v=DMARC1; p=reject", DMARCDomain: "example.com", DMARCKnown: true}}}
+	fs := Run(inv, nil, nil, Options{Now: now})
+	if len(fs) != 1 || fs[0].TechID != "spf-missing-dmarc" || fs[0].Severity != Low ||
+		!strings.Contains(fs[0].Evidence, "DMARC: none of its own; example.com's applies: v=DMARC1; p=reject") {
+		t.Errorf("findings = %+v", fs)
+	}
+}
