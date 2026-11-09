@@ -617,6 +617,10 @@ func GroupKey(f Finding) string {
 		return fmt.Sprintf("%s|%s", f.Kind, f.Fingerprint)
 	case KindBreach:
 		return fmt.Sprintf("%s|%s", f.Kind, f.Host)
+	case KindMisconfig:
+		// One resource to change, however many of its settings a rule
+		// flags.
+		return fmt.Sprintf("%s|%s|%s|%s|%s", f.Kind, f.Host, f.File, f.TechID, f.Technology)
 	case KindDependency:
 		// One package version to upgrade, wherever the project uses it.
 		return fmt.Sprintf("%s|%s|%s|%s|%s", f.Kind, f.Host, f.Ecosystem, f.Technology, f.Version)

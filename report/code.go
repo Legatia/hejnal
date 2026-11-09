@@ -180,7 +180,14 @@ func writeMisconfig(b *strings.Builder, tr translator, g match.Group, head func(
 	head(itemTitle(tr, g))
 	fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("misconfig.why."+f.TechID))
 	fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("misconfig.todo."+f.TechID))
-	fmt.Fprintf(b, "- **%s:** %s · %s\n", tr("label.seen"), mdCode(codePlace(f)), mdEscape(f.Evidence))
+	if len(g.Findings) == 1 {
+		fmt.Fprintf(b, "- **%s:** %s · %s\n", tr("label.seen"), mdCode(codePlace(f)), mdEscape(f.Evidence))
+	} else {
+		fmt.Fprintf(b, "- **%s:**\n", tr("label.seen"))
+		for _, x := range g.Findings {
+			fmt.Fprintf(b, "  - %s · %s\n", mdCode(codePlace(x)), mdEscape(x.Evidence))
+		}
+	}
 	proofLines(b, tr, g)
 	b.WriteString("\n")
 }
