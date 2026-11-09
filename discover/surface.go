@@ -52,12 +52,15 @@ type takeoverService struct {
 
 // takeoverServices lists only services where claiming a dangling name is
 // known to work and the answer is unmistakable; services that verify
-// ownership, or whose error pages are ambiguous, are left out.
+// ownership, or whose error pages are ambiguous, are left out. So are
+// Heroku's herokudns.com and herokussl.com targets: Heroku makes up a new
+// random one for every custom domain, so nobody can get the one a name
+// still points to.
 var takeoverServices = []takeoverService{
 	{name: "GitHub Pages", cname: regexp.MustCompile(`(?i)\.github\.io\.?$`),
 		addrs: []netip.Prefix{netip.MustParsePrefix("185.199.108.0/22")},
 		body:  regexp.MustCompile(`There isn't a GitHub Pages site here\.`)},
-	{name: "Heroku", cname: regexp.MustCompile(`(?i)\.(herokuapp|herokudns|herokussl)\.com\.?$`),
+	{name: "Heroku", cname: regexp.MustCompile(`(?i)\.herokuapp\.com\.?$`),
 		body: regexp.MustCompile(`(?i)<title>No such app</title>|herokucdn\.com/error-pages/no-such-app\.html`)},
 	{name: "Amazon S3", cname: regexp.MustCompile(`(?i)(^|\.)s3([.-][a-z0-9-]+)*\.amazonaws\.com\.?$`),
 		body: regexp.MustCompile(`<Code>NoSuchBucket</Code>`)},

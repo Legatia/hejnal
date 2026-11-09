@@ -68,7 +68,10 @@ func TestTakeover(t *testing.T) {
 	}{
 		{"GitHub Pages by CNAME", "acme.github.io", nil, gh, "GitHub Pages"},
 		{"GitHub Pages by address", "", []string{"185.199.110.153"}, gh, "GitHub Pages"},
-		{"Heroku", "shiny-app-1234.herokudns.com", nil, "<html><head><title>No such app</title></head></html>", "Heroku"},
+		{"Heroku", "shiny-app-1234.herokuapp.com", nil, "<html><head><title>No such app</title></head></html>", "Heroku"},
+		// Heroku's DNS targets are random per domain and cannot be claimed.
+		{"Heroku DNS target", "shiny-app-1234.herokudns.com", nil, "<html><head><title>No such app</title></head></html>", ""},
+		{"Heroku SSL target", "shiny-app-1234.herokussl.com", nil, "<html><head><title>No such app</title></head></html>", ""},
 		{"S3", "assets.example.com.s3.eu-central-1.amazonaws.com", nil, "<Error><Code>NoSuchBucket</Code><Message>The specified bucket does not exist</Message></Error>", "Amazon S3"},
 		{"S3 website", "assets.example.com.s3-website-us-east-1.amazonaws.com", nil, "<Code>NoSuchBucket</Code>", "Amazon S3"},
 		// The service's error text alone, without the name pointing there,
