@@ -63,8 +63,9 @@ func testScope(t *testing.T, domains, hosts []string, ports []int, exclude []str
 		Authorization: scope.Authorization{ConfirmedBy: "Test", Date: "2026-11-01", Statement: "Test systems."},
 		Domains:       domains,
 		Hosts:         hosts,
-		Ports:         ports,
-		Exclude:       exclude,
+		// Validate sorts the ports in place; the caller's list keeps its order.
+		Ports:   slices.Clone(ports),
+		Exclude: exclude,
 	}
 	if err := s.Validate(testNow); err != nil {
 		t.Fatal(err)
