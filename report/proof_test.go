@@ -70,9 +70,28 @@ func TestProof(t *testing.T) {
 	if p := ProofOf(listing, "en"); p.Verdict != VerdictConfirmed {
 		t.Errorf("listing: %+v", p)
 	}
+	// The certificate is read on the port the item is about.
+	foreign.Port, foreign.Findings[0].Port = 8443, 8443
+	if p := ProofOf(foreign, "en"); !strings.HasPrefix(p.Command, "openssl s_client -connect 'old.example.com:8443' -servername 'old.example.com'") {
+		t.Errorf("foreign host on 8443: %q", p.Command)
+	}
 	mail := match.Groups([]match.Finding{{Kind: match.KindEmail, TechID: "dmarc-missing", Host: "example.com", Score: 50}})[0]
 	if p := ProofOf(mail, "en"); p.Command != "dig +short TXT 'example.com'; dig +short TXT '_dmarc.example.com'" {
 		t.Errorf("mail: %+v", p)
+	}
+	// A subdomain under its parent's DMARC policy: the command shows that
+	// record too.
+	parent := match.Groups([]match.Finding{{Kind: match.KindEmail, TechID: "spf-missing-dmarc", Host: "shop.example.com", Score: 30,
+		Evidence: "SPF: none · DMARC: none of its own; example.com's applies: v=DMARC1; p=reject"}})[0]
+	if p := ProofOf(parent, "en"); p.Command != "dig +short TXT 'shop.example.com'; dig +short TXT '_dmarc.shop.example.com'; dig +short TXT '_dmarc.example.com'" {
+		t.Errorf("mail under a parent policy: %q", p.Command)
+	}
+	// A takeover found through GitHub Pages' addresses has no CNAME; a
+	// plain lookup shows either.
+	takeover := match.Groups([]match.Finding{{Kind: match.KindTakeover, Host: "docs.example.com", Port: 443,
+		Evidence: "points to GitHub Pages's addresses, and GitHub Pages answers that nothing is set up there", Score: 80}})[0]
+	if p := ProofOf(takeover, "en"); p.Command != "dig +short 'docs.example.com'" {
+		t.Errorf("takeover: %q", p.Command)
 	}
 	// Nothing from a scanned system reaches a command unquoted.
 	evil := match.Groups([]match.Finding{{Kind: match.KindTakeover, Host: "x';rm -rf ~;'.example.com", Score: 80}})[0]
@@ -186,6 +205,11 @@ func TestCommandsSurviveHostileInput(t *testing.T) {
 			if p := ProofOf(match.Groups([]match.Finding{f})[0], "en"); p.Command != "" {
 				t.Errorf("%s %s: command %q", f.Kind, host, p.Command)
 			}
+		}
+		mail := match.Finding{Kind: match.KindEmail, TechID: "dmarc-none", Host: "shop.example.com", Score: 40,
+			Evidence: "SPF: none · DMARC: none of its own; " + host + "'s applies: v=DMARC1; p=none"}
+		if p := ProofOf(match.Groups([]match.Finding{mail})[0], "en"); p.Command != "dig +short TXT 'shop.example.com'; dig +short TXT '_dmarc.shop.example.com'" {
+			t.Errorf("mail with parent %s: command %q", host, p.Command)
 		}
 	}
 	if got := mdCommand("echo `x` ``y``"); got != "``` echo `x` ``y`` ```" {

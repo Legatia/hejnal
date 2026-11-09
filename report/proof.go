@@ -132,7 +132,7 @@ func proofOf(tr translator, g match.Group) Proof {
 			step(true, "proof.foreign.cert", plain(names))
 			step(false, "proof.foreign.owner")
 			p.Verdict = VerdictCheck
-			p.SeeIt, p.Command = seeCert(tr, host, 443)
+			p.SeeIt, p.Command = seeCert(tr, host, g.Port)
 		case "non-production":
 			// A guess from the name, backed by what the page showed.
 			_, sign, ok := strings.Cut(f.Evidence, "without a password and ")
@@ -152,12 +152,20 @@ func proofOf(tr translator, g match.Group) Proof {
 			p.SeeIt, p.Command = seeHTTP(tr, f.URL, "")
 		}
 	case match.KindTakeover:
+		// A plain lookup shows the CNAME and the addresses it leads to, so
+		// it shows a name found through either.
 		if safeName(host) {
-			p.SeeIt, p.Command = tr("proof.see.cname"), "dig +short CNAME '"+host+"'"
+			p.SeeIt, p.Command = tr("proof.see.cname"), "dig +short '"+host+"'"
 		}
 	case match.KindEmail:
 		if safeName(host) {
 			p.SeeIt, p.Command = tr("proof.see.mail"), "dig +short TXT '"+host+"'; dig +short TXT '_dmarc."+host+"'"
+			// A parent domain's DMARC record that applies to this one.
+			if _, rest, ok := strings.Cut(f.Evidence, "none of its own; "); ok {
+				if parent, _, ok := strings.Cut(rest, "'s applies"); ok && safeName(parent) && net.ParseIP(parent) == nil {
+					p.Command += "; dig +short TXT '_dmarc." + parent + "'"
+				}
+			}
 		}
 	case match.KindTLSExpired, match.KindTLSExpiring:
 		p.SeeIt, p.Command = seeCert(tr, host, g.Port)
