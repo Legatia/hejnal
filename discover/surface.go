@@ -175,17 +175,32 @@ var (
 	// stagingTextRE matches a page that says it is a staging copy.
 	stagingTextRE = regexp.MustCompile(`(?i)\b(?:staging|pre-?production)\s+(?:environment|server|site|system|instance)\b`)
 	passwordRE    = regexp.MustCompile(`(?i)<input\b[^>]*\btype\s*=\s*["']?password\b`)
-	hiddenRE      = regexp.MustCompile(`(?is)<(script|style|noscript|template|head)\b.*?</(?:script|style|noscript|template|head)\s*>`)
 	tagRE         = regexp.MustCompile(`(?s)<[^>]*>`)
+	// hiddenREs match the parts of a page a visitor does not read, in the
+	// order they are removed.
+	hiddenREs = []*regexp.Regexp{
+		regexp.MustCompile(`(?is)<script\b.*?</script\s*>`),
+		regexp.MustCompile(`(?is)<style\b.*?</style\s*>`),
+		regexp.MustCompile(`(?is)<noscript\b.*?</noscript\s*>`),
+		regexp.MustCompile(`(?is)<template\b.*?</template\s*>`),
+		regexp.MustCompile(`(?is)<head\b.*?</head\s*>`),
+	}
 )
 
-// shell reports whether a page shows next to no text of its own, as a
-// single-page application's start page does before its scripts run. Such a
-// page looks the same whether or not the application then asks for a login.
-func shell(body string) bool {
-	text := tagRE.ReplaceAllString(hiddenRE.ReplaceAllString(body, " "), " ")
+// visibleText returns the text a visitor reads on a page, without markup.
+func visibleText(body string) string {
+	for _, re := range hiddenREs {
+		body = re.ReplaceAllString(body, " ")
+	}
+	return html.UnescapeString(tagRE.ReplaceAllString(body, " "))
+}
+
+// shell reports whether a page's visible text is next to nothing, as on a
+// single-page application's start page before its scripts run. Such a page
+// looks the same whether or not the application then asks for a login.
+func shell(text string) bool {
 	letters := 0
-	for _, c := range html.UnescapeString(text) {
+	for _, c := range text {
 		if unicode.IsLetter(c) {
 			letters++
 		}
@@ -198,7 +213,8 @@ func shell(body string) bool {
 // login, or a page without text of its own, since Hejnal cannot see past a
 // login. A page with no sign may still show the live site's page.
 func nonProductionSign(header http.Header, title, body string) (sign string, ok bool) {
-	if loginTitleRE.MatchString(title) || passwordRE.MatchString(body) || shell(body) {
+	text := visibleText(body)
+	if loginTitleRE.MatchString(title) || passwordRE.MatchString(body) || shell(text) {
 		return "", false
 	}
 	switch {
@@ -206,7 +222,7 @@ func nonProductionSign(header http.Header, title, body string) (sign string, ok 
 		return "asks search engines not to index it", true
 	case testTitleRE.MatchString(title):
 		return fmt.Sprintf("its title %q names it a test copy", truncate(title, 80)), true
-	case stagingTextRE.MatchString(tagRE.ReplaceAllString(hiddenRE.ReplaceAllString(body, " "), " ")):
+	case stagingTextRE.MatchString(text):
 		return "the page calls itself a staging site", true
 	}
 	return "", true
