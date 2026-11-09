@@ -43,7 +43,7 @@ const (
 // gives away private files, and a staging site often runs with test
 // accounts and debug output.
 var exposureScores = map[string]int{"env": 90, "git": 75, "server-status": 50,
-	"script-secret": 95, "bucket-listing": 75, "directory-listing": 45, "non-production": 50}
+	"script-secret": 95, "bucket-listing": 75, "directory-listing": 45, "non-production": 50, "foreign-host": 55}
 
 // emailScores rates mail records by how easily they let others send email
 // as the domain. A missing SPF record matters little where an enforced

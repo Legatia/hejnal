@@ -85,6 +85,15 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 		}
 	}
 
+	ids := map[string]int{}
+	for _, sev := range match.Severities {
+		for _, g := range groups {
+			if g.Severity == sev {
+				ids[g.Key] = len(ids) + 1
+			}
+		}
+	}
+	writeStart(&b, tr, groups, ids)
 	n := 0
 	for _, sev := range match.Severities {
 		first := true
@@ -122,6 +131,7 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 	head := func(title string) {
 		fmt.Fprintf(b, "### %d. %s · %s\n\n", n, title, mdCode(g.ID()))
 		writeAcceptanceNotes(b, tr, g, earlier)
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.effort"), effortText(tr, Effort(g)))
 	}
 	switch g.Kind {
 	case match.KindKEV:
@@ -165,6 +175,7 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 		case packaged:
 			note = tr("kev.packaged") + " " + tr("acc.hint", g.ID())
 		}
+		proofLines(b, tr, g)
 		fmt.Fprintf(b, "\n> %s\n\n", note)
 	case match.KindTLSExpired, match.KindTLSExpiring:
 		f := g.Findings[0]
@@ -178,25 +189,32 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 		}
 		head(tr(prefix+".title", where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr(prefix+".why", mdCode(f.Subject), date))
-		fmt.Fprintf(b, "- **%s:** %s\n\n", tr("label.todo"), tr("tls.todo"))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("tls.todo"))
+		proofLines(b, tr, g)
+		b.WriteString("\n")
 	case match.KindExposedFile:
 		f := g.Findings[0]
 		head(tr("file.title."+f.TechID, where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("file.why."+f.TechID))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("file.todo."+f.TechID))
-		fmt.Fprintf(b, "- **%s:** %s (%s)\n\n", tr("label.seen"), mdCode(f.URL), mdEscape(f.Evidence))
+		fmt.Fprintf(b, "- **%s:** %s (%s)\n", tr("label.seen"), mdCode(f.URL), mdEscape(f.Evidence))
+		proofLines(b, tr, g)
+		b.WriteString("\n")
 	case match.KindTakeover, match.KindEmail:
 		f := g.Findings[0]
 		key := kindKey(f)
 		head(tr(key+".title", where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr(key+".why"))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr(key+".todo"))
-		fmt.Fprintf(b, "- **%s:** %s\n\n", tr("label.seen"), mdEscape(f.Evidence))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.seen"), mdEscape(f.Evidence))
+		proofLines(b, tr, g)
+		b.WriteString("\n")
 	case match.KindAdminExposed:
 		head(tr("admin.title", mdEscape(g.Technology), where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr("admin.why"))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("admin.todo"))
 		writeSeen(b, tr, g, false)
+		proofLines(b, tr, g)
 		b.WriteString("\n")
 	case match.KindSecret:
 		head(tr("secret.title", mdEscape(g.Technology)))
@@ -211,6 +229,7 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 			}
 			fmt.Fprintf(b, "  - %s\n", secretPlace(tr, f, true))
 		}
+		proofLines(b, tr, g)
 		b.WriteString("\n")
 	case match.KindBreach:
 		withPasswords := 0
@@ -234,7 +253,9 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 			}
 			fmt.Fprintf(b, "  - %s\n", strings.Join(parts, " · "))
 		}
-		fmt.Fprintf(b, "- **%s:** %s\n\n", tr("label.source"), tr("breach.source"))
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.source"), tr("breach.source"))
+		proofLines(b, tr, g)
+		b.WriteString("\n")
 	}
 }
 

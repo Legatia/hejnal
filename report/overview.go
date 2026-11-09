@@ -62,6 +62,8 @@ type ovItem struct {
 	SevLabel  string
 	Title     string
 	Why, Todo string
+	Effort    string
+	Sure      string
 	Window    string
 	Seen      string
 	Forensic  string
@@ -105,7 +107,7 @@ func Overview(w io.Writer, fs []match.Finding, m Meta, o OverviewOptions) error 
 		Org:   m.Organization,
 		Date:  tr("ov.date", m.GeneratedAt.UTC().Format("2006-01-02")),
 		L: map[string]string{
-			"fixfirst": tr("ov.fixfirst"), "where": tr("ov.where"), "why": tr("label.why"), "todo": tr("label.todo"),
+			"fixfirst": tr("ov.fixfirst"), "where": tr("ov.where"), "why": tr("label.why"), "todo": tr("label.todo"), "effort": tr("label.effort"), "sure": tr("label.howsure"),
 			"flaw": tr("ov.flaw"), "lists": tr("ov.lists"), "since": tr("ov.since"), "compromise": tr("label.compromise"),
 			"advisories": tr("label.advisories"), "exposed": tr("ov.exposed"), "exposedintro": tr("ov.exposedintro"),
 			"type": tr("ov.type"), "services": tr("ov.services"), "examples": tr("ov.examples"), "method": tr("ov.method"),
@@ -191,6 +193,8 @@ func overviewItem(tr translator, n int, g match.Group, now time.Time, firstSeen 
 	it := ovItem{N: n, Severity: string(g.Severity), SevLabel: tr("sev.short." + string(g.Severity)), Title: itemTitle(tr, g)}
 	why, todo := itemText(tr, g)
 	it.Why, it.Todo = plain(why), plain(todo)
+	it.Effort = effortText(tr, Effort(g))
+	it.Sure = proofOf(tr, g).Summary
 	// When Hejnal first saw the item, if before this run.
 	var seen time.Time
 	for _, f := range g.Findings {

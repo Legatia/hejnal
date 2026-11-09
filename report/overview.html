@@ -39,6 +39,8 @@
     <dl>
       <dt>{{$.L.why}}</dt><dd>{{.Why}}</dd>
       <dt>{{$.L.todo}}</dt><dd>{{.Todo}}</dd>
+      <dt>{{$.L.effort}}</dt><dd>{{.Effort}}</dd>
+      {{if .Sure}}<dt>{{$.L.sure}}</dt><dd>{{.Sure}}</dd>{{end}}
     </dl>
     {{if .Window}}<p class="window">{{.Window}}</p>{{end}}
     {{if .Seen}}<p class="seen">{{.Seen}}</p>{{end}}
