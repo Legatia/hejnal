@@ -79,13 +79,25 @@ func allCipherSuites() []uint16 {
 }
 
 // dial is the single point where discovery opens connections. It refuses any
-// host or port outside the scope and only uses addresses checked by lookup.
+// host or port outside the scope, and under Options.TiedOnly any name whose
+// certificate does not tie it to the scope, and only uses addresses checked
+// by lookup.
 func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
 	}
 	host = normalizeHost(host)
+	if w.r.untied(host) {
+		return nil, fmt.Errorf("%w: no certificate ties %s to the scope's domains", ErrOutOfScope, host)
+	}
+	return w.connect(ctx, host, port)
+}
+
+// connect opens a TCP connection after checking the host and port against
+// the scope, using only addresses checked by lookup. Only dial and the TLS
+// handshake that ties a name to the scope use it.
+func (w *webClient) connect(ctx context.Context, host, port string) (net.Conn, error) {
 	if !w.r.s.HostInScope(host) {
 		return nil, fmt.Errorf("%w: %s", ErrOutOfScope, host)
 	}
@@ -109,6 +121,32 @@ func (w *webClient) dial(ctx context.Context, _, addr string) (net.Conn, error) 
 		last = err
 	}
 	return nil, last
+}
+
+// tiePort is the port whose certificate ties a name to the scope under
+// Options.TiedOnly. Tests change it.
+var tiePort = 443
+
+// tie does the TLS handshake on tiePort of a name under Options.TiedOnly,
+// sending nothing else, and records whether the certificate ties the name
+// to the scope.
+func (w *webClient) tie(ctx context.Context, host string) {
+	ctx, cancel := context.WithTimeout(ctx, 2*w.r.opts.Timeout)
+	defer cancel()
+	var t tie
+	if c, err := w.connect(ctx, host, strconv.Itoa(tiePort)); err == nil {
+		cfg := w.transport.TLSClientConfig.Clone()
+		cfg.ServerName = host
+		tc := tls.Client(c, cfg)
+		if tc.HandshakeContext(ctx) == nil {
+			t.chain = tc.ConnectionState().PeerCertificates
+		}
+		tc.Close()
+	}
+	t.tied = len(t.chain) > 0 && w.r.certTied(host, t.chain[0])
+	w.r.mu.Lock()
+	w.r.ties[host] = t
+	w.r.mu.Unlock()
 }
 
 // probe checks one port. It returns nil when the port is closed. However a
