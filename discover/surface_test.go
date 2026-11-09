@@ -642,6 +642,10 @@ func TestNonProductionNeedsASign(t *testing.T) {
 	if names := productionNames("api-staging.shop.example.com"); strings.Join(names, " ") != "shop.example.com www.shop.example.com api.shop.example.com" {
 		t.Errorf("productionNames = %q", names)
 	}
+	// Text in the head, even after a script there, is not the page's own.
+	if !shell(visibleText(`<html><head><script>init()</script><title>Acme tools for small workshops across Europe since 1998</title></head><body><div id="app"></div></body></html>`)) {
+		t.Error("the head's text counted as the page's")
+	}
 }
 
 // The front-page checks send nothing of their own; only the opt-in checks
