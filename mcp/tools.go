@@ -466,6 +466,10 @@ func findingLine(f match.Finding) string {
 		return head + fmt.Sprintf("TLS certificate expiring soon on %s: %q expires on %s", where, clip(f.Subject), day(f.Expires))
 	case match.KindAdminExposed:
 		return head + fmt.Sprintf("%s admin interface reachable on %s", f.Technology, where)
+	case match.KindTakeover:
+		return head + fmt.Sprintf("Subdomain takeover possible on %s (%q)", where, clip(f.Evidence))
+	case match.KindEmail:
+		return head + fmt.Sprintf("%s for %s (%q)", emailKinds[f.TechID], f.Host, clip(f.Evidence))
 	case match.KindExposedFile:
 		line := fmt.Sprintf("%s at %q", fileKind(f.TechID), clip(f.URL))
 		if f.Evidence != "" {
@@ -543,9 +547,22 @@ func secretKind(name string) string {
 
 // fileKinds names exposed files by the check that found them.
 var fileKinds = map[string]string{
-	"env":           "Exposed environment file",
-	"git":           "Exposed .git directory",
-	"server-status": "Public server status page",
+	"env":               "Exposed environment file",
+	"git":               "Exposed .git directory",
+	"server-status":     "Public server status page",
+	"script-secret":     "Server secret in the site's JavaScript",
+	"bucket-listing":    "Public storage bucket listing",
+	"directory-listing": "Public folder listing",
+	"non-production":    "Possible staging or test site open to anyone",
+	"foreign-host":      "Certificate names none of your domains",
+}
+
+var emailKinds = map[string]string{
+	"spf-missing":       "No SPF record",
+	"spf-missing-dmarc": "No SPF record (DMARC enforced)",
+	"spf-weak":          "SPF record lets any server send",
+	"dmarc-missing":     "No DMARC policy",
+	"dmarc-none":        "DMARC policy only monitors",
 }
 
 func fileKind(check string) string {
@@ -604,6 +621,7 @@ var sources = map[string]string{
 	"tls-san":  "name in a certificate",
 	"redirect": "redirect target",
 	"range":    "address in an authorised range",
+	"dns":      "record at the DNS provider",
 }
 
 func (s *Server) inventoryTool(_ context.Context, raw json.RawMessage) toolResult {
@@ -784,6 +802,10 @@ type item struct {
 	Score      int            `json:"score"`
 	CVEs       []string       `json:"cves,omitempty"`
 	Title      string         `json:"title"`
+	// Verdict is how sure Hejnal is: confirmed, likely or check.
+	Verdict string `json:"verdict"`
+	// EffortMinutes is a rough estimate of the work to fix the item.
+	EffortMinutes int `json:"effortMinutes"`
 }
 
 type severityCounts struct {
@@ -906,7 +928,8 @@ func items(groups []match.Group) []item {
 	out := []item{}
 	for _, g := range groups {
 		it := item{ID: g.ID(), Key: g.Key, Kind: g.Kind, Host: g.Host, Port: g.Port, Technology: g.Technology, Version: g.Version,
-			Severity: g.Severity, Score: g.Score, Title: title(g)}
+			Severity: g.Severity, Score: g.Score, Title: title(g),
+			Verdict: report.ProofOf(g, "en").Verdict, EffortMinutes: report.Effort(g)}
 		for _, f := range g.Findings {
 			if f.CVE != "" {
 				it.CVEs = append(it.CVEs, f.CVE)
@@ -939,6 +962,10 @@ func title(g match.Group) string {
 		return fmt.Sprintf("%s admin interface reachable on %s", g.Technology, where)
 	case match.KindExposedFile:
 		return fileKind(g.TechID) + " on " + where
+	case match.KindTakeover:
+		return "Subdomain takeover possible on " + where
+	case match.KindEmail:
+		return emailKinds[g.TechID] + " for " + g.Host
 	case match.KindSecret:
 		// One secret to replace, wherever it was found.
 		t := secretKind(g.Technology) + " at " + secretPlace(g.Findings[0])

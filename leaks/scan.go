@@ -16,11 +16,11 @@ const binarySniff = 8 << 10
 
 // ScanReader scans text from r line by line and reports leaks with File set
 // to name. Very long lines are scanned in overlapping pieces, so memory use
-// stays bounded. Of the Options, only FingerprintKey applies: ScanReader
-// scans everything it is given. If reading fails, ScanReader returns the
+// stays bounded. Of the Options, only FingerprintKey and CompleteKeys
+// apply: ScanReader scans everything it is given. If reading fails, ScanReader returns the
 // leaks found so far together with the error.
 func ScanReader(name string, r io.Reader, opts Options) ([]Leak, error) {
-	s := &lineScanner{file: cleanPath(name), key: opts.FingerprintKey}
+	s := &lineScanner{file: cleanPath(name), key: opts.FingerprintKey, complete: opts.CompleteKeys}
 	if err := s.read(r); err != nil {
 		return finish(s.leaks), fmt.Errorf("leaks: read %s: %w", name, err)
 	}
@@ -140,7 +140,7 @@ func scanFile(path, rel string, opts Options) ([]Leak, error) {
 		return nil, nil
 	}
 	// The limit holds even if the file grows while it is read.
-	s := &lineScanner{file: cleanPath(rel), key: opts.FingerprintKey}
+	s := &lineScanner{file: cleanPath(rel), key: opts.FingerprintKey, complete: opts.CompleteKeys}
 	if err := s.read(io.MultiReader(bytes.NewReader(head), io.LimitReader(f, opts.MaxFileSize-int64(n)))); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}

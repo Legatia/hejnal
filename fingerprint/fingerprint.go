@@ -48,6 +48,25 @@ type Rule struct {
 	// the version, for products whose NVD entries are split by edition,
 	// such as Jenkins' LTS and weekly lines.
 	Editions []EditionRule `json:"editions,omitempty"`
+	// Server tells a running application from a copy of its pages on a
+	// plain file server, for products whose flaws need the application.
+	Server *ServerCheck `json:"server,omitempty"`
+}
+
+// ServerCheck is a second request for the same page, with headers a
+// running application answers differently from a file server, which
+// ignores them. The answer counts as a file server's only when it is a 200
+// that matches Static and none of Server; anything else, including an
+// error, leaves the product as an application.
+type ServerCheck struct {
+	Headers map[string]string `json:"headers"`
+	// Query names a query parameter the request carries with a random
+	// value, so a cache in front of the application, which may ignore the
+	// headers, passes the request on instead of answering with the page it
+	// keeps.
+	Query  string          `json:"query,omitempty"`
+	Server []SourcePattern `json:"server"`
+	Static SourcePattern   `json:"static"`
 }
 
 // EditionRule names the NVD software edition of versions that match Regex.
@@ -108,7 +127,17 @@ type compiled struct {
 	versions  []versionMatcher
 	packaged  []versionMatcher
 	kev       []kevMatcher
+	server    []versionMatcher
+	static    *versionMatcher
 }
+
+// headerNameRE and headerValueRE limit a server check's headers to plain
+// ones, and queryNameRE its query parameter.
+var (
+	headerNameRE  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,63}$`)
+	headerValueRE = regexp.MustCompile(`^[ -~]{0,200}$`)
+	queryNameRE   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{0,31}$`)
+)
 
 var cpeNameRE = regexp.MustCompile(`^[a-z0-9_.\-]+:[a-z0-9_.\-]+$`)
 
@@ -273,6 +302,35 @@ func compile(r Rule) (*compiled, error) {
 			}
 		}
 		c.kev = append(c.kev, m)
+	}
+	if s := r.Server; s != nil {
+		if len(s.Headers) == 0 || len(s.Server) == 0 {
+			return nil, fmt.Errorf("server check needs headers and server patterns")
+		}
+		for k, v := range s.Headers {
+			switch http.CanonicalHeaderKey(k) {
+			case "Host", "Cookie", "Authorization", "Content-Length", "Transfer-Encoding", "Connection":
+				return nil, fmt.Errorf("server check may not set %s", k)
+			}
+			if !headerNameRE.MatchString(k) || !headerValueRE.MatchString(v) {
+				return nil, fmt.Errorf("server check header %q is not plain", k)
+			}
+		}
+		if s.Query != "" && !queryNameRE.MatchString(s.Query) {
+			return nil, fmt.Errorf("server check query %q is not plain", s.Query)
+		}
+		for _, p := range s.Server {
+			vm, err := sourceMatcher(p.Source, p.Regex, false)
+			if err != nil {
+				return nil, err
+			}
+			c.server = append(c.server, vm)
+		}
+		vm, err := sourceMatcher(s.Static.Source, s.Static.Regex, false)
+		if err != nil {
+			return nil, err
+		}
+		c.static = &vm
 	}
 	if len(c.headers)+len(c.cookies)+len(c.body)+len(c.banners) == 0 && c.path == nil && c.title == nil && c.generator == nil {
 		return nil, fmt.Errorf("rule has no signals")
@@ -453,6 +511,25 @@ func (c *compiled) matchAny(ms []versionMatcher, r Response) bool {
 		}
 	}
 	return false
+}
+
+// ServerCheck returns the headers of rule id's server check and the query
+// parameter to send with a random value, if it has a server check.
+func (e *Engine) ServerCheck(id string) (headers map[string]string, query string, ok bool) {
+	if c, ok := e.byID[id]; ok && c.Server != nil {
+		return c.Server.Headers, c.Server.Query, true
+	}
+	return nil, "", false
+}
+
+// StaticCopy reports whether the answer to rule id's server check, with
+// its status, came from a file server rather than the application.
+func (e *Engine) StaticCopy(id string, status int, r Response) bool {
+	c, ok := e.byID[id]
+	if !ok || c.static == nil || status != http.StatusOK {
+		return false
+	}
+	return c.matchAny([]versionMatcher{*c.static}, r) && !c.matchAny(c.server, r)
 }
 
 // CPEs returns the NVD vendor:product names of rule id.

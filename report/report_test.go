@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
 )
 
@@ -374,5 +375,41 @@ func TestFixListSecretsAndBreaches(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary is missing %q\n%s", want, s)
 		}
+	}
+}
+
+func TestFixListTakeoverAndMail(t *testing.T) {
+	fs := match.Run(&inventory.Inventory{
+		Assets: []inventory.Asset{{Host: "old.example.com", Services: []inventory.Service{{Port: 443, Scheme: "https", URL: "https://old.example.com/",
+			Exposures: []inventory.Exposure{{Kind: "takeover", Path: "/", Evidence: "points to acme.github.io"},
+				{Kind: "non-production", Path: "/", Evidence: "x"}, {Kind: "script-secret", Path: "/", Evidence: "y"},
+				{Kind: "bucket-listing", Path: "/", Evidence: "z"}, {Kind: "directory-listing", Path: "/", Evidence: "w"}}}}}},
+		Mail: []inventory.MailAuth{{Domain: "example.com", SPF: "v=spf1 +all", SPFKnown: true, DMARCKnown: true}},
+	}, nil, nil, match.Options{})
+	for _, lang := range Languages {
+		var b strings.Builder
+		if err := FixList(&b, fs, Meta{Organization: "Acme", Lang: lang}); err != nil {
+			t.Fatal(err)
+		}
+		out := b.String()
+		for _, bad := range []string{"%!", "takeover.", "email.", "file.title", "example.com:0"} {
+			if strings.Contains(out, bad) {
+				t.Errorf("%s: %q in\n%s", lang, bad, out)
+			}
+		}
+		if !strings.Contains(out, "old.example.com:443") || !strings.Contains(out, "example.com") {
+			t.Errorf("%s: places missing:\n%s", lang, out)
+		}
+	}
+}
+
+func TestItemText(t *testing.T) {
+	g := match.Group{Kind: match.KindAdminExposed, Findings: []match.Finding{{Kind: match.KindAdminExposed}}}
+	why, todo := ItemText(g, "en")
+	if why == "" || todo == "" || strings.Contains(why, "admin.why") {
+		t.Errorf("ItemText = %q, %q", why, todo)
+	}
+	if why, todo := ItemText(match.Group{}, "en"); why+todo != "" {
+		t.Errorf("an empty group has text: %q %q", why, todo)
 	}
 }

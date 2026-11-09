@@ -4,17 +4,22 @@
 // Every connection goes through one guard that checks the host, the address
 // and the port against the scope, so nothing outside it is contacted: not
 // through DNS answers, redirects or names found in certificates. Discovery
-// sends one ordinary GET request per web service. It never logs in, guesses
-// paths or sends attack payloads.
+// sends one ordinary GET / per web service, over the other of HTTP and HTTPS
+// too when the first fails, and follows redirects on the same host. For a
+// product whose rule has a server check, such as Next.js's App Router, it
+// asks for the page once more with the check's headers. It never logs in,
+// guesses paths or sends attack payloads.
 package discover
 
 import (
 	"cmp"
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -33,6 +38,7 @@ const (
 	SourceTLS      = "tls-san"  // a name in a certificate Hejnal was shown
 	SourceRedirect = "redirect" // an in-scope host a service redirected to
 	SourceRange    = "range"    // an address in an authorised IP range
+	SourceDNS      = "dns"      // a name from the DNS provider's records
 )
 
 const (
@@ -78,11 +84,28 @@ type Options struct {
 	WebPorts []int
 	// MaxHosts caps how many hosts one run looks at.
 	MaxHosts int
+	// Names are more names to look at, such as the records a DNS provider
+	// holds. Names outside the scope are ignored, like any other.
+	Names []string
 	// Checks turns on the opt-in checks: a few more GET requests to fixed
 	// paths, for exposed files and product versions.
 	Checks bool
-	Now    func() time.Time
-	Logf   func(format string, args ...any)
+	// TiedOnly, for scopes made of proven domain names rather than a signed
+	// authorisation of addresses: Hejnal sends HTTP requests, banner reads and
+	// opt-in checks only to web services whose TLS certificate names a name
+	// under one of the scope's domains. Other hosts get only the TLS handshake,
+	// and their port 80 is not probed.
+	//
+	// It applies to every name, whether found under the scope's domains by
+	// any source or listed as a host; addresses are unaffected. The handshake is on
+	// port 443 with the name as SNI, which must be among WebPorts. A name is
+	// tied when its certificate covers the name itself or any name under one
+	// of the scope's domains, wildcards included; the certificate need not be
+	// trusted, since a server that is not the scope owner's has no reason to
+	// carry their names. An untied name is listed with a note saying so.
+	TiedOnly bool
+	Now      func() time.Time
+	Logf     func(format string, args ...any)
 }
 
 type target struct {
@@ -108,6 +131,10 @@ type runner struct {
 	queued   map[string]bool
 	found    map[string]string // in-scope names from certificates and redirects
 	excluded map[netip.Addr]bool
+	cnames   map[string]string   // name → the name it points to
+	scripts  map[string][]string // host|port → scripts its front page loads
+	copies   []copyCandidate     // staging or test names to compare with the live site
+	ties     map[string]tie      // under TiedOnly: name → what its certificate showed
 	capped   bool
 }
 
@@ -153,6 +180,9 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 			opts.Logf("certificate transparency: %d more names under %s", len(batch)-before, d)
 		}
 	}
+	for _, n := range opts.Names {
+		add(n, SourceDNS, opts.WebPorts)
+	}
 	for _, a := range s.Addresses() {
 		add(a.String(), SourceRange, s.Ports)
 	}
@@ -170,7 +200,14 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return r.inventory(), nil
+	r.markCopies()
+	inv := r.inventory()
+	for _, d := range s.Domains {
+		if m, ok := r.mailAuth(ctx, d); ok {
+			inv.Mail = append(inv.Mail, m)
+		}
+	}
+	return inv, nil
 }
 
 func newRunner(opts Options) (*runner, error) {
@@ -210,6 +247,9 @@ func newRunner(opts Options) (*runner, error) {
 		queued:   map[string]bool{},
 		found:    map[string]string{},
 		excluded: map[netip.Addr]bool{},
+		cnames:   map[string]string{},
+		scripts:  map[string][]string{},
+		ties:     map[string]tie{},
 	}
 	r.web = newWebClient(r)
 	return r, nil
@@ -263,6 +303,23 @@ func (r *runner) scan(ctx context.Context, batch []target) {
 		}
 	})
 
+	// Under TiedOnly, names learn from a TLS handshake whether Hejnal may
+	// send them anything more.
+	var tieHosts []string
+	for _, t := range batch {
+		if r.needsTie(t.host) && len(r.lookup(ctx, t.host).allowed) > 0 {
+			tieHosts = append(tieHosts, t.host)
+		}
+	}
+	if len(tieHosts) > 0 {
+		r.opts.Logf("reading the certificates of %d names", len(tieHosts))
+		parallel(r.opts.Concurrency, len(tieHosts), func(i int) {
+			if ctx.Err() == nil {
+				r.web.tie(ctx, tieHosts[i])
+			}
+		})
+	}
+
 	type job struct {
 		t    target
 		port int
@@ -271,6 +328,10 @@ func (r *runner) scan(ctx context.Context, batch []target) {
 	hosts := 0
 	for _, t := range batch {
 		if len(r.lookup(ctx, t.host).allowed) == 0 {
+			continue
+		}
+		if r.untied(t.host) {
+			r.addUntied(t)
 			continue
 		}
 		hosts++
@@ -353,6 +414,9 @@ func (r *runner) lookup(ctx context.Context, host string) resolution {
 		res.all = []netip.Addr{ip.WithZone("").Unmap()}
 	} else {
 		res.all, res.err = r.resolveName(ctx, host)
+		if len(res.all) > 0 {
+			r.recordCNAME(ctx, host)
+		}
 	}
 	for _, ip := range res.all {
 		if len(res.allowed) == maxAddrsPerHost {
@@ -500,6 +564,111 @@ func (r *runner) takeFound() []foundName {
 	r.found = map[string]string{}
 	slices.SortFunc(out, func(a, b foundName) int { return strings.Compare(a.name, b.name) })
 	return out
+}
+
+// tie is what the TLS handshake on tiePort showed for a name under
+// Options.TiedOnly.
+type tie struct {
+	tied  bool
+	chain []*x509.Certificate // the certificates shown, leaf first
+}
+
+// needsTie reports whether host must be tied to the scope by its
+// certificate before Hejnal sends it anything but a TLS handshake.
+func (r *runner) needsTie(host string) bool {
+	if !r.opts.TiedOnly {
+		return false
+	}
+	_, err := netip.ParseAddr(host)
+	return err != nil
+}
+
+// untied reports whether Hejnal may not contact host beyond the TLS
+// handshake, because its certificate did not tie it to the scope or was
+// not read yet.
+func (r *runner) untied(host string) bool {
+	if !r.needsTie(host) {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return !r.ties[host].tied
+}
+
+// certNames returns the names a certificate is for: its DNS names, or its
+// subject's common name when it has none.
+func certNames(c *x509.Certificate) []string {
+	if len(c.DNSNames) > 0 {
+		return c.DNSNames
+	}
+	if c.Subject.CommonName != "" {
+		return []string{c.Subject.CommonName}
+	}
+	return nil
+}
+
+// certTied reports whether a certificate ties host to the scope: it covers
+// host itself, or names any name under one of the scope's domains, with
+// wildcards. A certificate for *.example.com names example.com's names; one
+// for *.com names none.
+func (r *runner) certTied(host string, c *x509.Certificate) bool {
+	if c == nil {
+		return false
+	}
+	if c.VerifyHostname(host) == nil {
+		return true
+	}
+	for _, n := range certNames(c) {
+		n = strings.TrimPrefix(strings.TrimSuffix(strings.ToLower(n), "."), "*.")
+		for _, d := range r.s.Domains {
+			if n == d || strings.HasSuffix(n, "."+d) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// listNames shows up to three names and how many more there are.
+func listNames(names []string) string {
+	shown := names[:min(len(names), 3)]
+	s := strings.Join(shown, ", ")
+	if len(names) > len(shown) {
+		s += fmt.Sprintf(" and %d more", len(names)-len(shown))
+	}
+	return clipRecord(s)
+}
+
+// addUntied lists a name Hejnal did not contact beyond the TLS handshake
+// under Options.TiedOnly, and why. A certificate that would count as a
+// foreign host's on a contacted name is reported as one here too.
+func (r *runner) addUntied(t target) {
+	r.mu.Lock()
+	chain := r.ties[t.host].chain
+	r.mu.Unlock()
+	var foreign *inventory.Service
+	if names, ok := r.foreignHost(t.host, chain); ok {
+		foreign = &inventory.Service{Port: tiePort, Scheme: "https", URL: (&url.URL{Scheme: "https", Host: hostPort(t.host, tiePort, "https"), Path: "/"}).String(),
+			Exposures: []inventory.Exposure{{Kind: ExposureForeignHost, Path: "/", Evidence: foreignEvidence(names)}}}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	a := r.assets[t.host]
+	if a == nil {
+		a = &inventory.Asset{Host: t.host, Source: t.source, IPs: addrStrings(r.dns[t.host].all)}
+		r.assets[t.host] = a
+	}
+	note := fmt.Sprintf("not contacted further: port %d showed no TLS certificate, so nothing ties the server to the scope's domains", tiePort)
+	if len(chain) > 0 {
+		note = "not contacted further: the name points at a server whose certificate names none of the scope's domains"
+		if names := certNames(chain[0]); len(names) > 0 {
+			note += "; it names " + listNames(names)
+		}
+	}
+	a.Errors = append(a.Errors, note)
+	if foreign != nil {
+		a.Services = append(a.Services, *foreign)
+	}
 }
 
 func (r *runner) addService(t target, svc inventory.Service) {

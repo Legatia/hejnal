@@ -118,6 +118,20 @@ func Exposures(history []*state.Snapshot) (runs []*state.Snapshot, unreachable i
 
 type evQA struct{ Q, A string }
 
+// evControl is one control of a security framework this evidence supports.
+type evControl struct{ Framework, ID, Topic, How string }
+
+// evidenceControls are the controls the evidence speaks to, with message
+// keys for their topic and how the evidence supports them. Topics are
+// described in Hejnal's words: the frameworks' own texts are not copied.
+var evidenceControls = []struct{ framework, id, key string }{
+	{"SOC 2", "CC7.1", "soc2.cc71"},
+	{"SOC 2", "CC4.1", "soc2.cc41"},
+	{"ISO/IEC 27001:2022", "A.8.8", "iso.a88"},
+	{"ISO/IEC 27001:2022", "A.5.7", "iso.a57"},
+	{"NIS2", "Art. 21(2)(e)", "nis2.e"},
+}
+
 type evRow struct {
 	Title, Severity, SevLabel, Listed, FirstSeen, Fixed, Days, Status, StatusClass string
 }
@@ -137,6 +151,7 @@ type evidenceData struct {
 	Period, Statement          string
 	Stats                      []ovStat
 	QA                         []evQA
+	Controls                   []evControl
 	Rows                       []evRow
 	MoreRows                   string
 	NoExploited                string
@@ -174,6 +189,8 @@ func Evidence(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOptions)
 			"runs": tr("ev.runs"), "services": tr("ov.services"), "open": tr("ev.open"), "urgent": tr("ev.urgent"),
 			"fixedexp": tr("ev.fixedexp"), "median": tr("ev.median"), "accepted": tr("ev.accepted"),
 			"acceptedintro": tr("ev.acceptedintro"), "method": tr("ov.method"), "fingerprint": tr("ev.fingerprint"),
+			"controls": tr("ev.controls"), "controlsintro": tr("ev.controlsintro"), "framework": tr("ev.framework"),
+			"control": tr("ev.control"), "how": tr("ev.how"),
 		},
 		Footer: tr("ov.footer"),
 	}
@@ -289,6 +306,9 @@ func Evidence(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOptions)
 		accA = tr("ev.a.acc", len(accepted))
 	}
 	d.QA = append(d.QA, evQA{tr("ev.q.acc"), accA})
+	for _, c := range evidenceControls {
+		d.Controls = append(d.Controls, evControl{c.framework, c.id, tr("ev.c." + c.key + ".topic"), tr("ev.c." + c.key + ".how")})
+	}
 
 	// The exploited-flaw items, open ones first, then by first seen.
 	sort.SliceStable(kev, func(i, j int) bool {

@@ -49,6 +49,20 @@ td.item-title { overflow-wrap: anywhere; }
     {{end}}
   </ul>
 
+  {{if .Controls}}
+  <h3>{{.L.controls}}</h3>
+  <p class="note">{{.L.controlsintro}}</p>
+  <div class="wide">
+  <table>
+    <thead><tr><th>{{.L.framework}}</th><th>{{.L.control}}</th><th>{{.L.how}}</th></tr></thead>
+    <tbody>
+    {{range .Controls}}<tr><td>{{.Framework}}</td><td class="item-title">{{.ID}} · {{.Topic}}</td><td>{{.How}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+
   <h3>{{.L.exposure}}</h3>
   <p class="note">{{.L.exposureintro}}</p>
   {{if .Rows}}

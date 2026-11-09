@@ -17,8 +17,9 @@ import (
 // guess passwords or follow redirects, and every request goes through the
 // same scope-checked connection guard as discovery.
 //
-// Per service there are at most three exposure checks and one version check
-// per recognised product that did not show its version.
+// Per service there are at most three exposure checks, one version check
+// per recognised product that did not show its version, and up to eight
+// scripts the front page loads from the same site, read for server secrets.
 
 // maxCheckBody limits how much of a check response is read.
 const maxCheckBody = 64 << 10
@@ -107,6 +108,7 @@ func (w *webClient) runChecks(ctx context.Context, host string, port int, svc *i
 			svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: c.kind, Path: c.path, Evidence: ev})
 		}
 	}
+	w.scriptSecrets(ctx, host, port, svc)
 	for i := range svc.Technologies {
 		t := &svc.Technologies[i]
 		vc, ok := versionChecks[t.ID]
@@ -127,7 +129,18 @@ func (w *webClient) runChecks(ctx context.Context, host string, port int, svc *i
 // get sends one GET request for a fixed path and reads the start of the
 // answer. Redirects are never followed.
 func (w *webClient) get(ctx context.Context, host string, port int, scheme, path string) (int, http.Header, []byte, error) {
-	u := &url.URL{Scheme: scheme, Host: hostPort(host, port, scheme), Path: path}
+	return w.getN(ctx, host, port, scheme, path, maxCheckBody)
+}
+
+// getN is get, reading up to limit bytes. path may carry a query.
+func (w *webClient) getN(ctx context.Context, host string, port int, scheme, path string, limit int64) (int, http.Header, []byte, error) {
+	u := &url.URL{Scheme: scheme, Host: hostPort(host, port, scheme)}
+	if p, q, ok := strings.Cut(path, "?"); ok {
+		u.RawPath, u.RawQuery = p, q
+		u.Path, _ = url.PathUnescape(p)
+	} else {
+		u.Path = path
+	}
 	client := &http.Client{
 		Transport:     w.transport,
 		Timeout:       2 * w.r.opts.Timeout,
@@ -143,6 +156,6 @@ func (w *webClient) get(ctx context.Context, host string, port int, scheme, path
 		return 0, nil, nil, err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxCheckBody))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, limit))
 	return resp.StatusCode, resp.Header, body, nil
 }

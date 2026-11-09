@@ -3,6 +3,7 @@ package match
 import (
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,5 +355,67 @@ func TestVersionChecksUseTheEdition(t *testing.T) {
 	}
 	if f := jenkins("2.441"); f.Confidence != ConfidenceVersion {
 		t.Errorf("weekly 2.441 = %s, want version-confirmed", f.Confidence)
+	}
+}
+
+// A product served as static files has no reachable application: no KEV
+// finding, but the service is still listed.
+func TestStaticCopiesHaveNoKEVFindings(t *testing.T) {
+	cat, err := kev.Parse(strings.NewReader(`{"title":"t","catalogVersion":"1","dateReleased":"2026-11-01T00:00:00.000Z","count":1,"vulnerabilities":[
+		{"cveID":"CVE-2025-55182","vendorProject":"Meta","product":"React Server Components","vulnerabilityName":"Meta React Server Components Remote Code Execution Vulnerability","dateAdded":"2025-12-05","shortDescription":"x","requiredAction":"Apply mitigations.","dueDate":"2025-12-12","knownRansomwareCampaignUse":"Unknown","notes":""}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, _ := fingerprint.Default()
+	next := tech("nextjs-app-router", "Next.js App Router", "framework", "", false)
+	inv := func(static bool) *inventory.Inventory {
+		n := next
+		n.Static = static
+		return &inventory.Inventory{Assets: []inventory.Asset{{Host: "www.example.com", Services: []inventory.Service{{
+			Port: 443, Scheme: "https", URL: "https://www.example.com/", Technologies: []inventory.Technology{n}}}}}}
+	}
+	if fs := Run(inv(false), cat, eng, Options{Now: now}); len(fs) == 0 || fs[0].CVE != "CVE-2025-55182" {
+		t.Fatalf("application: %+v", fs)
+	}
+	for _, f := range Run(inv(true), cat, eng, Options{Now: now}) {
+		if f.Kind == KindKEV {
+			t.Errorf("static copy: %+v", f)
+		}
+	}
+}
+
+func TestTakeoverAndMailFindings(t *testing.T) {
+	inv := &inventory.Inventory{
+		Assets: []inventory.Asset{{Host: "old.example.com", Services: []inventory.Service{{Port: 443, Scheme: "https", URL: "https://old.example.com/",
+			Exposures: []inventory.Exposure{{Kind: "takeover", Path: "/", Evidence: "points to acme.github.io"}, {Kind: "script-secret", Path: "/", Evidence: "x"}}}}}},
+		Mail: []inventory.MailAuth{{Domain: "example.com", SPFKnown: true, DMARC: "v=DMARC1; p=none", DMARCKnown: true}},
+	}
+	got := byKey(Run(inv, nil, nil, Options{Now: now}))
+	if f := got["takeover|old.example.com|443"]; f.Kind != KindTakeover || f.Severity != High {
+		t.Errorf("takeover = %+v", f)
+	}
+	if f := got["exposed-file|old.example.com|443|script-secret"]; f.Severity != Critical {
+		t.Errorf("script secret = %+v", f)
+	}
+	if f := got["email|example.com|spf-missing"]; f.Kind != KindEmail || f.Port != 0 || f.Severity != Medium || !strings.Contains(f.Evidence, "receives no email") {
+		t.Errorf("spf = %+v", f)
+	}
+	if f := got["email|example.com|dmarc-none"]; f.Severity != Low {
+		t.Errorf("dmarc = %+v", f)
+	}
+	if len(got) != 4 {
+		t.Errorf("findings = %v", got)
+	}
+}
+
+// Without SPF but under an enforced DMARC policy, here a parent domain's,
+// the item is low and says where the policy comes from.
+func TestMailUnderParentDMARC(t *testing.T) {
+	inv := &inventory.Inventory{Mail: []inventory.MailAuth{{Domain: "shop.example.com", MX: []string{"mx.example.com"}, SPFKnown: true,
+		DMARC: "v=DMARC1; p=reject", DMARCDomain: "example.com", DMARCKnown: true}}}
+	fs := Run(inv, nil, nil, Options{Now: now})
+	if len(fs) != 1 || fs[0].TechID != "spf-missing-dmarc" || fs[0].Severity != Low ||
+		!strings.Contains(fs[0].Evidence, "DMARC: none of its own; example.com's applies: v=DMARC1; p=reject") {
+		t.Errorf("findings = %+v", fs)
 	}
 }

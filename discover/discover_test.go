@@ -18,9 +18,11 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -61,8 +63,9 @@ func testScope(t *testing.T, domains, hosts []string, ports []int, exclude []str
 		Authorization: scope.Authorization{ConfirmedBy: "Test", Date: "2026-11-01", Statement: "Test systems."},
 		Domains:       domains,
 		Hosts:         hosts,
-		Ports:         ports,
-		Exclude:       exclude,
+		// Validate sorts the ports in place; the caller's list keeps its order.
+		Ports:   slices.Clone(ports),
+		Exclude: exclude,
 	}
 	if err := s.Validate(testNow); err != nil {
 		t.Fatal(err)
@@ -469,5 +472,179 @@ func TestHelpers(t *testing.T) {
 	}
 	if got := hostPort("example.test", 8443, "https"); got != "example.test:8443" {
 		t.Errorf("hostPort = %q", got)
+	}
+}
+
+// A Next.js app router page served by the application keeps its product;
+// the same page as a static export on a file server is marked static.
+func TestServerCheckTellsStaticExportsApart(t *testing.T) {
+	page := `<html><head><title>Shop</title></head><body><script>self.__next_f=self.__next_f||[]</script></body></html>`
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("RSC") == "1" {
+			w.Header().Set("Content-Type", "text/x-component")
+			fmt.Fprint(w, "0:{}")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, page)
+	}))
+	defer app.Close()
+	static := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, page)
+	}))
+	defer static.Close()
+	appPort, staticPort := portOf(t, app.URL), portOf(t, static.URL)
+	inv, err := Run(context.Background(), Options{
+		Scope:    testScope(t, nil, []string{"127.0.0.1"}, []int{appPort, staticPort}, nil),
+		Engine:   engine(t),
+		Resolver: fakeResolver{},
+		WebPorts: []int{appPort, staticPort},
+		Timeout:  3 * time.Second,
+		Now:      func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int]bool{}
+	for _, s := range assetMap(inv)["127.0.0.1"].Services {
+		for _, tech := range s.Technologies {
+			if tech.ID == "nextjs-app-router" {
+				got[s.Port] = tech.Static
+			}
+		}
+	}
+	if st, ok := got[appPort]; !ok || st {
+		t.Errorf("application: found %v, static %v", ok, st)
+	}
+	if st, ok := got[staticPort]; !ok || !st {
+		t.Errorf("static export: found %v, static %v", ok, st)
+	}
+}
+
+// A cache in front of a Next.js server that ignores Vary, as CDNs do by
+// default, answers the server check with the HTML it keeps for the page.
+// The check's random _rsc value gets past it, and a cache that keeps one
+// copy whatever the query still shows the server's own headers.
+func TestServerCheckSeesThroughCaches(t *testing.T) {
+	page := `<html><head><title>Shop</title></head><body><script>self.__next_f=self.__next_f||[]</script></body></html>`
+	nextjs := func(w http.ResponseWriter, r *http.Request, poweredBy bool) {
+		if poweredBy {
+			w.Header().Set("X-Powered-By", "Next.js")
+		}
+		if r.Header.Get("RSC") == "1" {
+			w.Header().Set("Content-Type", "text/x-component")
+			fmt.Fprint(w, "0:{}")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, page)
+	}
+	// cdn caches answers by URL; byPath caches by path alone, ignoring the
+	// query too.
+	cdn := func(byPath, poweredBy bool, seen *[]string) *httptest.Server {
+		cache := map[string]*httptest.ResponseRecorder{}
+		var mu sync.Mutex
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+			*seen = append(*seen, r.URL.RequestURI())
+			key := r.URL.RequestURI()
+			if byPath {
+				key = r.URL.Path
+			}
+			rec, ok := cache[key]
+			if !ok {
+				rec = httptest.NewRecorder()
+				nextjs(rec, r, poweredBy)
+				cache[key] = rec
+			}
+			for k, v := range rec.Header() {
+				w.Header()[k] = v
+			}
+			w.WriteHeader(rec.Code)
+			w.Write(rec.Body.Bytes())
+		}))
+		t.Cleanup(srv.Close)
+		return srv
+	}
+	var seenURL, seenPath, seenStatic []string
+	byURL := cdn(false, false, &seenURL)
+	byPath := cdn(true, true, &seenPath)
+	// A static export behind the same cache: no Next.js server anywhere.
+	static := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenStatic = append(seenStatic, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, page)
+	}))
+	defer static.Close()
+	ports := []int{portOf(t, byURL.URL), portOf(t, byPath.URL), portOf(t, static.URL)}
+	inv, err := Run(context.Background(), Options{
+		Scope:    testScope(t, nil, []string{"127.0.0.1"}, ports, nil),
+		Engine:   engine(t),
+		Resolver: fakeResolver{},
+		WebPorts: ports,
+		Timeout:  3 * time.Second,
+		Now:      func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int]bool{}
+	for _, s := range assetMap(inv)["127.0.0.1"].Services {
+		for _, tech := range s.Technologies {
+			if tech.ID == "nextjs-app-router" {
+				got[s.Port] = tech.Static
+			}
+		}
+	}
+	for i, want := range []bool{false, false, true} {
+		if st, ok := got[ports[i]]; !ok || st != want {
+			t.Errorf("port %d: found %v, static %v, want static %v", ports[i], ok, st, want)
+		}
+	}
+	// The check's query differs between runs and names nothing else.
+	var check string
+	for _, u := range seenStatic {
+		if strings.HasPrefix(u, "/?_rsc=") {
+			check = u
+		}
+	}
+	if !regexp.MustCompile(`^/\?_rsc=[0-9a-f]{12}$`).MatchString(check) || len(seenURL) != 2 || seenURL[1] == "/" {
+		t.Errorf("server check requests: %q, %q", seenStatic, seenURL)
+	}
+}
+
+// By default a web service gets one GET / and its same-host redirects; a
+// Next.js App Router site gets one more request for the page, with the
+// server check's header and query. The README promises exactly this.
+func TestDefaultRequests(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.RequestURI()+" rsc="+r.Header.Get("RSC"))
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/":
+			http.Redirect(w, r, "/app/", http.StatusFound)
+		default:
+			io.WriteString(w, `<html><head><title>Shop</title></head><body><script>self.__next_f=self.__next_f||[]</script></body></html>`)
+		}
+	}))
+	defer srv.Close()
+	port := portOf(t, srv.URL)
+	if _, err := Run(context.Background(), Options{
+		Scope:    testScope(t, nil, []string{"127.0.0.1"}, []int{port}, nil),
+		Engine:   engine(t),
+		Resolver: fakeResolver{},
+		Timeout:  3 * time.Second,
+		Now:      func() time.Time { return testNow },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 3 || seen[0] != "GET / rsc=" || seen[1] != "GET /app/ rsc=" ||
+		!regexp.MustCompile(`^GET /app/\?_rsc=[0-9a-f]+ rsc=1$`).MatchString(seen[2]) {
+		t.Errorf("requests = %q", seen)
 	}
 }

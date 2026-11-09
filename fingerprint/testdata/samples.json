@@ -1,4 +1,5 @@
 [
+  {"id": "mikrotik-routeros", "note": "RouterOS 7.25 login page", "body": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>RouterOS</title><link rel=\"stylesheet\" href=\"/webfig/login.css\"></head><body><div class=\"login\"><img src=\"mikrotik_logo.svg\" alt=\"MikroTik\"><form method=\"post\"><input name=\"user\"><input name=\"password\" type=\"password\"></form></div></body></html>"},
   {"id": "php", "note": "upstream build", "headers": {"X-Powered-By": "PHP/8.3.12"}, "version": "8.3.12"},
   {"id": "php", "note": "session cookie only", "headers": {"Set-Cookie": "PHPSESSID=0d3c7f1e9a2b4c5d6e7f8a9b0c1d2e3f; path=/; HttpOnly"}},
   {"id": "aspnet", "note": "default IIS headers", "headers": {"X-AspNet-Version": "4.0.30319", "X-Powered-By": "ASP.NET"}, "version": "4.0.30319"},

@@ -1061,7 +1061,7 @@
     {
       "id": "mikrotik-routeros", "name": "MikroTik RouterOS (WebFig)", "category": "network", "admin": true,
       "title": "^(RouterOS router configuration page|mikrotik routeros > administration|MikroTik RouterOS Managing Webpage)$",
-      "body": ["<h1>RouterOS v?[0-9]+\\.[0-9]", "<div class=\"top\">mikrotik routeros [0-9.]+ configuration page</div>"],
+      "body": ["<h1>RouterOS v?[0-9]+\\.[0-9]", "<div class=\"top\">mikrotik routeros [0-9.]+ configuration page</div>", "<title>\\s*RouterOS\\s*</title>[\\s\\S]*?<img[^>]+src=\"[^\"]*mikrotik_logo\\.svg\""],
       "versions": [{"source": "body", "regex": "<h1>RouterOS v?([0-9]+(?:\\.[0-9]+)+)"}, {"source": "body", "regex": "mikrotik routeros ([0-9]+(?:\\.[0-9]+)+) configuration page"}, {"source": "body", "regex": "<b>MikroTik RouterOS ([0-9]+(?:\\.[0-9]+)+)</b>"}],
       "cpe": ["mikrotik:routeros"],
       "kev": [{"vendor": "^MikroTik$", "product": "^RouterOS$"}]
@@ -1666,6 +1666,11 @@
       "id": "nextjs-app-router", "name": "Next.js App Router (React Server Components)", "category": "framework",
       "headers": {"Vary": "\\bNext-Router-State-Tree\\b"},
       "body": ["<script[^>]*>\\s*\\(?self\\.__next_f\\s*="],
+      "server": {"headers": {"RSC": "1"}, "query": "_rsc",
+        "server": [{"source": "header:Content-Type", "regex": "x-component|flight"}, {"source": "header:Location", "regex": "[?&]_rsc="},
+          {"source": "header:X-Powered-By", "regex": "^Next\\.js"}, {"source": "header:X-Nextjs-Cache", "regex": "."},
+          {"source": "header:X-Nextjs-Prerender", "regex": "."}, {"source": "header:X-Nextjs-Stale-Time", "regex": "."}],
+        "static": {"source": "header:Content-Type", "regex": "^text/html"}},
       "kev": [{"vendor": "^Meta$", "product": "^React Server Components$"}]
     },
     {

@@ -477,7 +477,7 @@ func TestSecretsBreachesAndExposedFiles(t *testing.T) {
 		}
 	}
 	status, _, body := do(t, srv, http.MethodGet, "/v1/findings?kind=leak", testToken, nil)
-	if msg := errorText(t, body); status != http.StatusBadRequest || !strings.Contains(msg, "admin-exposed, exposed-file, secret or breach") {
+	if msg := errorText(t, body); status != http.StatusBadRequest || !strings.Contains(msg, "admin-exposed, exposed-file, takeover, email, secret or breach") {
 		t.Errorf("unknown kind: %d %q", status, msg)
 	}
 

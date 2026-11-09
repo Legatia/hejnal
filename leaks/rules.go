@@ -33,6 +33,9 @@ type rule struct {
 	// pem marks the private key rule. re matches the header, and the secret
 	// is the key data on the lines that follow it.
 	pem bool
+	// random marks secrets that are random strings without a fixed prefix,
+	// so that placeholder words count anywhere in them, as in tokens.
+	random bool
 }
 
 // Rules lists the built-in rules in the order they are applied.
@@ -65,6 +68,7 @@ var rules = []rule{{
 	re:       regexp.MustCompile(`(?i)(?:aws[_.\-]?)?secret[_.\-]?(?:access[_.\-]?)?key["']?\s*(?::=|=>|=|:)\s*["']?([0-9A-Za-z/+]{40})(?:[^0-9A-Za-z/+=]|$)`),
 	group:    1,
 	keywords: []string{"secret"},
+	random:   true,
 }, {
 	Rule:     Rule{"github-token", "GitHub token", SeverityCritical},
 	re:       regexp.MustCompile(tokenStart + `(gh[pousr]_[0-9A-Za-z]{36,251})(?:[^0-9A-Za-z_]|$)`),
@@ -156,6 +160,7 @@ var rules = []rule{{
 	re:       regexp.MustCompile(`(?i:AccountKey)\s*=\s*([0-9A-Za-z+/]{86}==)`),
 	group:    1,
 	keywords: []string{"accountkey"},
+	random:   true,
 }, {
 	Rule:     Rule{"telegram-bot-token", "Telegram bot token", SeverityHigh},
 	re:       regexp.MustCompile(`\b([0-9]{8,10}:A[0-9A-Za-z_\-]{34})` + tokenEnd),

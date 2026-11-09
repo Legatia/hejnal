@@ -50,11 +50,59 @@ the city of an attack.
    was compromised, it can draft a NIS2 early warning.
 
 It also flags expired or expiring TLS certificates and admin interfaces it can
-reach, such as Jenkins, phpMyAdmin or a vCenter login. With `-checks` it also
-looks for exposed `.git` directories, `.env` files and server status pages.
+reach, such as Jenkins, phpMyAdmin or a vCenter login. From what each front
+page and the DNS already show, it finds:
+
+- **subdomain takeovers**: a name that points at GitHub Pages, Heroku, S3 or
+  another hosting service where nothing is set up any more, so anyone could
+  claim it;
+- storage buckets and web folders that **list their files**;
+- possible **staging and test sites**: a name such as `staging.`, `dev.` or
+  `preview.` whose front page answers without a password and shows it is a
+  copy too: it asks search engines not to index it, calls itself a staging
+  or test site, or has the same title as the live site's page. Hejnal
+  guesses this, so the item says to check it;
+- **mail records** that let others send email as your domain: no SPF record,
+  an SPF record that lets any server through, and no or a watch-only DMARC
+  policy. A subdomain without a DMARC record of its own is judged by its
+  parent domain's, as receivers do, and a missing SPF record counts for
+  less where an enforced DMARC policy already turns fake email away;
+- **names whose server shows a certificate for other names**: a publicly
+  trusted certificate that names none of the domains in your scope. If the
+  names are yours, add them to the scope; if not, the name may point at a
+  server you no longer control, such as a cloud address you gave back that
+  someone else now rents, and security-rating companies count that server's
+  flaws against you. Self-signed certificates, internal names and a hosting
+  provider's own certificate on a name pointed at it are left out.
+
+With `-checks` it also looks for exposed `.git` directories, `.env` files and
+server status pages, and reads the scripts each front page loads from its own
+site for **server secrets** shipped to every visitor, such as Stripe secret
+keys, AWS secret keys and GitHub tokens.
 `hejnal leaks` finds secrets in your source code and accounts on your domains
 in known data breaches. A REST API and an MCP server make the results
 available to other tools and to AI assistants.
+
+Every item says **how sure** Hejnal is and how you can **see it yourself**:
+what answered and what it said, the version it showed, whether NVD lists
+that version as affected and since when the flaw is known to be exploited,
+with a ✓ for each step Hejnal saw and a ? for each it could not check from
+outside, then the `curl`, `openssl` or `dig` command that shows the same
+thing without Hejnal. The verdict is *confirmed*, *likely* (one step cannot
+be checked from outside, such as a version the product hides) or *check it*
+(something outside Hejnal's view may rule it out, such as fixes a Linux
+distribution backports, whose names a certificate carries, or whether a
+site named like a staging copy is one). The fix list starts with **where
+to start**: the urgent items, most urgent first, with a rough effort for
+each and in all, then the quick wins of 30 minutes or less.
+
+**Hejnal is not a penetration test.** It never logs in, guesses passwords
+or tries exploits, so it finds known problems anyone can see from outside
+and misses what a tester would find by attacking. What it gives you is
+continuous, dated evidence that you watch your exposure and fix what is
+exploited, which is what SOC 2 (CC7.1), ISO 27001 (A.8.8) and NIS2 ask for
+between yearly tests, and a way to make those tests cheaper by fixing the
+obvious first.
 
 See an [example fix list](examples/fix-list.en.md) (and [in
 Polish](examples/fix-list.pl.md)).
@@ -88,13 +136,25 @@ prints this every time it runs.
 - **Small ranges.** IP ranges are capped at 1,024 addresses, so a typo cannot
   become a large scan.
 - **Detection only.** No logins, no password guessing, no exploit payloads.
-  By default Hejnal sends one `GET /` per web service.
+  By default Hejnal sends one `GET /` per web service and follows its
+  redirects on the same host. It tries the other of HTTP and HTTPS only when
+  the first gets no answer or is told to use HTTPS. For a Next.js App Router
+  site it asks for the same page once more, with `RSC: 1` and a random
+  `_rsc` value, to tell a running server from static files. On other ports
+  it only reads what the service says first.
 - **Opt-in checks are fixed and few.** With `-checks`, Hejnal sends a few more
   ordinary `GET` requests per web service to fixed, well-known paths:
   `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
   version page (such as WordPress's `/feed/` or Grafana's `/api/health`) for
-  recognised products that hide their version. It never follows redirects
-  for these, and an exposed `.env` file is counted, never stored.
+  recognised products that hide their version, and up to eight scripts the
+  front page itself loads from the same site. It never follows redirects
+  for these. An exposed `.env` file is counted, never stored; a secret in a
+  script is stored only as its start and length.
+- **DNS is read, never changed.** Takeover checks read where each name
+  points (its CNAME). Mail checks read the domain's MX and TXT records and
+  its `_dmarc` record, and for a domain without one, the `_dmarc` records of
+  its parent domains up to the first one found. A lookup that times out is
+  never reported as a missing record.
 - **Private results.** The inventory and findings are written readable only
   by their owner (mode 0600), because they map your attack surface.
 
@@ -115,6 +175,9 @@ cosign verify-blob \
   checksums.txt
 sha256sum --ignore-missing -c checksums.txt
 ```
+
+The bundle is in Sigstore's current format (v0.3), which needs cosign 3 or
+later; cosign 2 rejects it.
 
 ### Linux packages with a daily timer
 
@@ -415,6 +478,20 @@ packages.
 Without a version, a match means: **you run a product attackers are
 exploiting right now; make sure your version has the fix.**
 
+Some flaws are in an application server, not in the pages it sends. For
+those products Hejnal asks for the page a second time, the way a browser
+does while it navigates the application, and a plain file server ignores
+the difference. For Next.js's App Router it sends `RSC: 1` and a random
+`_rsc` value, so a CDN that keeps a copy of the page passes the request on:
+the Next.js server answers with its component payload (or a redirect adding
+`_rsc`), while a static export on a file server or CDN sends the same HTML
+page. An HTML answer still counts as the Next.js server when it carries
+`X-Powered-By: Next.js` or one of the `x-nextjs-cache`, `x-nextjs-prerender`
+and `x-nextjs-stale-time` headers, as a page a CDN kept from the server
+does. A static export is still listed, marked as static files, but gets no
+KEV finding: there is no server for the React Server Components flaw to
+reach. Any other answer, including an error, counts as the application.
+
 ### The overview for decision-makers
 
 `hejnal report overview -o overview.html` writes one self-contained page for
@@ -442,7 +519,15 @@ found:
   (median and within 7 and 30 days), and whether accepted risks are
   documented.
 - **Month by month**, and the accepted risks with their reasons.
+- **Controls it supports**, for auditors: SOC 2 CC7.1 and CC4.1, ISO/IEC
+  27001:2022 A.8.8 and A.5.7, and NIS2 Article 21(2)(e), each with what in
+  the report speaks to it. Whether a control is met stays the auditor's call.
 - A SHA-256 fingerprint of the runs used, to check the report against them.
+
+`-format json` writes the same evidence as data (schema
+`https://github.com/Legatia/hejnal/evidence/v1`): the runs, every item's
+exposure with its CVEs and dates, the accepted risks and the controls, for
+compliance tools and audit workpapers.
 
 It is not an audit or a certification, and it says so. Times to fix are
 measured between runs, so they include the wait for the next run. `-since
@@ -484,7 +569,12 @@ Scores of 85 and above are *fix now*, 70 to 84 *this week*, 50 to 69 *this
 month*, and anything lower *later*. Expired certificates score 70, certificates
 expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
 an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
-server status page 50.
+server status page 50, and a server secret in a script 95. A possible
+subdomain takeover scores 80, a public bucket listing 75, a possible
+staging site 50 and a folder listing 45. A certificate that names none of
+your domains scores 55. Missing SPF scores 55, or 30 where an enforced
+DMARC policy applies; an SPF record that lets any server through scores 55,
+a missing DMARC policy 50 and a watch-only one 40.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products
 behind a login page, on ports it does not check, or on hosts it was not told
@@ -534,8 +624,9 @@ naprawić najpierw.
   rejestrów certyfikatów (certificate transparency).
 - **Rozpoznaje** ponad 50 produktów, m.in. bramy VPN i firewalle (Fortinet,
   Ivanti, Citrix, Palo Alto, Cisco), pocztę (Exchange, Zimbra, Roundcube),
-  WordPress, PHP, GitLab i Jenkins. Robi to po jednym zwykłym zapytaniu na
-  usługę.
+  WordPress, PHP, GitLab i Jenkins. Robi to jednym zwykłym zapytaniem
+  `GET /` na usługę; strona na Next.js App Router dostaje jeszcze jedno, z
+  nagłówkiem `RSC: 1`.
 - **Porównuje** je z katalogiem CISA KEV i z listą wykorzystywanych podatności
   ENISA w europejskiej bazie EUVD. Pokazuje identyfikatory EUVD, podatności,
   które zna tylko ENISA, i to, kiedy ENISA wpisała podatność wcześniej niż
