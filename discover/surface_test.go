@@ -178,7 +178,7 @@ func TestSurface(t *testing.T) {
 			w.Header().Set("Content-Type", "application/xml")
 			io.WriteString(w, `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Contents><Key>a.csv</Key></Contents></ListBucketResult>`)
 		case host == "staging.example.test":
-			io.WriteString(w, "<html><title>Acme admin</title></html>")
+			io.WriteString(w, `<html><head><title>Acme admin</title><meta name="robots" content="noindex, nofollow"></head><body><p>Orders, customers and reports for the Acme shop team.</p></body></html>`)
 		case host == "www.example.test" && r.URL.Path == "/":
 			io.WriteString(w, `<html><title>Acme</title><script src="/app.js"></script></html>`)
 		case host == "www.example.test" && r.URL.Path == "/app.js":
@@ -406,5 +406,85 @@ func TestDMARCFromParent(t *testing.T) {
 		if got := strings.Join(dmarcParents(domain), " "); got != want {
 			t.Errorf("dmarcParents(%s) = %q, want %q", domain, got, want)
 		}
+	}
+}
+
+// A name such as dev. or qa. alone is no proof of a test copy: the page has
+// to show it too, and a login or an empty application page never does.
+func TestNonProductionNeedsASign(t *testing.T) {
+	text := "<p>Welcome to Acme. We make tools for small workshops across Europe since 1998.</p>"
+	pages := map[string]struct {
+		header, page string
+	}{
+		"www.example.test":     {"", "<html><head><title>Acme</title></head><body>" + text + "</body></html>"},
+		"staging.example.test": {"X-Robots-Tag: noindex", "<html><head><title>Acme</title></head><body>" + text + "</body></html>"},
+		"uat.example.test":     {"", "<html><head><title>Acme (UAT)</title></head><body>" + text + "</body></html>"},
+		"preview.example.test": {"", "<html><head><title>Acme</title></head><body>" + text + "</body></html>"},
+		"dev2.example.test":    {"", "<html><head><title>Acme</title></head><body><p>This is the staging environment.</p>" + text + "</body></html>"},
+		// Public sites with such names.
+		"qa.example.test":      {"", "<html><head><title>Acme Q&amp;A</title></head><body><p>Questions and answers about Acme tools, from our users and staff.</p></body></html>"},
+		"dev.example.test":     {"", "<html><head><title>Acme Dev Center</title></head><body><p>Build on Acme: API reference, guides and examples for developers.</p></body></html>"},
+		"sandbox.example.test": {"", "<html><head><title>Acme API Sandbox</title></head><body><p>Try every API call against test data before you go live with Acme.</p></body></html>"},
+		// A single-page application looks the same with or without a login.
+		"test.example.test": {"", `<html><head><title>Acme</title><script src="/app.js"></script></head><body><div id="root"></div><noscript>You need to enable JavaScript to run this app.</noscript></body></html>`},
+		// A login page.
+		"stage.example.test": {"", `<html><head><title>Acme</title></head><body>` + text + `<form><input name="user"><input type="password" name="pw"></form></body></html>`},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, _ := net.SplitHostPort(r.Host)
+		p := pages[host]
+		if k, v, ok := strings.Cut(p.header, ": "); ok {
+			w.Header().Set(k, v)
+		}
+		io.WriteString(w, p.page)
+	}))
+	defer srv.Close()
+	port := portOf(t, srv.URL)
+	res := fakeResolver{"example.test": {"127.0.0.1"}}
+	var names []string
+	for n := range pages {
+		res[n] = []string{"127.0.0.1"}
+		names = append(names, n)
+	}
+	inv, err := Run(context.Background(), Options{
+		Scope:    testScope(t, []string{"example.test"}, []string{"127.0.0.1"}, []int{port}, nil),
+		Engine:   engine(t),
+		Resolver: res,
+		Names:    names,
+		WebPorts: []int{port},
+		Timeout:  3 * time.Second,
+		Now:      func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, a := range inv.Assets {
+		for _, s := range a.Services {
+			for _, x := range s.Exposures {
+				if x.Kind == ExposureNonProduction {
+					got[a.Host] = x.Evidence
+				}
+			}
+		}
+	}
+	want := map[string]string{
+		"staging.example.test": "asks search engines not to index it",
+		"uat.example.test":     `its title "Acme (UAT)" names it a test copy`,
+		"preview.example.test": "shows the same page title as www.example.test",
+		"dev2.example.test":    "the page calls itself a staging site",
+	}
+	for host, sign := range want {
+		if !strings.Contains(got[host], sign) || !strings.Contains(got[host], "suggests a staging or test copy") {
+			t.Errorf("%s: %q, want %q", host, got[host], sign)
+		}
+	}
+	for host, ev := range got {
+		if _, ok := want[host]; !ok {
+			t.Errorf("%s flagged: %q", host, ev)
+		}
+	}
+	if names := productionNames("api-staging.shop.example.com"); strings.Join(names, " ") != "shop.example.com www.shop.example.com api.shop.example.com" {
+		t.Errorf("productionNames = %q", names)
 	}
 }

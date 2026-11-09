@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/leaks"
@@ -137,9 +138,81 @@ func nonProductionName(host string) bool {
 	return false
 }
 
+// productionNames returns the names a staging or test copy at host is
+// likely a copy of: the parent name, its www name, and the name without
+// the staging part, so "api-staging.example.com" gives "example.com",
+// "www.example.com" and "api.example.com".
+func productionNames(host string) []string {
+	first, parent, _ := strings.Cut(host, ".")
+	if !strings.Contains(parent, ".") {
+		return nil
+	}
+	out := []string{parent, "www." + parent}
+	var keep []string
+	for _, part := range strings.Split(first, "-") {
+		if !nonProduction[strings.TrimRight(part, "0123456789")] {
+			keep = append(keep, part)
+		}
+	}
+	if len(keep) > 0 {
+		out = append(out, strings.Join(keep, "-")+"."+parent)
+	}
+	return out
+}
+
+var (
+	// noindexRE matches a robots meta tag that keeps search engines away,
+	// as preview and staging deployments usually have.
+	noindexRE = regexp.MustCompile(`(?i)<meta\b[^>]*\bname\s*=\s*["']?(?:robots|googlebot)\b[^>]*\bcontent\s*=\s*["'][^"']*\bnoindex|<meta\b[^>]*\bcontent\s*=\s*["'][^"']*\bnoindex[^>]*\bname\s*=\s*["']?(?:robots|googlebot)\b`)
+	// testTitleRE matches a page title that calls the site a copy for
+	// testing: "Acme (staging)", "[UAT] Acme", "Acme test environment".
+	// Words that also name public sites, such as "dev" for a developer
+	// portal, "QA" for questions and answers or "sandbox" for an API
+	// sandbox, count only in brackets.
+	testTitleRE = regexp.MustCompile(`(?i)\bstaging\b|\bpre-?prod(?:uction)?\b|\buat\b|\b(?:test|testing|dev|development|qa)\s+(?:environment|server|instance|system|site)\b|[\[(]\s*(?:dev|test|testing|qa|stage|stg|preview|sandbox)\s*[\])]`)
+	// stagingTextRE matches a page that says it is a staging copy.
+	stagingTextRE = regexp.MustCompile(`(?i)\b(?:staging|pre-?production)\s+(?:environment|server|site|system|instance)\b`)
+	passwordRE    = regexp.MustCompile(`(?i)<input\b[^>]*\btype\s*=\s*["']?password\b`)
+	hiddenRE      = regexp.MustCompile(`(?is)<(script|style|noscript|template|head)\b.*?</(?:script|style|noscript|template|head)\s*>`)
+	tagRE         = regexp.MustCompile(`(?s)<[^>]*>`)
+)
+
+// shell reports whether a page shows next to no text of its own, as a
+// single-page application's start page does before its scripts run. Such a
+// page looks the same whether or not the application then asks for a login.
+func shell(body string) bool {
+	text := tagRE.ReplaceAllString(hiddenRE.ReplaceAllString(body, " "), " ")
+	letters := 0
+	for _, c := range html.UnescapeString(text) {
+		if unicode.IsLetter(c) {
+			letters++
+		}
+	}
+	return letters < 40
+}
+
+// nonProductionSign returns what on a front page, besides the name, marks
+// a staging or test copy. ok is false for a page that cannot show it: a
+// login, or a page without text of its own, since Hejnal cannot see past a
+// login. A page with no sign may still show the live site's page.
+func nonProductionSign(header http.Header, title, body string) (sign string, ok bool) {
+	if loginTitleRE.MatchString(title) || passwordRE.MatchString(body) || shell(body) {
+		return "", false
+	}
+	switch {
+	case strings.Contains(strings.ToLower(strings.Join(header.Values("X-Robots-Tag"), ",")), "noindex"), noindexRE.MatchString(body):
+		return "asks search engines not to index it", true
+	case testTitleRE.MatchString(title):
+		return fmt.Sprintf("its title %q names it a test copy", truncate(title, 80)), true
+	case stagingTextRE.MatchString(tagRE.ReplaceAllString(hiddenRE.ReplaceAllString(body, " "), " ")):
+		return "the page calls itself a staging site", true
+	}
+	return "", true
+}
+
 // surface adds the exposures the front page shows. svc is the service's
-// answer to GET /, body its start.
-func (r *runner) surface(host string, svc *inventory.Service, body string) {
+// answer to GET /, header its headers and body its start.
+func (r *runner) surface(host string, svc *inventory.Service, header http.Header, body string) {
 	cname, addrs := r.records(host)
 	if name, ok := takeover(cname, addrs, body); ok {
 		where := cname
@@ -156,10 +229,59 @@ func (r *runner) surface(host string, svc *inventory.Service, body string) {
 	if kind, ev := listing(body); kind != "" {
 		svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: kind, Path: "/", Evidence: ev})
 	}
-	if nonProductionName(host) && !loginTitleRE.MatchString(svc.Title) {
-		svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: ExposureNonProduction, Path: "/",
-			Evidence: fmt.Sprintf("%q answers anyone without a password", host)})
+	if !nonProductionName(host) {
+		return
 	}
+	switch sign, ok := nonProductionSign(header, svc.Title, body); {
+	case !ok:
+	case sign != "":
+		svc.Exposures = append(svc.Exposures, nonProductionExposure(host, sign))
+	case strings.TrimSpace(svc.Title) != "":
+		// Whether it shows the live site's page is known once that site
+		// was looked at too.
+		r.mu.Lock()
+		r.copies = append(r.copies, copyCandidate{host: host, port: svc.Port, title: svc.Title})
+		r.mu.Unlock()
+	}
+}
+
+func nonProductionExposure(host, sign string) inventory.Exposure {
+	return inventory.Exposure{Kind: ExposureNonProduction, Path: "/",
+		Evidence: fmt.Sprintf("the name %q suggests a staging or test copy; its front page answers without a password and %s", host, sign)}
+}
+
+// copyCandidate is a front page on a staging or test name that showed no
+// sign of its own, kept to compare with the live site's page.
+type copyCandidate struct {
+	host  string
+	port  int
+	title string
+}
+
+// markCopies flags the staging or test names that show the same page title
+// as the live site they are named after.
+func (r *runner) markCopies() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.copies {
+		for _, name := range productionNames(c.host) {
+			live := r.assets[name]
+			if live == nil || !slices.ContainsFunc(live.Services, func(s inventory.Service) bool {
+				return s.Status == http.StatusOK && strings.EqualFold(strings.TrimSpace(s.Title), strings.TrimSpace(c.title))
+			}) {
+				continue
+			}
+			if a := r.assets[c.host]; a != nil {
+				for i, s := range a.Services {
+					if s.Port == c.port && !slices.ContainsFunc(s.Exposures, func(x inventory.Exposure) bool { return x.Kind == ExposureNonProduction }) {
+						a.Services[i].Exposures = append(a.Services[i].Exposures, nonProductionExposure(c.host, "shows the same page title as "+name))
+					}
+				}
+			}
+			break
+		}
+	}
+	r.copies = nil
 }
 
 // records returns the name host points to, if any, and the addresses it

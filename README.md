@@ -57,8 +57,11 @@ page and the DNS already show, it finds:
   another hosting service where nothing is set up any more, so anyone could
   claim it;
 - storage buckets and web folders that **list their files**;
-- **staging and test sites** (`staging.`, `dev.`, `preview.` and the like)
-  that answer without a password;
+- possible **staging and test sites**: a name such as `staging.`, `dev.` or
+  `preview.` whose front page answers without a password and shows it is a
+  copy too: it asks search engines not to index it, calls itself a staging
+  or test site, or has the same title as the live site's page. Hejnal
+  guesses this, so the item says to check it;
 - **mail records** that let others send email as your domain: no SPF record,
   an SPF record that lets any server through, and no or a watch-only DMARC
   policy. A subdomain without a DMARC record of its own is judged by its
@@ -539,8 +542,8 @@ month*, and anything lower *later*. Expired certificates score 70, certificates
 expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
 an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
 server status page 50, and a server secret in a script 95. A possible
-subdomain takeover scores 80, a public bucket listing 75, a staging site 50
-and a folder listing 45. Missing SPF scores 55, or 30 where an enforced
+subdomain takeover scores 80, a public bucket listing 75, a possible
+staging site 50 and a folder listing 45. Missing SPF scores 55, or 30 where an enforced
 DMARC policy applies; an SPF record that lets any server through scores 55,
 a missing DMARC policy 50 and a watch-only one 40.
 

@@ -553,7 +553,7 @@ var fileKinds = map[string]string{
 	"script-secret":     "Server secret in the site's JavaScript",
 	"bucket-listing":    "Public storage bucket listing",
 	"directory-listing": "Public folder listing",
-	"non-production":    "Staging or test site open to anyone",
+	"non-production":    "Possible staging or test site open to anyone",
 }
 
 var emailKinds = map[string]string{

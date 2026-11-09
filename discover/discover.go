@@ -117,6 +117,7 @@ type runner struct {
 	excluded map[netip.Addr]bool
 	cnames   map[string]string   // name → the name it points to
 	scripts  map[string][]string // host|port → scripts its front page loads
+	copies   []copyCandidate     // staging or test names to compare with the live site
 	capped   bool
 }
 
@@ -182,6 +183,7 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	r.markCopies()
 	inv := r.inventory()
 	for _, d := range s.Domains {
 		if m, ok := r.mailAuth(ctx, d); ok {
