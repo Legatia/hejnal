@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  WebSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AWS::StackName} web"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+  Admin:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: all
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: "*"
+                Resource: "*"
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: !Ref Acl

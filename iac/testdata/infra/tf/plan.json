@@ -1,0 +1,1 @@
+{"format_version":"1.2","planned_values":{"root_module":{"child_modules":[{"resources":[{"address":"module.db.aws_db_instance.this","type":"aws_db_instance","values":{"publicly_accessible":true}}]}]}},"resource_changes":[]}
