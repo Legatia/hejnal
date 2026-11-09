@@ -96,8 +96,8 @@ type Options struct {
 	// under one of the scope's domains. Other hosts get only the TLS handshake,
 	// and their port 80 is not probed.
 	//
-	// It applies to names found under the scope's domains, by any source;
-	// hosts and addresses the scope lists are unaffected. The handshake is on
+	// It applies to every name, whether found under the scope's domains by
+	// any source or listed as a host; addresses are unaffected. The handshake is on
 	// port 443 with the name as SNI, which must be among WebPorts. A name is
 	// tied when its certificate covers the name itself or any name under one
 	// of the scope's domains, wildcards included; the certificate need not be
@@ -579,10 +579,8 @@ func (r *runner) needsTie(host string) bool {
 	if !r.opts.TiedOnly {
 		return false
 	}
-	if _, err := netip.ParseAddr(host); err == nil {
-		return false
-	}
-	return !r.s.Explicit(host)
+	_, err := netip.ParseAddr(host)
+	return err != nil
 }
 
 // untied reports whether Hejnal may not contact host beyond the TLS
