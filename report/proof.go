@@ -133,6 +133,21 @@ func proofOf(tr translator, g match.Group) Proof {
 			step(false, "proof.foreign.owner")
 			p.Verdict = VerdictCheck
 			p.SeeIt, p.Command = seeCert(tr, host, 443)
+		case "non-production":
+			// A guess from the name, backed by what the page showed.
+			_, sign, ok := strings.Cut(f.Evidence, "without a password and ")
+			if !ok {
+				sign = f.Evidence
+			}
+			step(true, "proof.nonprod.page", plain(sign))
+			step(false, "proof.nonprod.guess")
+			p.Verdict = VerdictCheck
+			p.SeeIt, p.Command = seeHTTP(tr, f.URL, "")
+		case "script-secret":
+			step(true, "proof.script.found")
+			step(false, "proof.secret.untried")
+			p.Verdict = VerdictLikely
+			p.SeeIt, p.Command = seeHTTP(tr, f.URL, "")
 		default:
 			p.SeeIt, p.Command = seeHTTP(tr, f.URL, "")
 		}

@@ -91,9 +91,10 @@ outside, then the `curl`, `openssl` or `dig` command that shows the same
 thing without Hejnal. The verdict is *confirmed*, *likely* (one step cannot
 be checked from outside, such as a version the product hides) or *check it*
 (something outside Hejnal's view may rule it out, such as fixes a Linux
-distribution backports). The fix list starts with **where to start**: the
-urgent items, most urgent first, with a rough effort for each and in all,
-then the quick wins of 30 minutes or less.
+distribution backports, whose names a certificate carries, or whether a
+site named like a staging copy is one). The fix list starts with **where
+to start**: the urgent items, most urgent first, with a rough effort for
+each and in all, then the quick wins of 30 minutes or less.
 
 **Hejnal is not a penetration test.** It never logs in, guesses passwords
 or tries exploits, so it finds known problems anyone can see from outside

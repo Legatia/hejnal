@@ -55,6 +55,21 @@ func TestProof(t *testing.T) {
 		p.Verdict != VerdictCheck || len(p.Steps) != 2 || !p.Steps[0].OK || !strings.HasSuffix(p.Steps[0].Text, "(www.someone-else.com).") || p.Steps[1].OK {
 		t.Errorf("foreign host: %+v", p)
 	}
+	// Items guessed from a name are for the owner to check.
+	staging := match.Groups([]match.Finding{{Kind: match.KindExposedFile, TechID: "non-production", Host: "qa.example.com", Port: 443, URL: "https://qa.example.com/",
+		Evidence: `the name "qa.example.com" suggests a staging or test copy; its front page answers without a password and asks search engines not to index it`, Score: 50}})[0]
+	if p := ProofOf(staging, "en"); p.Verdict != VerdictCheck || len(p.Steps) != 2 || p.Steps[0].Text != "The front page answered without a password, and asks search engines not to index it." ||
+		p.Steps[1].OK || !strings.Contains(p.Summary, "Check it") {
+		t.Errorf("staging: %+v", p)
+	}
+	script := match.Groups([]match.Finding{{Kind: match.KindExposedFile, TechID: "script-secret", Host: "www.example.com", Port: 443, URL: "https://www.example.com/", Evidence: "x", Score: 95}})[0]
+	if p := ProofOf(script, "en"); p.Verdict != VerdictLikely || len(p.Steps) != 2 || p.Steps[1].OK {
+		t.Errorf("script secret: %+v", p)
+	}
+	listing := match.Groups([]match.Finding{{Kind: match.KindExposedFile, TechID: "bucket-listing", Host: "files.example.com", Port: 443, URL: "https://files.example.com/", Evidence: "x", Score: 75}})[0]
+	if p := ProofOf(listing, "en"); p.Verdict != VerdictConfirmed {
+		t.Errorf("listing: %+v", p)
+	}
 	mail := match.Groups([]match.Finding{{Kind: match.KindEmail, TechID: "dmarc-missing", Host: "example.com", Score: 50}})[0]
 	if p := ProofOf(mail, "en"); p.Command != "dig +short TXT 'example.com'; dig +short TXT '_dmarc.example.com'" {
 		t.Errorf("mail: %+v", p)
