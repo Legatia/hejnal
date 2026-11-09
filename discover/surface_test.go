@@ -2,6 +2,11 @@ package discover
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -268,5 +273,65 @@ func TestNames(t *testing.T) {
 	}
 	if _, ok := found["other.test"]; ok {
 		t.Error("a name outside the scope was looked at")
+	}
+}
+
+// Scripts often carry AWS's documented example keys and private key
+// placeholders from libraries; only a real, complete key is a leak.
+func TestScriptSecretsSkipExamples(t *testing.T) {
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(ec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	real := strings.ReplaceAll(string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE " + "KEY", Bytes: der})), "\n", `\n`)
+	begin, end := "-----BEGIN PRIVATE "+"KEY-----", "-----END PRIVATE "+"KEY-----"
+	examples := `var aws={accessKeyId:"AKIA` + `IOSFODNN7EXAMPLE",secretAccessKey:"wJalrXUtnFEMI/K7MDENG/` + `bPxRfiCYEXAMPLEKEY"};` +
+		`var doc="` + begin + `\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ...\n-----END";` +
+		`var tpl="` + begin + `\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ\n` + end + `";` +
+		`if(k.indexOf("` + begin + `")===0){}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			io.WriteString(w, `<html><title>Acme</title><script src="/lib.js"></script><script src="/app.js"></script></html>`)
+		case "/lib.js":
+			io.WriteString(w, examples)
+		case "/app.js":
+			if r.Host != "" && strings.HasPrefix(r.Host, "leaky.") {
+				io.WriteString(w, `const key="`+real+`";`)
+				return
+			}
+			io.WriteString(w, "init();")
+		}
+	}))
+	defer srv.Close()
+	port := portOf(t, srv.URL)
+	res := fakeResolver{"example.test": {"127.0.0.1"}, "www.example.test": {"127.0.0.1"}, "leaky.example.test": {"127.0.0.1"}}
+	inv, err := Run(context.Background(), Options{
+		Scope:    testScope(t, []string{"example.test"}, []string{"127.0.0.1"}, []int{port}, nil),
+		Engine:   engine(t),
+		Resolver: res,
+		Names:    []string{"leaky.example.test"},
+		WebPorts: []int{port},
+		Timeout:  3 * time.Second,
+		Checks:   true,
+		Now:      func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, a := range inv.Assets {
+		for _, s := range a.Services {
+			for _, x := range s.Exposures {
+				got[a.Host] = x.Kind + ": " + x.Evidence
+			}
+		}
+	}
+	if len(got) != 1 || !strings.Contains(got["leaky.example.test"], "Private key") || strings.Contains(got["leaky.example.test"], "lib.js") {
+		t.Errorf("exposures = %q", got)
 	}
 }

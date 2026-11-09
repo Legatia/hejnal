@@ -335,7 +335,9 @@ func (w *webClient) scriptSecrets(ctx context.Context, host string, port int, sv
 		if err != nil || status != http.StatusOK {
 			continue
 		}
-		ls, _ := leaks.ScanReader(p, bytes.NewReader(body), leaks.Options{})
+		// Scripts carry libraries' key headers, excerpts and placeholders;
+		// only a complete private key counts.
+		ls, _ := leaks.ScanReader(p, bytes.NewReader(body), leaks.Options{CompleteKeys: true})
 		for _, l := range ls {
 			if !serverSecrets[l.RuleID] || seen[l.Fingerprint] {
 				continue
