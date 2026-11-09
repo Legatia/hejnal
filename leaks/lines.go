@@ -103,8 +103,11 @@ type pemBlock struct {
 	end       string
 	ended     bool
 	encrypted bool
-	// raw is the key data exactly, for the complete-key check.
-	raw strings.Builder
+	// raw is the key data exactly, for the complete-key check, and tail a
+	// last line too short to count as key data on its own, which only the
+	// END line can follow.
+	raw  strings.Builder
+	tail string
 }
 
 var (
@@ -263,7 +266,7 @@ func (s *lineScanner) endPEM() {
 	if len(body) < minPEMBody || entropy(body) < p.rule.minEntropy {
 		return
 	}
-	if s.complete && !p.complete(p.raw.String()) {
+	if s.complete && !p.complete(p.raw.String()+p.tail) {
 		return
 	}
 	s.add(p.rule, p.line, body)
@@ -341,10 +344,17 @@ func (p *pemBlock) takeLine(text string) bool {
 	if strings.HasPrefix(t, "Proc-Type:") && strings.Contains(t, "ENCRYPTED") {
 		p.encrypted = true
 	}
-	if t != "" && !pemField.MatchString(t) && !pemChecksum.MatchString(t) {
-		if len(t) < minBase64Run || len(longestBase64(t)) != len(t) {
-			return false
-		}
+	switch {
+	case t == "" || pemField.MatchString(t) || pemChecksum.MatchString(t):
+		// Blank lines, header fields and an armor checksum hold no key data.
+	case p.tail != "" || len(longestBase64(t)) != len(t):
+		return false
+	case len(t) < minBase64Run:
+		// Too short for key data on its own, unless the END line follows:
+		// the key data's last line, such as "Ag==". It never enters the
+		// body, so fingerprints stay as they were.
+		p.tail = keyLine(line)
+	default:
 		p.body.WriteString(t)
 		p.raw.WriteString(keyLine(line))
 	}
