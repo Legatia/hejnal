@@ -124,12 +124,14 @@ func TestTiedOnly(t *testing.T) {
 	}
 
 	services := run(true)
-	for _, host := range []string{"tied.example.test", "wild.example.test", "sibling.example.test", "listed.example.test"} {
+	for _, host := range []string{"tied.example.test", "wild.example.test", "sibling.example.test"} {
 		if !tlsLog.saw(host) || !plainLog.saw(host) || !services[host] {
 			t.Errorf("%s: HTTPS %v, HTTP %v, services %v", host, tlsLog.saw(host), plainLog.saw(host), services[host])
 		}
 	}
-	for _, host := range []string{"untied.example.test", "notls.example.test"} {
+	// A listed host is tied like any other name: listing it proves nothing
+	// about the server its name points at.
+	for _, host := range []string{"untied.example.test", "notls.example.test", "listed.example.test"} {
 		if tlsLog.saw(host) || plainLog.saw(host) || services[host] {
 			t.Errorf("%s was contacted: HTTPS %v, HTTP %v, services %v", host, tlsLog.saw(host), plainLog.saw(host), services[host])
 		}
