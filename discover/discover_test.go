@@ -613,3 +613,37 @@ func TestServerCheckSeesThroughCaches(t *testing.T) {
 		t.Errorf("server check requests: %q, %q", seenStatic, seenURL)
 	}
 }
+
+// By default a web service gets one GET / and its same-host redirects; a
+// Next.js App Router site gets one more request for the page, with the
+// server check's header and query. The README promises exactly this.
+func TestDefaultRequests(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.RequestURI()+" rsc="+r.Header.Get("RSC"))
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/":
+			http.Redirect(w, r, "/app/", http.StatusFound)
+		default:
+			io.WriteString(w, `<html><head><title>Shop</title></head><body><script>self.__next_f=self.__next_f||[]</script></body></html>`)
+		}
+	}))
+	defer srv.Close()
+	port := portOf(t, srv.URL)
+	if _, err := Run(context.Background(), Options{
+		Scope:    testScope(t, nil, []string{"127.0.0.1"}, []int{port}, nil),
+		Engine:   engine(t),
+		Resolver: fakeResolver{},
+		Timeout:  3 * time.Second,
+		Now:      func() time.Time { return testNow },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 3 || seen[0] != "GET / rsc=" || seen[1] != "GET /app/ rsc=" ||
+		!regexp.MustCompile(`^GET /app/\?_rsc=[0-9a-f]+ rsc=1$`).MatchString(seen[2]) {
+		t.Errorf("requests = %q", seen)
+	}
+}

@@ -88,7 +88,12 @@ prints this every time it runs.
 - **Small ranges.** IP ranges are capped at 1,024 addresses, so a typo cannot
   become a large scan.
 - **Detection only.** No logins, no password guessing, no exploit payloads.
-  By default Hejnal sends one `GET /` per web service.
+  By default Hejnal sends one `GET /` per web service and follows its
+  redirects on the same host. It tries the other of HTTP and HTTPS only when
+  the first gets no answer or is told to use HTTPS. For a Next.js App Router
+  site it asks for the same page once more, with `RSC: 1` and a random
+  `_rsc` value, to tell a running server from static files. On other ports
+  it only reads what the service says first.
 - **Opt-in checks are fixed and few.** With `-checks`, Hejnal sends a few more
   ordinary `GET` requests per web service to fixed, well-known paths:
   `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
@@ -551,8 +556,9 @@ naprawić najpierw.
   rejestrów certyfikatów (certificate transparency).
 - **Rozpoznaje** ponad 50 produktów, m.in. bramy VPN i firewalle (Fortinet,
   Ivanti, Citrix, Palo Alto, Cisco), pocztę (Exchange, Zimbra, Roundcube),
-  WordPress, PHP, GitLab i Jenkins. Robi to po jednym zwykłym zapytaniu na
-  usługę.
+  WordPress, PHP, GitLab i Jenkins. Robi to jednym zwykłym zapytaniem
+  `GET /` na usługę; strona na Next.js App Router dostaje jeszcze jedno, z
+  nagłówkiem `RSC: 1`.
 - **Porównuje** je z katalogiem CISA KEV i z listą wykorzystywanych podatności
   ENISA w europejskiej bazie EUVD. Pokazuje identyfikatory EUVD, podatności,
   które zna tylko ENISA, i to, kiedy ENISA wpisała podatność wcześniej niż
