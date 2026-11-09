@@ -133,10 +133,10 @@ var safeCommand = regexp.MustCompile(`^(?:curl -sk -D - -o /dev/null 'https?://[
 // it says, and Markdown must show the command exactly.
 func TestCommandsSurviveHostileInput(t *testing.T) {
 	hostile := []string{
-		"https://vpn.example.com/login?next=`;touch /tmp/x;`",
-		"https://vpn.example.com/a`id`b/$(id)/'x'/\"y\"/;|&<>*?",
+		"https://vpn.example.com/login?next=`;x;`",
+		"https://vpn.example.com/a`x`b/$(x)/'x'/\"y\"/;|&<>*?",
 		"https://vpn.example.com:8443/%27%60%3B/x y\\z",
-		"https://vpn.example.com/login#`;id;`",
+		"https://vpn.example.com/login#`;x;`",
 		"https://vpn.example.com/<script>alert(1)</script>",
 		"https://[2001:db8::1]:8443/a`b",
 	}
@@ -144,7 +144,7 @@ func TestCommandsSurviveHostileInput(t *testing.T) {
 		var fs []match.Finding
 		for i, kind := range []match.Kind{match.KindKEV, match.KindAdminExposed, match.KindExposedFile} {
 			fs = append(fs, match.Finding{Key: fmt.Sprintf("%s|vpn.example.com|443|%d", kind, i), Kind: kind, Host: "vpn.example.com", Port: 443,
-				URL: raw, TechID: "fortinet-fortigate", Technology: "FortiGate `x`", CVE: "CVE-2024-21762", Evidence: "title `;id;` <i class=x>",
+				URL: raw, TechID: "fortinet-fortigate", Technology: "FortiGate `x`", CVE: "CVE-2024-21762", Evidence: "title `;x;` <i class=x>",
 				DateAdded: "2024-02-09", ListedBy: []string{match.ListCISA}, Score: 90, Severity: match.Critical, Confidence: match.ConfidenceProduct})
 		}
 		fs[2].TechID = "env"
@@ -194,7 +194,7 @@ func TestCommandsSurviveHostileInput(t *testing.T) {
 		}
 	}
 	// Names that are not plain host names never reach a command.
-	for _, host := range []string{"x';id;'.example.com", "a b.example.com", "x`id`.example.com", "x$(id).example.com"} {
+	for _, host := range []string{"x';x;'.example.com", "a b.example.com", "x`x`.example.com", "x$(x).example.com"} {
 		for _, f := range []match.Finding{
 			{Kind: match.KindTakeover, Host: host, Score: 80},
 			{Kind: match.KindEmail, TechID: "dmarc-missing", Host: host, Score: 50},
