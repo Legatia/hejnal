@@ -206,18 +206,18 @@ type Finding struct {
 	// BreachDate, Accounts and Passwords describe a data breach: when it
 	// happened, how many accounts on the domain it exposed and whether it
 	// exposed passwords.
-	BreachDate string   `json:"breachDate,omitempty"`
-	Accounts   int      `json:"accounts,omitempty"`
-	Passwords  bool     `json:"passwords,omitempty"`
+	BreachDate string `json:"breachDate,omitempty"`
+	Accounts   int    `json:"accounts,omitempty"`
+	Passwords  bool   `json:"passwords,omitempty"`
 	// Ecosystem, Advisory and FixedIn describe a dependency's advisory:
 	// the package registry or distribution, the OSV ID, and the first
 	// version with the fix. Dev marks a package only development or tests
 	// use, and Malicious one that is malware itself.
-	Ecosystem string `json:"ecosystem,omitempty"`
-	Advisory  string `json:"advisory,omitempty"`
-	FixedIn   string `json:"fixedIn,omitempty"`
-	Dev       bool   `json:"dev,omitempty"`
-	Malicious bool   `json:"malicious,omitempty"`
+	Ecosystem  string   `json:"ecosystem,omitempty"`
+	Advisory   string   `json:"advisory,omitempty"`
+	FixedIn    string   `json:"fixedIn,omitempty"`
+	Dev        bool     `json:"dev,omitempty"`
+	Malicious  bool     `json:"malicious,omitempty"`
 	Score      int      `json:"score"`
 	Severity   Severity `json:"severity"`
 	Confidence string   `json:"confidence"`

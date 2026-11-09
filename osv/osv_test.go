@@ -72,7 +72,7 @@ func TestLookup(t *testing.T) {
 			batches.Add(1)
 			var req struct {
 				Queries []struct {
-					Package struct{ Name, Ecosystem string }
+					Package   struct{ Name, Ecosystem string }
 					Version   string
 					PageToken string `json:"page_token"`
 				}
