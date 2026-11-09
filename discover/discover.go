@@ -4,8 +4,11 @@
 // Every connection goes through one guard that checks the host, the address
 // and the port against the scope, so nothing outside it is contacted: not
 // through DNS answers, redirects or names found in certificates. Discovery
-// sends one ordinary GET request per web service. It never logs in, guesses
-// paths or sends attack payloads.
+// sends one ordinary GET / per web service, over the other of HTTP and HTTPS
+// too when the first fails, and follows redirects on the same host. For a
+// product whose rule has a server check, such as Next.js's App Router, it
+// asks for the page once more with the check's headers. It never logs in,
+// guesses paths or sends attack payloads.
 package discover
 
 import (

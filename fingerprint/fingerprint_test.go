@@ -405,11 +405,11 @@ func TestRouterOSTitleNeedsTheLogo(t *testing.T) {
 
 func TestServerCheck(t *testing.T) {
 	e := engine(t)
-	headers, ok := e.ServerCheck("nextjs-app-router")
-	if !ok || headers["RSC"] != "1" {
-		t.Fatalf("server check = %v, %v", headers, ok)
+	headers, query, ok := e.ServerCheck("nextjs-app-router")
+	if !ok || headers["RSC"] != "1" || query != "_rsc" {
+		t.Fatalf("server check = %v, %q, %v", headers, query, ok)
 	}
-	if _, ok := e.ServerCheck("wordpress"); ok {
+	if _, _, ok := e.ServerCheck("wordpress"); ok {
 		t.Error("WordPress has a server check")
 	}
 	html := NewResponse(header("Content-Type", "text/html; charset=utf-8"), "/", "<html></html>")
@@ -424,6 +424,13 @@ func TestServerCheck(t *testing.T) {
 		{"application redirects to add _rsc", 307, NewResponse(header("Location", "/?_rsc=abc12"), "/", ""), false},
 		{"error page is not proof of a file server", 404, html, false},
 		{"other answer", 200, NewResponse(header("Content-Type", "application/json"), "/", "{}"), false},
+		// A cache in front of a Next.js server answers with the HTML it
+		// keeps, but the page's headers show the server behind it.
+		{"cached page with X-Powered-By", 200, NewResponse(header("Content-Type", "text/html", "X-Powered-By", "Next.js"), "/", "<html></html>"), false},
+		{"cached page with x-nextjs-cache", 200, NewResponse(header("Content-Type", "text/html", "x-nextjs-cache", "HIT"), "/", "<html></html>"), false},
+		{"cached page with x-nextjs-prerender", 200, NewResponse(header("Content-Type", "text/html", "x-nextjs-prerender", "1"), "/", "<html></html>"), false},
+		{"cached page with x-nextjs-stale-time", 200, NewResponse(header("Content-Type", "text/html", "x-nextjs-stale-time", "300"), "/", "<html></html>"), false},
+		{"flight payload", 200, NewResponse(header("Content-Type", "text/x-component; charset=utf-8"), "/", "0:{}"), false},
 	}
 	for _, c := range cases {
 		if got := e.StaticCopy("nextjs-app-router", c.status, c.r); got != c.static {
@@ -442,6 +449,7 @@ func TestLoadRejectsBadServerChecks(t *testing.T) {
 		"cookie header":   `{"headers": {"Cookie": "a=b"}, "server": [{"source": "body", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
 		"header newline":  `{"headers": {"X-A": "1\r\nX-B: 2"}, "server": [{"source": "body", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
 		"bad source":      `{"headers": {"X-A": "1"}, "server": [{"source": "cookie", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
+		"query not plain": `{"headers": {"X-A": "1"}, "query": "a&b=c", "server": [{"source": "body", "regex": "x"}], "static": {"source": "body", "regex": "y"}}`,
 	} {
 		doc := `{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "server": ` + check + `}]}`
 		if _, err := Load([]byte(doc)); err == nil {

@@ -2,8 +2,10 @@ package discover
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -164,15 +166,24 @@ func schemesFor(port int) []string {
 
 // staticCopy asks for the page again with a rule's server check headers,
 // as a browser does when it navigates in the application, and reports
-// whether a plain file server answered. Errors and redirects count as the
-// application, so a flaw is never hidden by a failed check.
-func (w *webClient) staticCopy(ctx context.Context, page *url.URL, id string, headers map[string]string) bool {
+// whether a plain file server answered. A query parameter with a random
+// value, when the rule names one, keeps a cache in front of the
+// application from answering with the page it already holds. Errors and
+// redirects count as the application, so a flaw is never hidden by a failed
+// check.
+func (w *webClient) staticCopy(ctx context.Context, page *url.URL, id string, headers map[string]string, query string) bool {
 	client := &http.Client{
 		Transport:     w.transport,
 		Timeout:       2 * w.r.opts.Timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, page.String(), nil)
+	u := *page
+	if query != "" {
+		q := u.Query()
+		q.Set(query, cacheBuster())
+		u.RawQuery = q.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return false
 	}
@@ -187,6 +198,13 @@ func (w *webClient) staticCopy(ctx context.Context, page *url.URL, id string, he
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	return w.r.opts.Engine.StaticCopy(id, resp.StatusCode, fingerprint.NewResponse(resp.Header, page.Path, string(body)))
+}
+
+// cacheBuster returns a short random value no cache has seen.
+func cacheBuster() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // fetch sends one GET request for "/". It follows redirects only on the same
@@ -247,7 +265,7 @@ func (w *webClient) fetch(ctx context.Context, host string, port int, scheme str
 	w.r.surface(host, svc, string(body))
 	w.r.noteScripts(host, port, final, string(body))
 	for i, t := range svc.Technologies {
-		if headers, ok := w.r.opts.Engine.ServerCheck(t.ID); ok && w.staticCopy(ctx, final, t.ID, headers) {
+		if headers, query, ok := w.r.opts.Engine.ServerCheck(t.ID); ok && w.staticCopy(ctx, final, t.ID, headers, query) {
 			svc.Technologies[i].Static = true
 			svc.Technologies[i].Evidence += "; static files: no application answered the server check"
 		}

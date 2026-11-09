@@ -103,7 +103,12 @@ prints this every time it runs.
 - **Small ranges.** IP ranges are capped at 1,024 addresses, so a typo cannot
   become a large scan.
 - **Detection only.** No logins, no password guessing, no exploit payloads.
-  By default Hejnal sends one `GET /` per web service.
+  By default Hejnal sends one `GET /` per web service and follows its
+  redirects on the same host. It tries the other of HTTP and HTTPS only when
+  the first gets no answer or is told to use HTTPS. For a Next.js App Router
+  site it asks for the same page once more, with `RSC: 1` and a random
+  `_rsc` value, to tell a running server from static files. On other ports
+  it only reads what the service says first.
 - **Opt-in checks are fixed and few.** With `-checks`, Hejnal sends a few more
   ordinary `GET` requests per web service to fixed, well-known paths:
   `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
@@ -441,12 +446,16 @@ exploiting right now; make sure your version has the fix.**
 Some flaws are in an application server, not in the pages it sends. For
 those products Hejnal asks for the page a second time, the way a browser
 does while it navigates the application, and a plain file server ignores
-the difference. For Next.js's App Router it sends `RSC: 1`: the Next.js
-server answers with its component payload (or a redirect adding `_rsc`),
-while a static export on a file server or CDN sends the same HTML page. A
-static export is still listed, marked as static files, but gets no KEV
-finding: there is no server for the React Server Components flaw to reach.
-Any other answer, including an error, counts as the application.
+the difference. For Next.js's App Router it sends `RSC: 1` and a random
+`_rsc` value, so a CDN that keeps a copy of the page passes the request on:
+the Next.js server answers with its component payload (or a redirect adding
+`_rsc`), while a static export on a file server or CDN sends the same HTML
+page. An HTML answer still counts as the Next.js server when it carries
+`X-Powered-By: Next.js` or one of the `x-nextjs-cache`, `x-nextjs-prerender`
+and `x-nextjs-stale-time` headers, as a page a CDN kept from the server
+does. A static export is still listed, marked as static files, but gets no
+KEV finding: there is no server for the React Server Components flaw to
+reach. Any other answer, including an error, counts as the application.
 
 ### The overview for decision-makers
 
@@ -578,8 +587,9 @@ naprawić najpierw.
   rejestrów certyfikatów (certificate transparency).
 - **Rozpoznaje** ponad 50 produktów, m.in. bramy VPN i firewalle (Fortinet,
   Ivanti, Citrix, Palo Alto, Cisco), pocztę (Exchange, Zimbra, Roundcube),
-  WordPress, PHP, GitLab i Jenkins. Robi to po jednym zwykłym zapytaniu na
-  usługę.
+  WordPress, PHP, GitLab i Jenkins. Robi to jednym zwykłym zapytaniem
+  `GET /` na usługę; strona na Next.js App Router dostaje jeszcze jedno, z
+  nagłówkiem `RSC: 1`.
 - **Porównuje** je z katalogiem CISA KEV i z listą wykorzystywanych podatności
   ENISA w europejskiej bazie EUVD. Pokazuje identyfikatory EUVD, podatności,
   które zna tylko ENISA, i to, kiedy ENISA wpisała podatność wcześniej niż

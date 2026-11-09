@@ -1666,8 +1666,10 @@
       "id": "nextjs-app-router", "name": "Next.js App Router (React Server Components)", "category": "framework",
       "headers": {"Vary": "\\bNext-Router-State-Tree\\b"},
       "body": ["<script[^>]*>\\s*\\(?self\\.__next_f\\s*="],
-      "server": {"headers": {"RSC": "1"},
-        "server": [{"source": "header:Content-Type", "regex": "^text/x-component"}, {"source": "header:Location", "regex": "[?&]_rsc="}],
+      "server": {"headers": {"RSC": "1"}, "query": "_rsc",
+        "server": [{"source": "header:Content-Type", "regex": "x-component|flight"}, {"source": "header:Location", "regex": "[?&]_rsc="},
+          {"source": "header:X-Powered-By", "regex": "^Next\\.js"}, {"source": "header:X-Nextjs-Cache", "regex": "."},
+          {"source": "header:X-Nextjs-Prerender", "regex": "."}, {"source": "header:X-Nextjs-Stale-Time", "regex": "."}],
         "static": {"source": "header:Content-Type", "regex": "^text/html"}},
       "kev": [{"vendor": "^Meta$", "product": "^React Server Components$"}]
     },
