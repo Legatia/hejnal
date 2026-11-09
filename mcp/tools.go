@@ -554,7 +554,7 @@ var fileKinds = map[string]string{
 	"bucket-listing":    "Public storage bucket listing",
 	"directory-listing": "Public folder listing",
 	"non-production":    "Possible staging or test site open to anyone",
-	"foreign-host":      "Name of yours pointing at someone else's server",
+	"foreign-host":      "Certificate names none of your domains",
 }
 
 var emailKinds = map[string]string{

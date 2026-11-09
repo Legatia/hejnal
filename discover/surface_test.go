@@ -5,10 +5,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -291,37 +294,154 @@ func TestNames(t *testing.T) {
 	}
 }
 
-func TestForeignHost(t *testing.T) {
-	r := &runner{s: testScope(t, []string{"example.test"}, nil, []int{443}, nil)}
-	parse := func(names ...string) *x509.Certificate {
-		c, err := x509.ParseCertificate(testCert(t, names, testNow.Add(24*time.Hour)).Certificate[0])
+// testCA makes a certificate authority, trusted as certRoots for the test,
+// and returns a function that issues certificates from it, and the key of
+// every certificate it issues.
+func testCA(t *testing.T) (func(notAfter time.Time, names ...string) *x509.Certificate, *ecdsa.PrivateKey) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Test CA"},
+		NotBefore: testNow.Add(-10 * 365 * 24 * time.Hour), NotAfter: testNow.Add(10 * 365 * 24 * time.Hour),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, _ := x509.ParseCertificate(der)
+	pool := x509.NewCertPool()
+	pool.AddCert(ca)
+	old := certRoots
+	certRoots = pool
+	t.Cleanup(func() { certRoots = old })
+	serial := int64(1)
+	return func(notAfter time.Time, names ...string) *x509.Certificate {
+		serial++
+		leaf := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: names[0]}, DNSNames: names,
+			NotBefore: notAfter.Add(-90 * 24 * time.Hour), NotAfter: notAfter,
+			KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+		der, err := x509.CreateCertificate(rand.Reader, leaf, ca, &key.PublicKey, key)
 		if err != nil {
 			t.Fatal(err)
 		}
+		c, _ := x509.ParseCertificate(der)
 		return c
+	}, key
+}
+
+func TestForeignHost(t *testing.T) {
+	issue, _ := testCA(t)
+	valid := testNow.Add(60 * 24 * time.Hour)
+	public := func(names ...string) []*x509.Certificate { return []*x509.Certificate{issue(valid, names...)} }
+	selfSigned := func(names ...string) []*x509.Certificate {
+		c, err := x509.ParseCertificate(testCert(t, names, valid).Certificate[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return []*x509.Certificate{c}
 	}
+	r := &runner{s: testScope(t, []string{"example.test"}, nil, []int{443}, nil), cnames: map[string]string{
+		"app.example.test":    "acme-shop.herokuapp.com",
+		"api.example.test":    "sushi-4821.herokudns.com",
+		"static.example.test": "www.example.test.edgekey.net",
+		"cdn.example.test":    "acme.other-cdn.test",
+	}}
 	cases := []struct {
 		host  string
-		cert  *x509.Certificate
+		chain []*x509.Certificate
 		want  bool
 		names string
 	}{
-		{"old-api.example.test", parse("shop.someone-else.test", "www.someone-else.test"), true, "shop.someone-else.test, www.someone-else.test"},
-		{"a.example.test", parse("x1.other.test", "x2.other.test", "x3.other.test", "x4.other.test"), true, "x1.other.test, x2.other.test, x3.other.test and 1 more"},
+		{"old-api.example.test", public("shop.someone-else.test", "www.someone-else.test"), true, "shop.someone-else.test, www.someone-else.test"},
+		{"a.example.test", public("x1.other.test", "x2.other.test", "x3.other.test", "x4.other.test"), true, "x1.other.test, x2.other.test, x3.other.test and 1 more"},
+		// An expired certificate still shows whose it was.
+		{"b.example.test", []*x509.Certificate{issue(testNow.Add(-24*time.Hour), "www.someone-else.test")}, true, "www.someone-else.test"},
 		// The certificate covers the name.
-		{"www.example.test", parse("*.example.test"), false, ""},
+		{"www.example.test", public("*.example.test"), false, ""},
 		// A certificate for another of your names: yours, merely wrong here.
-		{"cdn.example.test", parse("www.example.test", "elsewhere.test"), false, ""},
-		// Self-made certificates for local names prove nothing.
-		{"nas.example.test", parse("localhost"), false, ""},
+		{"c.example.test", public("www.example.test", "elsewhere.test"), false, ""},
+		// No public authority vouches for a self-signed certificate.
+		{"d.example.test", selfSigned("www.someone-else.test"), false, ""},
+		{"nas.example.test", selfSigned("localhost"), false, ""},
+		// Internal names: a cloud machine's own, an appliance's.
+		{"e.example.test", public("ip-172-31-5-10.eu-west-1.compute.internal"), false, ""},
+		{"f.example.test", public("nas.local", "router.home.arpa", "fritz.box.lan"), false, ""},
+		// A hosting provider's own certificate on a name pointed at it.
+		{"app.example.test", public("*.herokuapp.com", "herokuapp.com"), false, ""},
+		{"api.example.test", public("*.herokuapp.com"), false, ""},
+		{"static.example.test", public("a248.e.akamai.net", "*.akamaihd.net"), false, ""},
+		// Pointed at a service, but showing a third party's certificate.
+		{"cdn.example.test", public("www.someone-else.test"), true, "www.someone-else.test"},
 		// Addresses are not names anyone rates you by.
-		{"127.0.0.1", parse("someone-else.test"), false, ""},
+		{"127.0.0.1", public("someone-else.test"), false, ""},
+		{"g.example.test", nil, false, ""},
 	}
 	for _, c := range cases {
-		names, ok := r.foreignHost(c.host, c.cert)
+		names, ok := r.foreignHost(c.host, c.chain)
 		if ok != c.want || names != c.names {
 			t.Errorf("%s: %q, %v", c.host, names, ok)
 		}
+	}
+}
+
+// Under TiedOnly, a name whose server shows a public certificate for other
+// names only is reported like a foreign host, without any HTTP request.
+func TestTiedOnlyReportsForeignHosts(t *testing.T) {
+	issue, key := testCA(t)
+	valid := testNow.Add(60 * 24 * time.Hour)
+	certs := map[string]tls.Certificate{
+		"tied.example.test":  {Certificate: [][]byte{issue(valid, "tied.example.test").Raw}, PrivateKey: key},
+		"gone.example.test":  {Certificate: [][]byte{issue(valid, "www.someone-else.test").Raw}, PrivateKey: key},
+		"snake.example.test": testCert(t, []string{"ip-172-31-5-10.eu-west-1.compute.internal"}, valid),
+	}
+	log := &hostLog{}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(log.handler))
+	srv.TLS = &tls.Config{GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		c := certs[hello.ServerName]
+		return &c, nil
+	}}
+	srv.StartTLS()
+	defer srv.Close()
+	port := portOf(t, srv.URL)
+	old := tiePort
+	tiePort = port
+	defer func() { tiePort = old }()
+	res := fakeResolver{}
+	var names []string
+	for n := range certs {
+		res[n] = []string{"127.0.0.1"}
+		names = append(names, n)
+	}
+	inv, err := Run(context.Background(), Options{
+		Scope:    testScope(t, []string{"example.test"}, []string{"127.0.0.1"}, []int{port}, nil),
+		Engine:   engine(t),
+		Resolver: res,
+		Names:    names,
+		WebPorts: []int{port},
+		Timeout:  3 * time.Second,
+		TiedOnly: true,
+		Now:      func() time.Time { return testNow },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets := map[string]inventory.Asset{}
+	for _, a := range inv.Assets {
+		assets[a.Host] = a
+	}
+	if !log.saw("tied.example.test") || log.saw("gone.example.test") || log.saw("snake.example.test") {
+		t.Errorf("requests: %q", log.hosts)
+	}
+	gone := assets["gone.example.test"]
+	if len(gone.Services) != 1 || len(gone.Services[0].Exposures) != 1 || gone.Services[0].Exposures[0].Kind != ExposureForeignHost ||
+		gone.Services[0].Exposures[0].Evidence != "its certificate names none of the domains in your scope; it names www.someone-else.test" ||
+		gone.Services[0].TLS != nil || len(gone.Errors) != 1 {
+		t.Errorf("gone: %+v", gone)
+	}
+	if snake := assets["snake.example.test"]; len(snake.Services) != 0 || len(snake.Errors) != 1 {
+		t.Errorf("self-signed: %+v", snake)
 	}
 }
 

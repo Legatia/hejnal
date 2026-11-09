@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -641,8 +642,17 @@ func listNames(names []string) string {
 }
 
 // addUntied lists a name Hejnal did not contact beyond the TLS handshake
-// under Options.TiedOnly, and why.
+// under Options.TiedOnly, and why. A certificate that would count as a
+// foreign host's on a contacted name is reported as one here too.
 func (r *runner) addUntied(t target) {
+	r.mu.Lock()
+	chain := r.ties[t.host].chain
+	r.mu.Unlock()
+	var foreign *inventory.Service
+	if names, ok := r.foreignHost(t.host, chain); ok {
+		foreign = &inventory.Service{Port: tiePort, Scheme: "https", URL: (&url.URL{Scheme: "https", Host: hostPort(t.host, tiePort, "https"), Path: "/"}).String(),
+			Exposures: []inventory.Exposure{{Kind: ExposureForeignHost, Path: "/", Evidence: foreignEvidence(names)}}}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	a := r.assets[t.host]
@@ -651,13 +661,16 @@ func (r *runner) addUntied(t target) {
 		r.assets[t.host] = a
 	}
 	note := fmt.Sprintf("not contacted further: port %d showed no TLS certificate, so nothing ties the server to the scope's domains", tiePort)
-	if chain := r.ties[t.host].chain; len(chain) > 0 {
+	if len(chain) > 0 {
 		note = "not contacted further: the name points at a server whose certificate names none of the scope's domains"
 		if names := certNames(chain[0]); len(names) > 0 {
 			note += "; it names " + listNames(names)
 		}
 	}
 	a.Errors = append(a.Errors, note)
+	if foreign != nil {
+		a.Services = append(a.Services, *foreign)
+	}
 }
 
 func (r *runner) addService(t target, svc inventory.Service) {

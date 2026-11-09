@@ -316,9 +316,8 @@ func (w *webClient) fetch(ctx context.Context, host string, port int, scheme str
 	}
 	if leaf := leafCert(first); leaf != nil {
 		svc.TLS = tlsInfo(leaf)
-		if names, ok := w.r.foreignHost(host, leaf); ok {
-			svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: ExposureForeignHost, Path: "/",
-				Evidence: fmt.Sprintf("%s answers with a certificate for %s, none of them yours", host, names)})
+		if names, ok := w.r.foreignHost(host, first.TLS.PeerCertificates); ok {
+			svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: ExposureForeignHost, Path: "/", Evidence: foreignEvidence(names)})
 		}
 	}
 	for _, r := range append(hops, resp) {

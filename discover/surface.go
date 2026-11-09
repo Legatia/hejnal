@@ -32,42 +32,106 @@ const (
 	ExposureBucketListing = "bucket-listing"
 	ExposureDirListing    = "directory-listing"
 	ExposureNonProduction = "non-production"
-	// ExposureForeignHost is a name of yours whose address answers with a
-	// certificate for other names: usually an address you gave back to a
-	// cloud provider, now someone else's. Rating companies count what
-	// answers there as yours, and its new holder can serve pages on your
-	// name.
+	// ExposureForeignHost is a name of yours whose server shows a publicly
+	// trusted certificate that names none of the scope's domains. The names
+	// may be yours and belong in the scope; otherwise the name may point at
+	// a server you no longer control, such as a cloud address you gave
+	// back, which rating companies still count as yours and whose new holder
+	// can serve pages on your name.
 	ExposureForeignHost = "foreign-host"
 )
 
-// foreignHost reports whether host, a name, answers with a certificate for
-// neither it nor any name in the scope, and returns the certificate's names.
-func (r *runner) foreignHost(host string, leaf *x509.Certificate) (string, bool) {
-	if leaf == nil || net.ParseIP(host) != nil || leaf.VerifyHostname(host) == nil {
+// certRoots are the certificate authorities a foreign host's certificate
+// must chain to: nil for the system's. Tests set their own.
+var certRoots *x509.CertPool
+
+// foreignHost reports whether host, a name, answers with a certificate that
+// names none of the scope's names, and returns the names it does carry. It
+// stays silent where that proves nothing: a certificate no public authority
+// issued, such as a server's default self-signed one; one for internal
+// names only; and a hosting provider's own certificate on a name pointed at
+// it before the name got a certificate of its own. chain is what the server
+// showed, leaf first.
+func (r *runner) foreignHost(host string, chain []*x509.Certificate) (string, bool) {
+	if len(chain) == 0 || net.ParseIP(host) != nil || r.certTied(host, chain[0]) {
 		return "", false
 	}
-	names := leaf.DNSNames
-	if len(names) == 0 && leaf.Subject.CommonName != "" {
-		names = []string{leaf.Subject.CommonName}
-	}
-	if len(names) == 0 {
+	leaf := chain[0]
+	names := certNames(leaf)
+	if !slices.ContainsFunc(names, publicName) || !trusted(chain) {
 		return "", false
 	}
-	for _, n := range names {
-		n = strings.TrimPrefix(strings.ToLower(n), "*.")
-		// A certificate naming any of your names is yours, merely wrong for
-		// this one; a self-made certificate for localhost and the like says
-		// nothing either way.
-		if r.s.HostInScope(n) || !strings.Contains(n, ".") || n == "localhost.localdomain" {
-			return "", false
+	if cname, _ := r.records(host); cname != "" && providerCert(cname, leaf) {
+		return "", false
+	}
+	return listNames(names), true
+}
+
+// foreignEvidence describes a foreign host's certificate.
+func foreignEvidence(names string) string {
+	return "its certificate names none of the domains in your scope; it names " + names
+}
+
+// internalSuffixes end names that only mean something inside a network.
+var internalSuffixes = []string{".local", ".lan", ".internal", ".intranet", ".corp", ".home", ".home.arpa", ".localdomain", ".localhost"}
+
+// publicName reports whether a certificate name could be a name on the
+// internet: it has a dot, is not an address and is not an internal name
+// such as an appliance's "nas.local" or a cloud machine's own
+// "ip-172-31-5-10.eu-west-1.compute.internal".
+func publicName(n string) bool {
+	n = strings.TrimSuffix(strings.TrimPrefix(strings.ToLower(n), "*."), ".")
+	if !strings.Contains(n, ".") || net.ParseIP(n) != nil {
+		return false
+	}
+	for _, s := range internalSuffixes {
+		if strings.HasSuffix(n, s) {
+			return false
 		}
 	}
-	shown := names[:min(len(names), 3)]
-	ev := strings.Join(shown, ", ")
-	if len(names) > len(shown) {
-		ev += fmt.Sprintf(" and %d more", len(names)-len(shown))
+	return true
+}
+
+// trusted reports whether a certificate chains to a public authority, at a
+// time it was valid: an expired certificate still shows who it was for.
+func trusted(chain []*x509.Certificate) bool {
+	leaf := chain[0]
+	inter := x509.NewCertPool()
+	for _, c := range chain[1:] {
+		inter.AddCert(c)
 	}
-	return clipRecord(ev), true
+	_, err := leaf.Verify(x509.VerifyOptions{Roots: certRoots, Intermediates: inter,
+		CurrentTime: leaf.NotBefore.Add(leaf.NotAfter.Sub(leaf.NotBefore) / 2)})
+	return err == nil
+}
+
+// providers groups the domains of hosting providers whose own certificate
+// answers on a name pointed at them, before the name gets one of its own,
+// with names that differ from those it is pointed at.
+var providers = map[string]string{
+	"herokuapp.com": "Heroku", "herokudns.com": "Heroku", "herokussl.com": "Heroku",
+	"akamai.net": "Akamai", "akamaiedge.net": "Akamai", "akamaihd.net": "Akamai", "akamaized.net": "Akamai",
+	"edgekey.net": "Akamai", "edgesuite.net": "Akamai",
+}
+
+func providerOf(name string) string {
+	name = strings.TrimSuffix(strings.TrimPrefix(strings.ToLower(name), "*."), ".")
+	for d, p := range providers {
+		if name == d || strings.HasSuffix(name, "."+d) {
+			return p
+		}
+	}
+	return ""
+}
+
+// providerCert reports whether a certificate belongs to the service a name
+// points to through cname: it covers cname, or both are a provider's.
+func providerCert(cname string, leaf *x509.Certificate) bool {
+	if leaf.VerifyHostname(cname) == nil {
+		return true
+	}
+	p := providerOf(cname)
+	return p != "" && slices.ContainsFunc(certNames(leaf), func(n string) bool { return providerOf(n) == p })
 }
 
 // DNSRecords is what a resolver offers besides addresses. The system

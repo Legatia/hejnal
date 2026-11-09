@@ -67,11 +67,13 @@ page and the DNS already show, it finds:
   policy. A subdomain without a DMARC record of its own is judged by its
   parent domain's, as receivers do, and a missing SPF record counts for
   less where an enforced DMARC policy already turns fake email away;
-- **names pointing at someone else's server**: a name of yours whose address
-  answers with a certificate for other companies' names and none of yours.
-  Usually it is a cloud address you gave back and someone else now rents:
-  they can serve pages on your name, and security-rating companies count
-  that server's flaws against you.
+- **names whose server shows a certificate for other names**: a publicly
+  trusted certificate that names none of the domains in your scope. If the
+  names are yours, add them to the scope; if not, the name may point at a
+  server you no longer control, such as a cloud address you gave back that
+  someone else now rents, and security-rating companies count that server's
+  flaws against you. Self-signed certificates, internal names and a hosting
+  provider's own certificate on a name pointed at it are left out.
 
 With `-checks` it also looks for exposed `.git` directories, `.env` files and
 server status pages, and reads the scripts each front page loads from its own
@@ -568,10 +570,10 @@ expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
 an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
 server status page 50, and a server secret in a script 95. A possible
 subdomain takeover scores 80, a public bucket listing 75, a possible
-staging site 50 and a folder listing 45. A name pointing at someone else's
-server scores 55. Missing SPF scores 55, or 30 where an enforced DMARC
-policy applies; an SPF record that lets any server
-through scores 55, a missing DMARC policy 50 and a watch-only one 40.
+staging site 50 and a folder listing 45. A certificate that names none of
+your domains scores 55. Missing SPF scores 55, or 30 where an enforced
+DMARC policy applies; an SPF record that lets any server through scores 55,
+a missing DMARC policy 50 and a watch-only one 40.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products
 behind a login page, on ports it does not check, or on hosts it was not told

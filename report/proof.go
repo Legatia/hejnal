@@ -121,9 +121,19 @@ func proofOf(tr translator, g match.Group) Proof {
 	case match.KindAdminExposed:
 		p.SeeIt, p.Command = seeHTTP(tr, g.URL, g.Evidence)
 	case match.KindExposedFile:
-		if f.TechID == "foreign-host" {
+		switch f.TechID {
+		case "foreign-host":
+			// Hejnal saw the certificate, but whether its names are the
+			// owner's, under a domain not in the scope, it cannot see.
+			_, names, ok := strings.Cut(f.Evidence, "; it names ")
+			if !ok {
+				names = f.Evidence
+			}
+			step(true, "proof.foreign.cert", plain(names))
+			step(false, "proof.foreign.owner")
+			p.Verdict = VerdictCheck
 			p.SeeIt, p.Command = seeCert(tr, host, 443)
-		} else {
+		default:
 			p.SeeIt, p.Command = seeHTTP(tr, f.URL, "")
 		}
 	case match.KindTakeover:

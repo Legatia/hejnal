@@ -49,8 +49,10 @@ func TestProof(t *testing.T) {
 		t.Errorf("Polish: %+v", p)
 	}
 
-	foreign := match.Groups([]match.Finding{{Kind: match.KindExposedFile, TechID: "foreign-host", Host: "old.example.com", Port: 443, URL: "https://old.example.com/", Evidence: "x", Score: 55}})[0]
-	if p := ProofOf(foreign, "en"); !strings.HasPrefix(p.Command, "openssl s_client -connect 'old.example.com:443' -servername 'old.example.com'") {
+	foreign := match.Groups([]match.Finding{{Kind: match.KindExposedFile, TechID: "foreign-host", Host: "old.example.com", Port: 443, URL: "https://old.example.com/",
+		Evidence: "its certificate names none of the domains in your scope; it names www.someone-else.com", Score: 55}})[0]
+	if p := ProofOf(foreign, "en"); !strings.HasPrefix(p.Command, "openssl s_client -connect 'old.example.com:443' -servername 'old.example.com'") ||
+		p.Verdict != VerdictCheck || len(p.Steps) != 2 || !p.Steps[0].OK || !strings.HasSuffix(p.Steps[0].Text, "(www.someone-else.com).") || p.Steps[1].OK {
 		t.Errorf("foreign host: %+v", p)
 	}
 	mail := match.Groups([]match.Finding{{Kind: match.KindEmail, TechID: "dmarc-missing", Host: "example.com", Score: 50}})[0]
