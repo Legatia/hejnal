@@ -60,8 +60,13 @@ type Rule struct {
 // error, leaves the product as an application.
 type ServerCheck struct {
 	Headers map[string]string `json:"headers"`
-	Server  []SourcePattern   `json:"server"`
-	Static  SourcePattern     `json:"static"`
+	// Query names a query parameter the request carries with a random
+	// value, so a cache in front of the application, which may ignore the
+	// headers, passes the request on instead of answering with the page it
+	// keeps.
+	Query  string          `json:"query,omitempty"`
+	Server []SourcePattern `json:"server"`
+	Static SourcePattern   `json:"static"`
 }
 
 // EditionRule names the NVD software edition of versions that match Regex.
@@ -127,10 +132,11 @@ type compiled struct {
 }
 
 // headerNameRE and headerValueRE limit a server check's headers to plain
-// ones.
+// ones, and queryNameRE its query parameter.
 var (
 	headerNameRE  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,63}$`)
 	headerValueRE = regexp.MustCompile(`^[ -~]{0,200}$`)
+	queryNameRE   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{0,31}$`)
 )
 
 var cpeNameRE = regexp.MustCompile(`^[a-z0-9_.\-]+:[a-z0-9_.\-]+$`)
@@ -309,6 +315,9 @@ func compile(r Rule) (*compiled, error) {
 			if !headerNameRE.MatchString(k) || !headerValueRE.MatchString(v) {
 				return nil, fmt.Errorf("server check header %q is not plain", k)
 			}
+		}
+		if s.Query != "" && !queryNameRE.MatchString(s.Query) {
+			return nil, fmt.Errorf("server check query %q is not plain", s.Query)
 		}
 		for _, p := range s.Server {
 			vm, err := sourceMatcher(p.Source, p.Regex, false)
@@ -504,12 +513,13 @@ func (c *compiled) matchAny(ms []versionMatcher, r Response) bool {
 	return false
 }
 
-// ServerCheck returns the headers of rule id's server check, if it has one.
-func (e *Engine) ServerCheck(id string) (map[string]string, bool) {
+// ServerCheck returns the headers of rule id's server check and the query
+// parameter to send with a random value, if it has a server check.
+func (e *Engine) ServerCheck(id string) (headers map[string]string, query string, ok bool) {
 	if c, ok := e.byID[id]; ok && c.Server != nil {
-		return c.Server.Headers, true
+		return c.Server.Headers, c.Server.Query, true
 	}
-	return nil, false
+	return nil, "", false
 }
 
 // StaticCopy reports whether the answer to rule id's server check, with

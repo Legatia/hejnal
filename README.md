@@ -421,12 +421,16 @@ exploiting right now; make sure your version has the fix.**
 Some flaws are in an application server, not in the pages it sends. For
 those products Hejnal asks for the page a second time, the way a browser
 does while it navigates the application, and a plain file server ignores
-the difference. For Next.js's App Router it sends `RSC: 1`: the Next.js
-server answers with its component payload (or a redirect adding `_rsc`),
-while a static export on a file server or CDN sends the same HTML page. A
-static export is still listed, marked as static files, but gets no KEV
-finding: there is no server for the React Server Components flaw to reach.
-Any other answer, including an error, counts as the application.
+the difference. For Next.js's App Router it sends `RSC: 1` and a random
+`_rsc` value, so a CDN that keeps a copy of the page passes the request on:
+the Next.js server answers with its component payload (or a redirect adding
+`_rsc`), while a static export on a file server or CDN sends the same HTML
+page. An HTML answer still counts as the Next.js server when it carries
+`X-Powered-By: Next.js` or one of the `x-nextjs-cache`, `x-nextjs-prerender`
+and `x-nextjs-stale-time` headers, as a page a CDN kept from the server
+does. A static export is still listed, marked as static files, but gets no
+KEV finding: there is no server for the React Server Components flaw to
+reach. Any other answer, including an error, counts as the application.
 
 ### The overview for decision-makers
 
