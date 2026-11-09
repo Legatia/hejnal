@@ -297,6 +297,10 @@ func itemText(tr translator, g match.Group) (why, todo string) {
 			}
 		}
 		return tr("breach.why", len(g.Findings), withPasswords), tr("breach.todo")
+	case match.KindDependency:
+		return depWhy(tr, g), depTodo(tr, g)
+	case match.KindMisconfig:
+		return tr("misconfig.why." + f.TechID), tr("misconfig.todo." + f.TechID)
 	}
 	return "", ""
 }

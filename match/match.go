@@ -213,11 +213,16 @@ type Finding struct {
 	// the package registry or distribution, the OSV ID, and the first
 	// version with the fix. Dev marks a package only development or tests
 	// use, and Malicious one that is malware itself.
-	Ecosystem  string   `json:"ecosystem,omitempty"`
-	Advisory   string   `json:"advisory,omitempty"`
-	FixedIn    string   `json:"fixedIn,omitempty"`
-	Dev        bool     `json:"dev,omitempty"`
-	Malicious  bool     `json:"malicious,omitempty"`
+	Ecosystem string `json:"ecosystem,omitempty"`
+	Advisory  string `json:"advisory,omitempty"`
+	FixedIn   string `json:"fixedIn,omitempty"`
+	Dev       bool   `json:"dev,omitempty"`
+	Malicious bool   `json:"malicious,omitempty"`
+	// Aliases are the advisory's CVE IDs, and Rating its own severity,
+	// kept so later runs can score it again as lists of exploited flaws
+	// change.
+	Aliases    []string `json:"aliases,omitempty"`
+	Rating     string   `json:"rating,omitempty"`
 	Score      int      `json:"score"`
 	Severity   Severity `json:"severity"`
 	Confidence string   `json:"confidence"`

@@ -25,6 +25,7 @@ import (
 var kinds = []match.Kind{
 	match.KindKEV, match.KindTLSExpired, match.KindTLSExpiring, match.KindAdminExposed,
 	match.KindExposedFile, match.KindTakeover, match.KindEmail, match.KindSecret, match.KindBreach,
+	match.KindDependency, match.KindMisconfig,
 }
 
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {

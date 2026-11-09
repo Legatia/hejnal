@@ -69,50 +69,76 @@ func Dependencies(ms []DepMatch, o DependencyOptions) []Finding {
 		if p.Binary != "" && p.Binary != p.Name {
 			f.Product = cleanText(p.Binary)
 		}
-		cves := v.CVEs()
-		if len(cves) > 0 {
-			f.CVE = cves[0]
+		f.Aliases = v.CVEs()
+		f.Rating = v.Rating(p.Ecosystem, p.Name)
+		if len(f.Aliases) > 0 {
+			f.CVE = f.Aliases[0]
 		}
-		var exploited *kev.Vulnerability
-		for _, c := range cves {
-			if k, ok := known[c]; ok {
-				exploited, f.CVE = &k, c
-				break
-			}
-		}
-		for _, c := range cves {
-			if e, ok := o.EPSS[c]; ok && probability(e.EPSS) > f.EPSS {
-				f.EPSS, f.EPSSPercentile = probability(e.EPSS), probability(e.Percentile)
-			}
-		}
-		switch {
-		case f.Malicious:
-			// Installing it ran it: on developers' machines and in CI too.
-			f.Score = 95
-		case exploited != nil:
-			f.DateAdded, f.DueDate, f.ListedBy = exploited.DateAdded, exploited.DueDate, listedBy(*exploited)
-			f.Ransomware = exploited.Ransomware()
-			f.Score = max(75, Score(*exploited, "library", f.EPSS, o.Now)-5)
-		case f.EPSS >= 0.5:
-			f.Score = 75
-		case f.EPSS >= 0.1:
-			f.Score = 70
-		case f.EPSS >= 0.01:
-			f.Score = 50
-		default:
-			f.Score = ratingScores[v.Rating(p.Ecosystem, p.Name)]
-		}
-		if f.Dev && !f.Malicious {
-			// Code that only builds or tests the project does not run where
-			// attackers reach it.
-			f.Score = max(10, f.Score-20)
-		}
-		f.Severity = SeverityFor(f.Score)
+		scoreDependency(&f, known, o.EPSS, o.Now)
 		f.Key = fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s", KindDependency, f.Host, f.Ecosystem, f.Technology, f.Version, v.ID, f.File)
 		out = append(out, f)
 	}
 	Sort(out)
 	return out
+}
+
+// scoreDependency rates a dependency finding from what is known about its
+// advisory's flaws now.
+func scoreDependency(f *Finding, known map[string]kev.Vulnerability, scores map[string]epss.Score, now time.Time) {
+	var exploited *kev.Vulnerability
+	for _, c := range f.Aliases {
+		if k, ok := known[c]; ok {
+			exploited, f.CVE = &k, c
+			break
+		}
+	}
+	f.EPSS, f.EPSSPercentile = 0, 0
+	for _, c := range f.Aliases {
+		if e, ok := scores[c]; ok && probability(e.EPSS) > f.EPSS {
+			f.EPSS, f.EPSSPercentile = probability(e.EPSS), probability(e.Percentile)
+		}
+	}
+	f.DateAdded, f.DueDate, f.ListedBy, f.Ransomware = "", "", nil, false
+	switch {
+	case f.Malicious:
+		// Installing it ran it: on developers' machines and in CI too.
+		f.Score = 95
+	case exploited != nil:
+		f.DateAdded, f.DueDate, f.ListedBy = exploited.DateAdded, exploited.DueDate, listedBy(*exploited)
+		f.Ransomware = exploited.Ransomware()
+		f.Score = max(75, Score(*exploited, "library", f.EPSS, now)-5)
+	case f.EPSS >= 0.5:
+		f.Score = 75
+	case f.EPSS >= 0.1:
+		f.Score = 70
+	case f.EPSS >= 0.01:
+		f.Score = 50
+	default:
+		f.Score = ratingScores[f.Rating]
+	}
+	if f.Dev && !f.Malicious {
+		// Code that only builds or tests the project does not run where
+		// attackers reach it.
+		f.Score = max(10, f.Score-20)
+	}
+	f.Severity = SeverityFor(f.Score)
+}
+
+// RescoreDependencies scores dependency findings again, for a later run:
+// a flaw may have joined a list of exploited ones since the scan.
+func RescoreDependencies(fs []Finding, cat *kev.Catalog, scores map[string]epss.Score, now time.Time) {
+	known := map[string]kev.Vulnerability{}
+	if cat != nil {
+		for _, v := range cat.Vulnerabilities {
+			known[v.CVEID] = v
+		}
+	}
+	for i := range fs {
+		if fs[i].Kind == KindDependency {
+			scoreDependency(&fs[i], known, scores, now)
+		}
+	}
+	Sort(fs)
 }
 
 func firstNonEmpty(s ...string) string {

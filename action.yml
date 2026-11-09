@@ -1,0 +1,104 @@
+name: Hejnal code scan
+description: >-
+  Check dependencies, secrets, infrastructure code and container images for
+  what attackers exploit. Only package names and versions leave the runner;
+  results go to GitHub code scanning as SARIF and, if you want, to Hejnal Cloud.
+author: Legatia Solutions
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Directory to scan.
+    default: "."
+  images:
+    description: Container images to check, saved with `docker save` or as OCI layouts, one per line.
+    default: ""
+  fail-on:
+    description: Fail the step when an item reaches this severity (critical, high, medium, low or none).
+    default: high
+  history:
+    description: Also scan the Git history for secrets (needs a full checkout, fetch-depth 0).
+    default: "false"
+  sarif:
+    description: Where to write the SARIF file.
+    default: hejnal.sarif
+  project:
+    description: Name for the project in reports and on Hejnal Cloud (default the directory's name).
+    default: ""
+  upload-url:
+    description: Hejnal Cloud address to send the results to, such as https://app.hejnal.example. Never the code.
+    default: ""
+  upload-token:
+    description: The organisation's upload token for Hejnal Cloud; pass it from a secret.
+    default: ""
+  version:
+    description: Hejnal release to use, such as 0.5.0 (default the version of this action's tag).
+    default: ""
+
+outputs:
+  sarif:
+    description: Path of the SARIF file.
+    value: ${{ steps.scan.outputs.sarif }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Hejnal
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        v="${VERSION:-${ACTION_REF#v}}"
+        if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error::Use the action at a release tag (Legatia/hejnal@v0.5.0) or set the version input."
+          exit 1
+        fi
+        case "$RUNNER_OS" in Linux) os=linux ;; macOS) os=darwin ;; *) echo "::error::Hejnal's action runs on Linux and macOS runners."; exit 1 ;; esac
+        case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "::error::Unsupported runner architecture."; exit 1 ;; esac
+        dir="$RUNNER_TEMP/hejnal-bin"
+        mkdir -p "$dir"
+        file="hejnal_${v}_${os}_${arch}.tar.gz"
+        base="https://github.com/Legatia/hejnal/releases/download/v${v}"
+        curl -fsSL --retry 3 -o "$dir/$file" "$base/$file"
+        curl -fsSL --retry 3 -o "$dir/checksums.txt" "$base/checksums.txt"
+        want="$(awk -v f="$file" '$2 == f {print $1}' "$dir/checksums.txt")"
+        if command -v sha256sum >/dev/null; then got="$(sha256sum "$dir/$file" | cut -d' ' -f1)"; else got="$(shasum -a 256 "$dir/$file" | cut -d' ' -f1)"; fi
+        if [ -z "$want" ] || [ "$want" != "$got" ]; then
+          echo "::error::The downloaded Hejnal archive does not match the release's checksum."
+          exit 1
+        fi
+        tar -xzf "$dir/$file" -C "$dir" hejnal
+        echo "$dir" >> "$GITHUB_PATH"
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        IMAGES: ${{ inputs.images }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        HISTORY: ${{ inputs.history }}
+        SARIF: ${{ inputs.sarif }}
+        PROJECT: ${{ inputs.project }}
+        UPLOAD_URL: ${{ inputs.upload-url }}
+        UPLOAD_TOKEN: ${{ inputs.upload-token }}
+      run: |
+        set -uo pipefail
+        args=(code scan -format sarif -out "$SARIF" -fail-on "$FAIL_ON" -state "$RUNNER_TEMP/hejnal-state")
+        while IFS= read -r img; do
+          if [ -n "$img" ]; then args+=(-image "$img"); fi
+        done <<< "$IMAGES"
+        if [ "$HISTORY" = "true" ]; then args+=(-history); fi
+        if [ -n "$PROJECT" ]; then args+=(-project "$PROJECT"); fi
+        if [ -n "$UPLOAD_URL" ]; then
+          args+=(-upload "$UPLOAD_URL")
+          export HEJNAL_UPLOAD_TOKEN="$UPLOAD_TOKEN"
+        fi
+        hejnal "${args[@]}" -- "$SCAN_PATH"
+        code=$?
+        echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
+        exit $code

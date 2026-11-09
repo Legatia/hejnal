@@ -482,6 +482,20 @@ func findingLine(f match.Finding) string {
 			line += fmt.Sprintf(" · value %q, partly hidden", clip(f.Evidence))
 		}
 		return head + line
+	case match.KindDependency:
+		line := fmt.Sprintf("%s %s (%s) in %s: %s", f.Technology, f.Version, f.Ecosystem, f.File, f.Advisory)
+		if f.CVE != "" {
+			line += " / " + f.CVE
+		}
+		if f.Name != "" {
+			line += fmt.Sprintf(" %q", clip(f.Name))
+		}
+		if f.FixedIn != "" {
+			line += ", fixed in " + f.FixedIn
+		}
+		return head + line
+	case match.KindMisconfig:
+		return head + fmt.Sprintf("%s in %s:%d: %q", f.Technology, f.File, f.Line, clip(f.Evidence))
 	case match.KindBreach:
 		parts := []string{fmt.Sprintf("Accounts on %s in the data breach %q", f.Host, clip(f.Name))}
 		if f.BreachDate != "" {
@@ -975,6 +989,8 @@ func title(g match.Group) string {
 		return t
 	case match.KindBreach:
 		return "Accounts on " + g.Host + " in known data breaches"
+	case match.KindDependency, match.KindMisconfig:
+		return report.ItemTitle(g, "en")
 	}
 	if where == "" {
 		return string(g.Kind)
