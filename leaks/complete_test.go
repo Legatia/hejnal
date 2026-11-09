@@ -75,6 +75,12 @@ func TestCompleteKeys(t *testing.T) {
 	pgp[0] = 0x95
 	cipher := make([]byte, 160)
 	rand.Read(cipher)
+	// A key whose last line holds only "==" and two more characters.
+	short := make([]byte, 49)
+	rand.Read(short)
+	short[0], short[1] = 0x30, 47
+	pgpBlock := armor("PGP PRIVATE KEY "+"BLOCK", pgp, "Version: Test", "")
+	pgpBlock = strings.Replace(pgpBlock, "\n-----END", "\n=ab12\n-----END", 1)
 
 	privateKey, rsaKey, ecKey := "PRIVATE "+"KEY", "RSA PRIVATE "+"KEY", "EC PRIVATE "+"KEY"
 	plusBlock := armor(rsaKey, plus)
@@ -94,7 +100,8 @@ func TestCompleteKeys(t *testing.T) {
 		"Ed25519, the smallest key":     jsString(armor(privateKey, edPKCS8)),
 		"joined strings with + in data": concatenated,
 		"OpenSSH":                       jsString(armor("OPENSSH PRIVATE "+"KEY", openssh)),
-		"OpenPGP with its checksum":     armor("PGP PRIVATE KEY "+"BLOCK", pgp, "Version: Test", "", "=ab12"),
+		"OpenPGP with its checksum":     pgpBlock,
+		"a short last line":             armor(ecKey, short),
 		"encrypted PEM":                 armor(rsaKey, cipher, "Proc-Type: 4,ENCRYPTED", "DEK-Info: AES-128-CBC,0A1B2C3D0A1B2C3D0A1B2C3D0A1B2C3D", ""),
 	} {
 		if leaks := scanComplete(t, text); len(leaks) != 1 || leaks[0].RuleID != "private-key" {
