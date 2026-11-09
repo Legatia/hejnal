@@ -176,16 +176,61 @@ func safeName(h string) bool {
 // seeHTTP says how to see a web page's answer: open it, or ask for it with
 // curl, and what to look for.
 func seeHTTP(tr translator, raw, look string) (text, cmd string) {
-	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || !safeName(u.Hostname()) {
+	page, ok := safeURL(raw)
+	if !ok {
 		return "", ""
 	}
-	// Percent-encoding keeps quotes and spaces in a path out of the shell.
-	cmd = "curl -sk -D - -o /dev/null '" + strings.NewReplacer("'", "%27", " ", "%20").Replace(u.String()) + "'"
+	cmd = "curl -sk -D - -o /dev/null '" + page + "'"
 	if look = plain(look); look != "" {
-		return tr("proof.see.http.look", u.String(), look), cmd
+		return tr("proof.see.http.look", page, look), cmd
 	}
-	return tr("proof.see.http", u.String()), cmd
+	return tr("proof.see.http", page), cmd
+}
+
+// safeURL rebuilds a URL a scanned server may have chosen, such as where it
+// redirected to, from its scheme, host, port and path alone, with every
+// byte of the path outside letters, digits, "-._~/" and valid %XX escapes
+// percent-encoded. The query and fragment are left out. Nothing in the
+// result can end the quotes around it in a shell, or a code span in
+// Markdown.
+func safeURL(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || !safeName(u.Hostname()) {
+		return "", false
+	}
+	host := u.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if p := u.Port(); p != "" {
+		if strings.Trim(p, "0123456789") != "" {
+			return "", false
+		}
+		host += ":" + p
+	}
+	path := u.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	var b strings.Builder
+	b.WriteString(u.Scheme + "://" + host)
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		switch {
+		case c == '%' && i+2 < len(path) && isHex(path[i+1]) && isHex(path[i+2]):
+			b.WriteString(path[i : i+3])
+			i += 2
+		case 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || strings.IndexByte("-._~/", c) >= 0:
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String(), true
+}
+
+func isHex(c byte) bool {
+	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
 // seeCert says how to read the certificate a server shows.
@@ -197,6 +242,31 @@ func seeCert(tr translator, host string, port int) (text, cmd string) {
 		port = 443
 	}
 	return tr("proof.see.cert"), fmt.Sprintf("openssl s_client -connect '%s:%d' -servername '%s' </dev/null 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName -enddate", host, port, host)
+}
+
+// mdCommand shows a command verbatim as inline code, unlike mdCode, which
+// may change it: the code span's fence is longer than any run of backticks
+// in the command, so what a reader copies is the command itself. A command
+// with a line break is not shown.
+func mdCommand(cmd string) string {
+	if cmd == "" || strings.ContainsAny(cmd, "\r\n") {
+		return ""
+	}
+	longest, run := 0, 0
+	for i := 0; i < len(cmd); i++ {
+		if cmd[i] == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", longest+1)
+	if strings.HasPrefix(cmd, "`") || strings.HasSuffix(cmd, "`") || strings.HasPrefix(cmd, " ") && strings.HasSuffix(cmd, " ") {
+		// Markdown drops one space at each end of a code span.
+		cmd = " " + cmd + " "
+	}
+	return fence + cmd + fence
 }
 
 // proofLines writes an item's proof into a fix list.
@@ -215,8 +285,8 @@ func proofLines(b *strings.Builder, tr translator, g match.Group) {
 	}
 	if p.SeeIt != "" {
 		line := mdEscape(p.SeeIt)
-		if p.Command != "" {
-			line += " " + mdCode(p.Command)
+		if c := mdCommand(p.Command); c != "" {
+			line += " " + c
 		}
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.seeit"), line)
 	}
