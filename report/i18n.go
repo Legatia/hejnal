@@ -269,7 +269,7 @@ var messages = map[string]map[string]string{
 		"email.dmarc-missing.why":      "Without DMARC, receiving servers have no instruction to reject email that fails SPF and DKIM, and you get no reports of who sends as you.",
 		"email.dmarc-missing.todo":     "Publish a TXT record at _dmarc with v=DMARC1; p=none; rua=mailto:your address to start receiving reports, then move to p=quarantine and p=reject.",
 		"email.dmarc-none.title":       "DMARC policy of %s only monitors",
-		"email.dmarc-none.why":         "The DMARC policy is p=none, so fake email in the domain's name is still delivered.",
+		"email.dmarc-none.why":         "The DMARC policy that applies is none (p=none, or sp=none on the parent domain for a subdomain without its own record), so fake email in the domain's name is still delivered.",
 		"email.dmarc-none.todo":        "Once the reports show your own services pass, change the policy to p=quarantine and then p=reject.",
 		"mon.title":                    "Hejnal monthly report, %s",
 		"mon.noruns":                   "Hejnal did not run in this month.",
@@ -328,6 +328,11 @@ var messages = map[string]map[string]string{
 		"nis2.c2":                      "Indicators of compromise (IP addresses, files, accounts)",
 		"nis2.c3":                      "Containment steps taken (updated, isolated, passwords and keys changed)",
 		"nis2.c4":                      "Whether personal data was affected: a GDPR breach notification to the data protection authority (UODO in Poland) within 72 hours is a separate duty",
+
+		// No SPF record where an enforced DMARC policy applies.
+		"email.spf-missing-dmarc.title": "No SPF record for %s",
+		"email.spf-missing-dmarc.why":   "The DMARC policy that applies already tells receivers to quarantine or reject email that fails it, so fake email in the domain's name is turned away. Without SPF, though, your own email passes DMARC only when it is DKIM-signed, and receivers that check SPF alone cannot tell your servers from others.",
+		"email.spf-missing-dmarc.todo":  "Publish an SPF record listing the services that send your email, ending with -all or ~all. If the domain sends no email, publish v=spf1 -all.",
 	},
 	"pl": {
 		"fix.title":      "Lista poprawek Hejnal",
@@ -584,7 +589,7 @@ var messages = map[string]map[string]string{
 		"email.dmarc-missing.why":      "Bez DMARC serwery odbiorców nie mają polecenia odrzucać poczty, która nie przechodzi SPF i DKIM, a Ty nie dostajesz raportów, kto wysyła w Twoim imieniu.",
 		"email.dmarc-missing.todo":     "Opublikuj rekord TXT pod _dmarc z v=DMARC1; p=none; rua=mailto:Twój adres, żeby zacząć dostawać raporty, a potem przejdź na p=quarantine i p=reject.",
 		"email.dmarc-none.title":       "Polityka DMARC domeny %s tylko obserwuje",
-		"email.dmarc-none.why":         "Polityka DMARC to p=none, więc fałszywe wiadomości w imieniu domeny nadal są doręczane.",
+		"email.dmarc-none.why":         "Obowiązująca polityka DMARC to none (p=none albo, dla subdomeny bez własnego rekordu, sp=none w domenie nadrzędnej), więc fałszywe wiadomości w imieniu domeny nadal są doręczane.",
 		"email.dmarc-none.todo":        "Gdy raporty pokażą, że Twoje usługi przechodzą weryfikację, zmień politykę na p=quarantine, a potem p=reject.",
 		"mon.title":                    "Raport miesięczny Hejnal, %s",
 		"mon.noruns":                   "Hejnal nie działał w tym miesiącu.",
@@ -643,6 +648,11 @@ var messages = map[string]map[string]string{
 		"nis2.c2":                      "Wskaźniki naruszenia (adresy IP, pliki, konta)",
 		"nis2.c3":                      "Podjęte działania (aktualizacja, izolacja, zmiana haseł i kluczy)",
 		"nis2.c4":                      "Czy naruszono dane osobowe: zgłoszenie do UODO w ciągu 72 godzin na podstawie RODO to osobny obowiązek",
+
+		// Brak SPF przy egzekwowanej polityce DMARC.
+		"email.spf-missing-dmarc.title": "Brak rekordu SPF dla %s",
+		"email.spf-missing-dmarc.why":   "Obowiązująca polityka DMARC już każe odbiorcom kierować do kwarantanny lub odrzucać pocztę, która jej nie spełnia, więc fałszywe wiadomości w imieniu domeny są zatrzymywane. Bez SPF Twoja własna poczta przechodzi jednak DMARC tylko z podpisem DKIM, a odbiorcy, którzy sprawdzają tylko SPF, nie odróżnią Twoich serwerów od innych.",
+		"email.spf-missing-dmarc.todo":  "Opublikuj rekord SPF z usługami, które wysyłają Twoją pocztę, zakończony -all lub ~all. Jeśli domena nie wysyła poczty, opublikuj v=spf1 -all.",
 	},
 }
 

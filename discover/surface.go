@@ -221,34 +221,65 @@ func (r *runner) mailAuth(ctx context.Context, domain string) (inventory.MailAut
 	}); err != nil && !notFound(err) {
 		m.Errors = append(m.Errors, "MX lookup failed")
 	}
-	for _, q := range []struct {
-		name, prefix string
-		out          *string
-		known        *bool
-	}{
-		{domain + ".", "v=spf1", &m.SPF, &m.SPFKnown},
-		{"_dmarc." + domain + ".", "v=DMARC1", &m.DMARC, &m.DMARCKnown},
-	} {
+	// txt returns the record of a kind at name, and whether the lookup
+	// answered.
+	txt := func(name, prefix string) (string, bool) {
+		var rec string
 		err := lookup(func(c context.Context) error {
-			txts, err := recs.LookupTXT(c, q.name)
+			txts, err := recs.LookupTXT(c, name+".")
 			for _, t := range txts {
 				t = strings.TrimSpace(t)
-				if len(t) >= len(q.prefix) && strings.EqualFold(t[:len(q.prefix)], q.prefix) &&
-					(len(t) == len(q.prefix) || t[len(q.prefix)] == ' ' || t[len(q.prefix)] == ';') {
-					*q.out = clipRecord(t)
+				if len(t) >= len(prefix) && strings.EqualFold(t[:len(prefix)], prefix) &&
+					(len(t) == len(prefix) || t[len(prefix)] == ' ' || t[len(prefix)] == ';') {
+					rec = clipRecord(t)
 					break
 				}
 			}
 			return err
 		})
-		switch {
-		case err == nil, notFound(err):
-			*q.known = true
-		default:
-			m.Errors = append(m.Errors, "TXT lookup of "+strings.TrimSuffix(q.name, ".")+" failed")
+		if err != nil && !notFound(err) {
+			m.Errors = append(m.Errors, "TXT lookup of "+name+" failed")
+			return "", false
+		}
+		return rec, true
+	}
+	m.SPF, m.SPFKnown = txt(domain, "v=spf1")
+	m.DMARC, m.DMARCKnown = txt("_dmarc."+domain, "v=DMARC1")
+	if m.DMARCKnown && m.DMARC == "" {
+		// Receivers fall back to a parent domain's record, so a subdomain
+		// without its own is covered by its organisation's.
+		for _, parent := range dmarcParents(domain) {
+			rec, known := txt("_dmarc."+parent, "v=DMARC1")
+			if !known {
+				m.DMARCKnown = false
+				break
+			}
+			if rec != "" {
+				m.DMARC, m.DMARCDomain = rec, parent
+				break
+			}
 		}
 	}
 	return m, true
+}
+
+// dmarcParents returns the parent domains whose DMARC record applies to
+// domain when it has none of its own, nearest first. It walks up the name
+// as DMARCbis's tree walk does, rather than consulting a list of public
+// suffixes: at most seven labels, and never the top-level domain alone.
+// The first record found is the organisation's, or a nearer one that
+// covers this part of it.
+func dmarcParents(domain string) []string {
+	labels := strings.Split(domain, ".")
+	start := 1
+	if len(labels) >= 8 {
+		start = len(labels) - 7
+	}
+	var out []string
+	for i := start; i <= len(labels)-2; i++ {
+		out = append(out, strings.Join(labels[i:], "."))
+	}
+	return out
 }
 
 func clipRecord(s string) string {

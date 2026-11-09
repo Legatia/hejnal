@@ -61,7 +61,9 @@ page and the DNS already show, it finds:
   that answer without a password;
 - **mail records** that let others send email as your domain: no SPF record,
   an SPF record that lets any server through, and no or a watch-only DMARC
-  policy.
+  policy. A subdomain without a DMARC record of its own is judged by its
+  parent domain's, as receivers do, and a missing SPF record counts for
+  less where an enforced DMARC policy already turns fake email away.
 
 With `-checks` it also looks for exposed `.git` directories, `.env` files and
 server status pages, and reads the scripts each front page loads from its own
@@ -117,9 +119,11 @@ prints this every time it runs.
   front page itself loads from the same site. It never follows redirects
   for these. An exposed `.env` file is counted, never stored; a secret in a
   script is stored only as its start and length.
-- **DNS is read, never changed.** Mail checks read the domain's MX and TXT
-  records and `_dmarc` record. A lookup that times out is never reported as
-  a missing record.
+- **DNS is read, never changed.** Takeover checks read where each name
+  points (its CNAME). Mail checks read the domain's MX and TXT records and
+  its `_dmarc` record, and for a domain without one, the `_dmarc` records of
+  its parent domains up to the first one found. A lookup that times out is
+  never reported as a missing record.
 - **Private results.** The inventory and findings are written readable only
   by their owner (mode 0600), because they map your attack surface.
 
@@ -536,8 +540,9 @@ expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
 an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
 server status page 50, and a server secret in a script 95. A possible
 subdomain takeover scores 80, a public bucket listing 75, a staging site 50
-and a folder listing 45. Missing SPF or an SPF record that lets any server
-through scores 55, a missing DMARC policy 50 and a watch-only one 40.
+and a folder listing 45. Missing SPF scores 55, or 30 where an enforced
+DMARC policy applies; an SPF record that lets any server through scores 55,
+a missing DMARC policy 50 and a watch-only one 40.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products
 behind a login page, on ports it does not check, or on hosts it was not told

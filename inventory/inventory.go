@@ -84,7 +84,11 @@ type MailAuth struct {
 	SPFKnown   bool     `json:"spfKnown,omitempty"`
 	DMARC      string   `json:"dmarc,omitempty"`
 	DMARCKnown bool     `json:"dmarcKnown,omitempty"`
-	Errors     []string `json:"errors,omitempty"`
+	// DMARCDomain is the parent domain whose DMARC record DMARC holds, when
+	// Domain has none of its own: receivers then apply the parent's
+	// subdomain policy (sp=, or p= without it).
+	DMARCDomain string   `json:"dmarcDomain,omitempty"`
+	Errors      []string `json:"errors,omitempty"`
 }
 
 // Counts summarises an inventory.
@@ -102,17 +106,64 @@ func (inv *Inventory) Counts() (assets, services, technologies int) {
 var (
 	spfAllRE    = regexp.MustCompile(`(?i)(?:^|\s)([-~?+]?)all(?:\s|$)`)
 	spfRedirect = regexp.MustCompile(`(?i)(?:^|\s)redirect=`)
-	dmarcPolicy = regexp.MustCompile(`(?i)(?:^|;)\s*p\s*=\s*(none|quarantine|reject)\s*(?:;|$)`)
+	dmarcTagRE  = regexp.MustCompile(`^\s*([A-Za-z]+)\s*=\s*(.*?)\s*$`)
 )
 
+// dmarcTag returns the value of a tag in a DMARC record, lower case.
+func dmarcTag(record, name string) (string, bool) {
+	for _, part := range strings.Split(record, ";") {
+		if m := dmarcTagRE.FindStringSubmatch(part); m != nil && strings.EqualFold(m[1], name) {
+			return strings.ToLower(m[2]), true
+		}
+	}
+	return "", false
+}
+
+// DMARCPolicy returns the DMARC policy that applies to the domain: none,
+// quarantine or reject, or "" when there is none. A policy found at a
+// parent domain is its subdomain policy, sp=, or p= when it has no sp=.
+func (m MailAuth) DMARCPolicy() string {
+	valid := func(p string, ok bool) bool { return ok && (p == "none" || p == "quarantine" || p == "reject") }
+	if m.DMARCDomain != "" {
+		if p, ok := dmarcTag(m.DMARC, "sp"); valid(p, ok) {
+			return p
+		}
+	}
+	if p, ok := dmarcTag(m.DMARC, "p"); valid(p, ok) {
+		return p
+	}
+	return ""
+}
+
+// DMARCEnforced reports whether the DMARC policy that applies tells
+// receivers to quarantine or reject all email that fails it: not only a
+// sample (pct= below 100), and not in testing mode (t=y).
+func (m MailAuth) DMARCEnforced() bool {
+	if !m.DMARCKnown {
+		return false
+	}
+	if p := m.DMARCPolicy(); p != "quarantine" && p != "reject" {
+		return false
+	}
+	if pct, ok := dmarcTag(m.DMARC, "pct"); ok && pct != "100" {
+		return false
+	}
+	t, _ := dmarcTag(m.DMARC, "t")
+	return t != "y"
+}
+
 // Problems lists what the domain's mail records leave open, as keys:
-// spf-missing, spf-weak (an SPF record that lets every server through or
-// ends without an "all"), dmarc-missing and dmarc-none (a DMARC policy that
-// only watches). Parts whose lookup failed are left out.
+// spf-missing, spf-missing-dmarc (no SPF record, though an enforced DMARC
+// policy already turns fake email away), spf-weak (an SPF record that lets
+// every server through or ends without an "all"), dmarc-missing and
+// dmarc-none (a DMARC policy that only watches). Parts whose lookup failed
+// are left out.
 func (m MailAuth) Problems() []string {
 	var out []string
 	if m.SPFKnown {
 		switch {
+		case m.SPF == "" && m.DMARCEnforced():
+			out = append(out, "spf-missing-dmarc")
 		case m.SPF == "":
 			out = append(out, "spf-missing")
 		case !spfRedirect.MatchString(m.SPF):
@@ -122,10 +173,10 @@ func (m MailAuth) Problems() []string {
 		}
 	}
 	if m.DMARCKnown {
-		switch p := dmarcPolicy.FindStringSubmatch(m.DMARC); {
-		case p == nil:
+		switch m.DMARCPolicy() {
+		case "":
 			out = append(out, "dmarc-missing")
-		case strings.EqualFold(p[1], "none"):
+		case "none":
 			out = append(out, "dmarc-none")
 		}
 	}

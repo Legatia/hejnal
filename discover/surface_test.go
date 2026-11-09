@@ -132,6 +132,20 @@ func TestMailProblems(t *testing.T) {
 		{inventory.MailAuth{DMARC: "v=DMARC1; rua=mailto:d@example.com", DMARCKnown: true}, "dmarc-missing"},
 		// A lookup that failed says nothing.
 		{inventory.MailAuth{}, ""},
+		// An enforced DMARC policy already turns fake email away; a missing
+		// SPF record is a lesser problem then.
+		{inventory.MailAuth{SPFKnown: true, DMARC: "v=DMARC1; p=reject", DMARCKnown: true}, "spf-missing-dmarc"},
+		{inventory.MailAuth{SPFKnown: true, DMARC: "v=DMARC1; p=quarantine; pct=100", DMARCKnown: true}, "spf-missing-dmarc"},
+		{inventory.MailAuth{SPFKnown: true, DMARC: "v=DMARC1; p=reject; pct=20", DMARCKnown: true}, "spf-missing"},
+		{inventory.MailAuth{SPFKnown: true, DMARC: "v=DMARC1; p=reject; t=y", DMARCKnown: true}, "spf-missing"},
+		{inventory.MailAuth{SPFKnown: true, DMARC: "v=DMARC1; p=reject"}, "spf-missing"},
+		// A parent domain's record applies with its subdomain policy.
+		{inventory.MailAuth{DMARC: "v=DMARC1; p=reject; sp=none", DMARCDomain: "example.com", DMARCKnown: true}, "dmarc-none"},
+		{inventory.MailAuth{DMARC: "v=DMARC1; p=none; sp=reject", DMARCDomain: "example.com", DMARCKnown: true}, ""},
+		{inventory.MailAuth{SPFKnown: true, DMARC: "v=DMARC1; p=reject", DMARCDomain: "example.com", DMARCKnown: true}, "spf-missing-dmarc"},
+		{inventory.MailAuth{SPFKnown: true, DMARC: "v=DMARC1; p=reject; sp=none", DMARCDomain: "example.com", DMARCKnown: true}, "spf-missing dmarc-none"},
+		// sp= is only for subdomains; the domain's own record uses p=.
+		{inventory.MailAuth{DMARC: "v=DMARC1; p=none; sp=reject", DMARCKnown: true}, "dmarc-none"},
 	}
 	for _, c := range cases {
 		if got := strings.Join(c.m.Problems(), " "); got != c.want {
@@ -333,5 +347,64 @@ func TestScriptSecretsSkipExamples(t *testing.T) {
 	}
 	if len(got) != 1 || !strings.Contains(got["leaky.example.test"], "Private key") || strings.Contains(got["leaky.example.test"], "lib.js") {
 		t.Errorf("exposures = %q", got)
+	}
+}
+
+// A subdomain without a DMARC record of its own is covered by its parent
+// domain's record, as receivers do.
+func TestDMARCFromParent(t *testing.T) {
+	dns := fakeDNS{fakeResolver: fakeResolver{},
+		txt: map[string][]string{
+			"_dmarc.example.test":      {"v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@example.test"},
+			"_dmarc.eu.other.test":     {"v=DMARC1; p=none"},
+			"_dmarc.own.example.test":  {"v=DMARC1; p=none"},
+			"timeout.example.test":     {"v=spf1 -all"},
+			"shop.example.test":        {"v=spf1 include:_spf.example.net -all"},
+			"_dmarc.nested.other.test": nil,
+		},
+	}
+	run := func(domain string, fail ...string) inventory.MailAuth {
+		t.Helper()
+		d := dns
+		d.fail = map[string]bool{}
+		for _, f := range fail {
+			d.fail[f] = true
+		}
+		r := &runner{opts: Options{Resolver: d, Timeout: time.Second}}
+		m, ok := r.mailAuth(context.Background(), domain)
+		if !ok {
+			t.Fatal("no mail records")
+		}
+		return m
+	}
+	m := run("shop.example.test")
+	if m.DMARC != "v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@example.test" || m.DMARCDomain != "example.test" || !m.DMARCKnown ||
+		m.DMARCPolicy() != "quarantine" || len(m.Problems()) != 0 {
+		t.Errorf("subdomain: %+v, problems %v", m, m.Problems())
+	}
+	if m := run("own.example.test"); m.DMARCDomain != "" || fmt.Sprint(m.Problems()) != "[spf-missing dmarc-none]" {
+		t.Errorf("own record: %+v, problems %v", m, m.Problems())
+	}
+	// The nearest record up the name applies.
+	if m := run("shop.eu.other.test"); m.DMARCDomain != "eu.other.test" || fmt.Sprint(m.Problems()) != "[spf-missing dmarc-none]" {
+		t.Errorf("nearest parent: %+v", m)
+	}
+	if m := run("deep.nested.other.test"); m.DMARC != "" || !m.DMARCKnown || fmt.Sprint(m.Problems()) != "[spf-missing dmarc-missing]" {
+		t.Errorf("no record anywhere: %+v", m)
+	}
+	// A parent lookup that times out leaves DMARC unknown.
+	if m := run("timeout.example.test", "_dmarc.example.test"); m.DMARCKnown || len(m.Problems()) != 0 || len(m.Errors) != 1 {
+		t.Errorf("after a timeout: %+v, problems %v", m, m.Problems())
+	}
+	for domain, want := range map[string]string{
+		"example.com":                 "",
+		"shop.example.com":            "example.com",
+		"a.b.example.co.uk":           "b.example.co.uk example.co.uk co.uk",
+		"a.b.c.d.e.f.g.example.com":   "c.d.e.f.g.example.com d.e.f.g.example.com e.f.g.example.com f.g.example.com g.example.com example.com",
+		"a.b.c.d.e.f.g.h.example.com": "d.e.f.g.h.example.com e.f.g.h.example.com f.g.h.example.com g.h.example.com h.example.com example.com",
+	} {
+		if got := strings.Join(dmarcParents(domain), " "); got != want {
+			t.Errorf("dmarcParents(%s) = %q, want %q", domain, got, want)
+		}
 	}
 }

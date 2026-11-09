@@ -557,10 +557,11 @@ var fileKinds = map[string]string{
 }
 
 var emailKinds = map[string]string{
-	"spf-missing":   "No SPF record",
-	"spf-weak":      "SPF record lets any server send",
-	"dmarc-missing": "No DMARC policy",
-	"dmarc-none":    "DMARC policy only monitors",
+	"spf-missing":       "No SPF record",
+	"spf-missing-dmarc": "No SPF record (DMARC enforced)",
+	"spf-weak":          "SPF record lets any server send",
+	"dmarc-missing":     "No DMARC policy",
+	"dmarc-none":        "DMARC policy only monitors",
 }
 
 func fileKind(check string) string {
