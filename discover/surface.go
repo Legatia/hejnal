@@ -20,8 +20,10 @@ import (
 )
 
 // Checks on what a web service's front page already shows, and on a
-// domain's DNS records. None of them sends a request beyond those discovery
-// makes anyway.
+// domain's DNS records. The front-page checks read the answer to the GET /
+// discovery sends anyway, and the DNS checks only look records up. Only the
+// script check, one of the opt-in checks, sends requests of its own: for
+// the scripts the front page loads.
 
 // Exposure kinds found from the front page.
 const (

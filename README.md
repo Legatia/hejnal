@@ -543,9 +543,9 @@ expiring within 21 days 50 and reachable admin interfaces 55. With `-checks`,
 an exposed `.env` file scores 90, an exposed `.git` directory 75 and a public
 server status page 50, and a server secret in a script 95. A possible
 subdomain takeover scores 80, a public bucket listing 75, a possible
-staging site 50 and a folder listing 45. Missing SPF scores 55, or 30 where an enforced
-DMARC policy applies; an SPF record that lets any server through scores 55,
-a missing DMARC policy 50 and a watch-only one 40.
+staging site 50 and a folder listing 45. Missing SPF scores 55, or 30
+where an enforced DMARC policy applies; an SPF record that lets any server
+through scores 55, a missing DMARC policy 50 and a watch-only one 40.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products
 behind a login page, on ports it does not check, or on hosts it was not told

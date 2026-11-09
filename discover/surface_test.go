@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -486,5 +487,33 @@ func TestNonProductionNeedsASign(t *testing.T) {
 	}
 	if names := productionNames("api-staging.shop.example.com"); strings.Join(names, " ") != "shop.example.com www.shop.example.com api.shop.example.com" {
 		t.Errorf("productionNames = %q", names)
+	}
+}
+
+// The front-page checks send nothing of their own; only the opt-in checks
+// fetch the scripts a page loads.
+func TestScriptsOnlyWithChecks(t *testing.T) {
+	for _, checks := range []bool{false, true} {
+		var seen []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, r.URL.Path)
+			io.WriteString(w, `<html><title>Acme</title><script src="/app.js"></script></html>`)
+		}))
+		port := portOf(t, srv.URL)
+		_, err := Run(context.Background(), Options{
+			Scope:    testScope(t, nil, []string{"127.0.0.1"}, []int{port}, nil),
+			Engine:   engine(t),
+			Resolver: fakeResolver{},
+			Timeout:  3 * time.Second,
+			Checks:   checks,
+			Now:      func() time.Time { return testNow },
+		})
+		srv.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fetched := slices.Contains(seen, "/app.js"); fetched != checks || seen[0] != "/" || !checks && len(seen) != 1 {
+			t.Errorf("checks %v: requests %q", checks, seen)
+		}
 	}
 }
