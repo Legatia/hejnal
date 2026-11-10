@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability in Hejnal
+    url: https://github.com/Legatia/hejnal/security/advisories/new
+    about: Report flaws in Hejnal itself privately, never in a public issue. See SECURITY.md.
