@@ -190,3 +190,41 @@ func TestExampleValidates(t *testing.T) {
 		t.Fatalf("example scope does not validate: %v", err)
 	}
 }
+
+func TestPlaceholders(t *testing.T) {
+	// The example file as written: every entry is named.
+	data, err := json.Marshal(Example(now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mustParse(t, string(data)).Placeholders()
+	want := []string{
+		`organization "Example Sp. z o.o."`,
+		`authorization.confirmedBy "Jan Kowalski, IT manager"`,
+		"domain example.com",
+		"host vpn.example.com",
+		"range 203.0.113.0/29",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Placeholders = %q\nwant %q", got, want)
+	}
+
+	// Documentation names and addresses on their own, in any spelling.
+	got = mustParse(t, `{`+auth+`,
+	  "domains": ["Shop.Example.ORG."],
+	  "hosts": ["192.0.2.7", "2001:db8::1", "::ffff:198.51.100.9"],
+	  "cidrs": ["2001:db8:1::/120", "192.0.2.128/25"]}`).Placeholders()
+	want = []string{"domain shop.example.org", "host 192.0.2.7", "host 2001:db8::1", "host 198.51.100.9", "range 2001:db8:1::/120", "range 192.0.2.128/25"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Placeholders = %q\nwant %q", got, want)
+	}
+
+	// A real scope has none, including names that only look similar.
+	got = mustParse(t, `{`+auth+`,
+	  "domains": ["sklep.pl", "example.pl", "myexample.com"],
+	  "hosts": ["vpn.sklep.pl", "203.0.114.1"],
+	  "cidrs": ["10.0.0.0/24"]}`).Placeholders()
+	if len(got) != 0 {
+		t.Errorf("Placeholders = %q for a real scope", got)
+	}
+}

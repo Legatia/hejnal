@@ -49,6 +49,8 @@ func (a *app) cmdLeaksScan(ctx context.Context, args []string) (int, error) {
 	o := &options{}
 	fs := a.flags("leaks scan", "[flags] <directory>...",
 		"Find secrets such as API keys, tokens and private keys in source code.\nSecrets are shown partly hidden and never stored in full. Mark a line that\nholds a harmless example with \"hejnal:allow\".")
+	var exclude listFlag
+	fs.Var(&exclude, "exclude", excludeHelp)
 	history := fs.Bool("history", false, "also scan every commit in the Git history")
 	save := fs.Bool("save", false, "keep the result in the state directory, so the next run's fix list and notifications include it")
 	asJSON := fs.Bool("json", false, "print the result as JSON")
@@ -71,6 +73,11 @@ func (a *app) cmdLeaksScan(ctx context.Context, args []string) (int, error) {
 	store := state.Store{Dir: o.stateDir}
 	var skipped []string
 	opts := leaks.Options{Skipped: func(path string, size int64) { skipped = append(skipped, path) }}
+	if ex, err := excludeDirs(exclude); err != nil {
+		return exitError, err
+	} else if len(ex) > 0 {
+		opts.SkipDirs = append(leaks.DefaultSkipDirs(), ex...)
+	}
 	if *save {
 		// A key kept with the results makes fingerprints stable across scans
 		// without letting anyone check guesses of a secret against them.
@@ -118,7 +125,11 @@ func (a *app) cmdLeaksScan(ctx context.Context, args []string) (int, error) {
 		}
 	}
 	if len(skipped) > 0 {
-		fmt.Fprintf(a.stderr, "%d files larger than %d MiB were not scanned, such as %s.\n", len(skipped), leaks.DefaultMaxFileSize>>20, skipped[0])
+		if len(skipped) == 1 {
+			fmt.Fprintf(a.stderr, "%s is larger than %d MiB and was not scanned.\n", skipped[0], leaks.DefaultMaxFileSize>>20)
+		} else {
+			fmt.Fprintf(a.stderr, "%d files larger than %d MiB were not scanned, such as %s.\n", len(skipped), leaks.DefaultMaxFileSize>>20, skipped[0])
+		}
 	}
 
 	if *asJSON {
@@ -199,8 +210,8 @@ func (a *app) printLeaks(ls []leaks.Leak) error {
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.stdout, "\n%d secrets found (critical %d · high %d · medium %d). Revoke each one and issue a new one: removing it from the code is not enough.\n",
-		len(ls), counts["critical"], counts["high"], counts["medium"])
+	fmt.Fprintf(a.stdout, "\n%s found (critical %d · high %d · medium %d). Revoke each one and issue a new one: removing it from the code is not enough.\n",
+		count(len(ls), "secret", "secrets"), counts["critical"], counts["high"], counts["medium"])
 	return nil
 }
 
@@ -275,7 +286,7 @@ func (a *app) printBreaches(sum leaks.DomainSummary, accts map[string][]string, 
 		fmt.Fprintf(a.stdout, "%s: no accounts in known breaches.\n", sum.Domain)
 		return
 	}
-	fmt.Fprintf(a.stdout, "%s: %d accounts in %d breaches.\n", sum.Domain, sum.Accounts, len(sum.Breaches))
+	fmt.Fprintf(a.stdout, "%s: %s in %s.\n", sum.Domain, count(sum.Accounts, "account", "accounts"), count(len(sum.Breaches), "breach", "breaches"))
 	byBreach := map[string][]string{}
 	for alias, names := range accts {
 		for _, name := range names {
@@ -283,7 +294,7 @@ func (a *app) printBreaches(sum leaks.DomainSummary, accts map[string][]string, 
 		}
 	}
 	for _, b := range sum.Breaches {
-		line := fmt.Sprintf("  %s (%s): %d accounts", b.Title, b.BreachDate, b.Accounts)
+		line := fmt.Sprintf("  %s (%s): %s", b.Title, b.BreachDate, count(b.Accounts, "account", "accounts"))
 		if b.Passwords {
 			line += ", passwords exposed"
 		}

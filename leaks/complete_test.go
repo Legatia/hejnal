@@ -141,7 +141,7 @@ func TestCompleteKeys(t *testing.T) {
 func TestAWSExampleKeys(t *testing.T) {
 	for _, line := range []string{
 		"aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/" + "bPxRfiCYEXAMPLEKEY",
-		`var c={secretAccessKey:"wJalrXUtnFEMI/K7MDENG/` + `bPxRfiCYEXAMPLEKEY"}`,
+		`var c={secretAccessKey:"wJalrXUtnFEMI/K7MDENG/` + `bPxRfiCYEXAMPLEKEY"}`, // hejnal:allow (the example key from AWS's documentation, split in two)
 		"aws_secret_access_key = " + fake(alnum, 16, 600) + "EXAMPLE" + fake(alnum, 17, 601),
 	} {
 		if leaks, _ := ScanReader("x", strings.NewReader(line), Options{}); len(leaks) != 0 {

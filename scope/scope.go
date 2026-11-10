@@ -313,6 +313,56 @@ func (s *Scope) hostExcluded(h string) bool {
 	return false
 }
 
+// exampleDomains are the names reserved for documentation. They are real
+// hosts on the internet that belong to IANA, not to the person running
+// Hejnal.
+var exampleDomains = []string{"example.com", "example.net", "example.org"}
+
+// exampleRanges are the address ranges reserved for documentation.
+var exampleRanges = []netip.Prefix{
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("2001:db8::/32"),
+}
+
+// Placeholders lists what a validated scope still carries from the example
+// file: documentation names and ranges to check, and the example's
+// organisation and authorisation. A scope with any of them was not written
+// for the systems it would check, so Hejnal does not run it.
+func (s *Scope) Placeholders() []string {
+	var out []string
+	ex := Example(time.Time{})
+	if s.Organization == ex.Organization {
+		out = append(out, fmt.Sprintf("organization %q", s.Organization))
+	}
+	if s.Authorization.ConfirmedBy == ex.Authorization.ConfirmedBy {
+		out = append(out, fmt.Sprintf("authorization.confirmedBy %q", s.Authorization.ConfirmedBy))
+	}
+	reserved := func(h string) bool {
+		if ip, err := netip.ParseAddr(h); err == nil {
+			return slices.ContainsFunc(exampleRanges, func(p netip.Prefix) bool { return p.Contains(ip.Unmap()) })
+		}
+		return slices.ContainsFunc(exampleDomains, func(d string) bool { return h == d || strings.HasSuffix(h, "."+d) })
+	}
+	for _, d := range s.Domains {
+		if reserved(d) {
+			out = append(out, "domain "+d)
+		}
+	}
+	for _, h := range s.Hosts {
+		if reserved(h) {
+			out = append(out, "host "+h)
+		}
+	}
+	for _, p := range s.prefixes {
+		if slices.ContainsFunc(exampleRanges, func(r netip.Prefix) bool { return r.Overlaps(p) }) {
+			out = append(out, "range "+p.String())
+		}
+	}
+	return out
+}
+
 // Example returns a template scope for `hejnal init`.
 func Example(now time.Time) *Scope {
 	return &Scope{

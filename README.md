@@ -1,13 +1,32 @@
 # Hejnal
 
-Hejnal watches your internet-facing systems for software that attackers are
-exploiting right now, and tells you what to fix first.
+Hejnal watches your internet-facing systems and the code you ship for flaws
+attackers are exploiting right now, and tells you what to fix first.
 
 When a new flaw in a VPN gateway, firewall, mail server or CMS starts being
 exploited, attackers scan the whole internet for it within days. Hejnal
 keeps a map of what your organisation exposes. Each time CISA or ENISA adds a
 flaw to its list of known exploited vulnerabilities, Hejnal checks your
-systems for that product and puts it at the top of your fix list.
+systems for that product and puts it at the top of your fix list. In CI,
+[`hejnal code scan`](#code-dependencies-infrastructure-and-images) applies
+the same rule to dependencies, container images, infrastructure code and
+secrets.
+
+```console
+$ hejnal run
+Hejnal · Example Sp. z o.o.
+First check · Open: 5 (critical 3 · high 0 · medium 1 · low 1)
+• [critical] WordPress on www.example.com:443: CVE-2026-119977, CVE-2026-87902, CVE-2026-60137
+• [critical] PHP on www.example.com:443: CVE-2026-109618, CVE-2026-109619
+• [critical] Fortinet FortiGate SSL VPN on vpn.example.com:443: CVE-2025-61624, CVE-2025-25249, CVE-2025-68686, +2
+• [medium] Jenkins admin interface reachable on ci.example.com:443
+• [low] Jenkins on ci.example.com:443: CVE-2019-1003029, CVE-2019-1003030
+Full list: hejnal report fixlist
+Fix list written to .hejnal/fixlist.md.
+```
+
+The [fix list](examples/fix-list.en.md) then says for each item why it
+matters, what to do, how sure Hejnal is and how to see it yourself.
 
 The name comes from the *hejnał mariacki*, the bugle call played every hour
 from St Mary's Church in Kraków. Legend has it a trumpeter once used it to warn
@@ -78,7 +97,10 @@ page and the DNS already show, it finds:
 With `-checks` it also looks for exposed `.git` directories, `.env` files and
 server status pages, and reads the scripts each front page loads from its own
 site for **server secrets** shipped to every visitor, such as Stripe secret
-keys, AWS secret keys and GitHub tokens.
+keys, AWS secret keys and GitHub tokens. It reads the version of products
+that hide it on the front page, such as WordPress, Grafana and Next.js, so
+flaws that version does not have drop out. A run without `-checks` says when
+that would shorten the list.
 `hejnal leaks` finds secrets in your source code and accounts on your domains
 in known data breaches. A REST API and an MCP server make the results
 available to other tools and to AI assistants.
@@ -147,8 +169,8 @@ prints this every time it runs.
   `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
   version page (such as WordPress's `/feed/` or Grafana's `/api/health`) for
   recognised products that hide their version, and up to eight scripts the
-  front page itself loads from the same site. It never follows redirects
-  for these. An exposed `.env` file is counted, never stored; a secret in a
+  front page itself loads from the same site, which also give the version
+  of Next.js. It never follows redirects for these. An exposed `.env` file is counted, never stored; a secret in a
   script is stored only as its start and length.
 - **DNS is read, never changed.** Takeover checks read where each name
   points (its CNAME). Mail checks read the domain's MX and TXT records and
@@ -188,7 +210,7 @@ unprivileged, sandboxed service, keeping its results in `/var/lib/hejnal`:
 ```sh
 sudo apt install ./hejnal_<version>_linux_amd64.deb      # or: sudo dnf install ./hejnal_<version>_linux_amd64.rpm
 sudo cp /usr/share/doc/hejnal/scope.example.json /etc/hejnal/scope.json
-sudo editor /etc/hejnal/scope.json       # your domains, and who authorised the checks
+sudo editor /etc/hejnal/scope.json       # your domains, and who authorised the checks; Hejnal refuses the example as it is
 sudo editor /etc/hejnal/hejnal.env       # webhooks, email, NVD key, extra flags
 sudo systemctl enable --now hejnal.timer
 sudo systemctl start hejnal.service      # run once now
@@ -222,21 +244,26 @@ cd hejnal
 go build -o hejnal ./cmd/hejnal
 ```
 
-Hejnal uses only the Go standard library. It runs on Linux and macOS;
-Windows is untested.
+Hejnal uses only the Go standard library. It is tested on Linux and macOS.
+Releases include Windows builds, which are not tested yet.
 
 ## Quick start
 
 ```sh
-hejnal init                        # writes an example scope.json
-$EDITOR scope.json                 # list your systems and who authorised the checks
-hejnal run -scope scope.json       # discover, match and write .hejnal/fixlist.md
+hejnal init -domain your-domain.pl -by "Your name, role"   # writes scope.json
+hejnal run                         # discover, match and write .hejnal/fixlist.md
+hejnal run -checks                 # the same, and read versions, exposed files and scripts
 hejnal report fixlist -lang pl     # the fix list in Polish
 hejnal report overview -o overview.html   # one page for decision-makers
 hejnal report evidence -o evidence.html   # proof of monitoring, for insurers and auditors
 hejnal report monthly              # this month: exposure, found, fixed, time to fix
 hejnal report nis2                 # a NIS2 early-warning draft
 ```
+
+`-by` names the person who confirms that you may test these systems; Hejnal
+prints it on every run. `hejnal init` without flags writes an example to
+edit instead, with single hosts, IP ranges and exclusions. Hejnal does not
+run the example until its entries are replaced with your own.
 
 A scope file looks like this ([example](examples/scope.example.json)):
 
@@ -298,8 +325,10 @@ stay out of process lists:
 A free [NVD API key](https://nvd.nist.gov/developers/request-an-api-key) in
 `HEJNAL_NVD_API_KEY` makes version checks about ten times faster.
 
-Exit status: `0` when done, `1` on errors, `2` when `-fail-on` is set and new
-findings reach that severity.
+Exit status: `0` when done, `1` on errors, `2` when new findings reach the
+severity given with `-fail-on`. `hejnal run` exits 2 only when you set
+`-fail-on`; `hejnal code scan` and `hejnal leaks scan` do so from high
+upwards unless you set another level.
 
 Many findings ask a person to check something: "you run WordPress, which
 attackers are exploiting; make sure your version has the fix". Each item in
@@ -325,7 +354,7 @@ To include leaked secrets and breached accounts, see
 
 | Command | What it does |
 |---|---|
-| `hejnal init` | Writes an example scope file. |
+| `hejnal init` | Writes the scope file: ready to run with `-domain` and `-by`, otherwise an example to edit. |
 | `hejnal run` | Discovers, matches, writes the fix list and notifies. |
 | `hejnal discover` | Only finds hosts and identifies software; saves the inventory. |
 | `hejnal feeds` | Downloads CISA's KEV catalog and ENISA's list into the cache. |
@@ -389,8 +418,12 @@ Secrets are never stored or printed in full. Tokens with a public prefix
 show it, such as `ghp_ab… (40 chars)`, and passwords show only their length.
 The command exits with status 2 when it finds a secret of high severity or
 above (`-fail-on` changes the level), so it can gate a CI pipeline. Mark a
-line that holds a harmless example with `hejnal:allow`. Files over 2 MiB are
-not scanned, and the command says which.
+line that holds a harmless example with `hejnal:allow`, or leave whole
+directories out with `-exclude`, such as `-exclude testdata`: a name matches
+anywhere, a path with a slash, such as `docs/examples`, only under the
+scanned directory. A value read from the environment, such as
+`password = "$DB_PASSWORD"`, is not a secret and is not reported. Files over
+2 MiB are not scanned, and the command says which.
 
 With `-save`, the result is kept in the state directory, so the fix list,
 notifications and monthly report include it. Each saved scan replaces the
@@ -419,6 +452,7 @@ everything else waits quietly.
 
 ```sh
 hejnal code scan .                                   # the current repository
+hejnal code scan -exclude testdata -exclude docs/examples .   # without test fixtures and samples
 hejnal code scan -image app.tar -format sarif -out hejnal.sarif .
 docker save acme/api:1.4 -o api.tar && hejnal code scan -image api.tar
 ```
@@ -458,6 +492,7 @@ text, `-format json`, or `-format sarif` for GitHub code scanning and other
 tools. `-fail-on high` (the default) makes the command exit 2 when an item
 reaches that severity, to stop a build. Items accepted with `hejnal accept`
 in the same state directory are shown as accepted and do not stop it.
+`-exclude` leaves directories out, as in `hejnal leaks scan`.
 `-save` keeps the result in the
 state directory, so the daily fix list and alerts include it, scored again
 each day: a dependency flaw that joins CISA's list tomorrow becomes urgent
@@ -476,15 +511,16 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: Legatia/hejnal@v0.6.0
+      - uses: actions/checkout@v7
+      - uses: Legatia/hejnal@v0.7.0
         id: hejnal
         with:
           fail-on: high
+          # exclude: testdata
           # images: api.tar
           # upload-url: https://your-hejnal-cloud
           # upload-token: ${{ secrets.HEJNAL_UPLOAD_TOKEN }}
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: ${{ steps.hejnal.outputs.sarif }}
@@ -543,43 +579,12 @@ The assistant can then ask for a summary, the fix list, findings filtered by
 severity, host or CVE, the inventory and a NIS2 draft. These tools only read.
 With `-allow-runs -scope scope.json`, it can also start a scan.
 
-## How matching works, and its limits
+## Reports
 
-The KEV catalog names the vendor and product of each flaw, but not the
-affected versions. When the product shows its version, Hejnal looks up the
-flaw in NVD and compares the version with the affected ranges NVD's analysts
-recorded:
-
-| Result | What Hejnal does |
-|---|---|
-| Affected | Marks the flaw "version affected" and raises its score by 10. |
-| Affected only on a platform | NVD says the flaw needs a platform Hejnal cannot see, such as Windows for CVE-2024-4577. The finding says so; the score stays. |
-| Ruled out | The version is outside every affected range. The flaw drops to low, is left out of alerts and moves to "Probably fixed already". |
-| Unknown | NVD has not analysed the flaw yet (common in the first days), or Hejnal cannot be sure: the server shows only part of the version (`Apache/2.4`), NVD lists pre-release builds of that number separately, or a range cannot be read. Nothing changes. |
-
-Versions from Linux distribution packages (for example PHP from Ubuntu, or
-Apache reporting `(Debian)`) are never confirmed this way, because
-distributions backport fixes without changing the version number. The same
-goes for products whose hotfixes keep the version number, such as Serv-U and
-N-central, and for Exim, whose greeting looks the same in distribution
-packages.
-
-Without a version, a match means: **you run a product attackers are
-exploiting right now; make sure your version has the fix.**
-
-Some flaws are in an application server, not in the pages it sends. For
-those products Hejnal asks for the page a second time, the way a browser
-does while it navigates the application, and a plain file server ignores
-the difference. For Next.js's App Router it sends `RSC: 1` and a random
-`_rsc` value, so a CDN that keeps a copy of the page passes the request on:
-the Next.js server answers with its component payload (or a redirect adding
-`_rsc`), while a static export on a file server or CDN sends the same HTML
-page. An HTML answer still counts as the Next.js server when it carries
-`X-Powered-By: Next.js` or one of the `x-nextjs-cache`, `x-nextjs-prerender`
-and `x-nextjs-stale-time` headers, as a page a CDN kept from the server
-does. A static export is still listed, marked as static files, but gets no
-KEV finding: there is no server for the React Server Components flaw to
-reach. Any other answer, including an error, counts as the application.
+`hejnal report fixlist` prints the fix list again, `hejnal report monthly`
+the month's exposure, findings, fixes and time to fix, and `hejnal report
+nis2` a draft of a NIS2 early warning. Two more are made for readers outside
+IT.
 
 ### The overview for decision-makers
 
@@ -623,6 +628,46 @@ measured between runs, so they include the wait for the next run. `-since
 2026-01-01` limits the period; Hejnal keeps the last 400 runs, over a year of
 daily runs. Same format and options as the overview.
 
+## How matching works, and its limits
+
+The KEV catalog names the vendor and product of each flaw, but not the
+affected versions. When the product shows its version, Hejnal looks up the
+flaw in NVD and compares the version with the affected ranges NVD's analysts
+recorded:
+
+| Result | What Hejnal does |
+|---|---|
+| Affected | Marks the flaw "version affected" and raises its score by 10. |
+| Affected only on a platform | NVD says the flaw needs a platform Hejnal cannot see, such as Windows for CVE-2024-4577. The finding says so; the score stays. |
+| Ruled out | The version is outside every affected range. The flaw drops to low, is left out of alerts and moves to "Probably fixed already". |
+| Unknown | NVD has not analysed the flaw yet (common in the first days), or Hejnal cannot be sure: the server shows only part of the version (`Apache/2.4`), NVD lists pre-release builds of that number separately, or a range cannot be read. Nothing changes. |
+
+Versions from Linux distribution packages (for example PHP from Ubuntu, or
+Apache reporting `(Debian)`) are never confirmed this way, because
+distributions backport fixes without changing the version number. The same
+goes for products whose hotfixes keep the version number, such as Serv-U and
+N-central, and for Exim, whose greeting looks the same in distribution
+packages.
+
+Without a version, a match means: **you run a product attackers are
+exploiting right now; make sure your version has the fix.** A port that only
+redirects, such as port 80 to HTTPS, takes the version read on the service
+it leads to.
+
+Some flaws are in an application server, not in the pages it sends. For
+those products Hejnal asks for the page a second time, the way a browser
+does while it navigates the application, and a plain file server ignores
+the difference. For Next.js's App Router it sends `RSC: 1` and a random
+`_rsc` value, so a CDN that keeps a copy of the page passes the request on:
+the Next.js server answers with its component payload (or a redirect adding
+`_rsc`), while a static export on a file server or CDN sends the same HTML
+page. An HTML answer still counts as the Next.js server when it carries
+`X-Powered-By: Next.js` or one of the `x-nextjs-cache`, `x-nextjs-prerender`
+and `x-nextjs-stale-time` headers, as a page a CDN kept from the server
+does. A static export is still listed, marked as static files, but gets no
+KEV finding: there is no server for the React Server Components flaw to
+reach. Any other answer, including an error, counts as the application.
+
 ### CISA's and ENISA's lists
 
 ENISA publishes its own list of exploited vulnerabilities in the EUVD, partly
@@ -642,6 +687,8 @@ catalog, but not all of it:
 
 ENISA's list is optional: if it cannot be downloaded, Hejnal uses its saved
 copy, or CISA's catalog alone. `-no-euvd` turns it off.
+
+### Scores
 
 Each match gets a score from 0 to 100:
 
@@ -677,7 +724,7 @@ about. Treat a clean report as "nothing obvious", not "nothing at all".
 - RPM-based container images
 - OSV version ranges for open-source products NVD has not analysed yet
 - Detection-only confirmation checks for high-impact flaws
-- Packages for Debian, Ubuntu and RHEL, and a container image
+- Tests on Windows
 
 Hosted, managed and partner (MSP) editions are a separate commercial product
 built on this core.
@@ -711,13 +758,13 @@ This product uses the NVD API but is not endorsed or certified by the NVD.
 
 ## Po polsku
 
-Hejnal pilnuje systemów Twojej organizacji widocznych z internetu. Wykrywa
-oprogramowanie, które atakujący właśnie masowo wykorzystują, i mówi, co
-naprawić najpierw.
+Hejnal pilnuje systemów Twojej organizacji widocznych z internetu i kodu,
+który wdrażasz. Wykrywa podatności, które atakujący właśnie masowo
+wykorzystują, i mówi, co naprawić najpierw.
 
 - **Wykrywa** hosty w Twoich domenach i zakresach IP, także subdomeny z
   rejestrów certyfikatów (certificate transparency).
-- **Rozpoznaje** ponad 50 produktów, m.in. bramy VPN i firewalle (Fortinet,
+- **Rozpoznaje** ponad 250 produktów, m.in. bramy VPN i firewalle (Fortinet,
   Ivanti, Citrix, Palo Alto, Cisco), pocztę (Exchange, Zimbra, Roundcube),
   WordPress, PHP, GitLab i Jenkins. Robi to jednym zwykłym zapytaniem
   `GET /` na usługę; strona na Next.js App Router dostaje jeszcze jedno, z
@@ -725,8 +772,12 @@ naprawić najpierw.
 - **Porównuje** je z katalogiem CISA KEV i z listą wykorzystywanych podatności
   ENISA w europejskiej bazie EUVD. Pokazuje identyfikatory EUVD, podatności,
   które zna tylko ENISA, i to, kiedy ENISA wpisała podatność wcześniej niż
-  CISA. Gdy produkt pokazuje wersję, sprawdza
-  w NVD, czy ta wersja jest podatna.
+  CISA. Gdy produkt pokazuje wersję, sprawdza w NVD, czy ta wersja jest
+  podatna. Z opcją `-checks` odczytuje też wersję produktów, które jej nie
+  pokazują na stronie głównej, m.in. WordPressa, Grafany i Next.js.
+- **Sprawdza kod w CI:** `hejnal code scan` porównuje zależności, obrazy
+  kontenerów, kod infrastruktury i sekrety z tym, co atakujący wykorzystują,
+  i zapisuje wynik także jako SARIF dla GitHub code scanning.
 - **Szuka wycieków:** sekretów w kodzie źródłowym (klucze API, tokeny, klucze
   prywatne) i kont z Twoich domen w znanych wyciekach danych (Have I Been
   Pwned).
@@ -744,16 +795,17 @@ naprawić najpierw.
 [Przykładowa lista poprawek](examples/fix-list.pl.md).
 
 Hejnal sprawdza tylko systemy z pliku zakresu. Plik musi wskazywać, kto i kiedy
-potwierdził zgodę na testy. Nie loguje się, nie zgaduje haseł ani ścieżek i
+potwierdził zgodę na testy: `hejnal init` zapisuje to z opcji `-by`. Nie loguje się, nie zgaduje haseł ani ścieżek i
 nie używa exploitów.
 
 ```sh
-hejnal init
-hejnal run -scope scope.json -lang pl
+hejnal init -domain twoja-domena.pl -by "Imię i nazwisko, stanowisko"
+hejnal run -checks -lang pl
 hejnal report fixlist -lang pl
 hejnal report monthly -lang pl
 hejnal accept -item 3f9a1c0d -reason "Wersja 6.8.3 ma poprawkę" -by "Anna Nowak"
 hejnal leaks scan -history ~/kod/serwis
+hejnal code scan -exclude testdata .
 ```
 
 Sprawdzaj wyłącznie systemy, które należą do Ciebie, albo takie, na których

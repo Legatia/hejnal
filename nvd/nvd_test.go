@@ -75,6 +75,15 @@ func TestCheckRealRecords(t *testing.T) {
 		{"CVE-2025-24813", "apache:tomcat", "10.1.0-M17", Unknown, nil, ""},
 		{"CVE-2025-24813", "apache:tomcat", "11.0.0-M5", Unknown, nil, ""},
 		{"CVE-2025-24813", "apache:tomcat", "10.1.0", Unknown, nil, ""},
+		// React Server Components in Next.js (record of 2026-11-10): ranges
+		// per 15.x branch and for 16.0, canary builds as single entries.
+		{"CVE-2025-55182", "vercel:next.js", "16.4.5", NotAffected, nil, ""},
+		{"CVE-2025-55182", "vercel:next.js", "16.0.7", NotAffected, nil, ""},
+		{"CVE-2025-55182", "vercel:next.js", "16.0.6", Affected, nil, ""},
+		{"CVE-2025-55182", "vercel:next.js", "15.2.3", Affected, nil, ""},
+		{"CVE-2025-55182", "vercel:next.js", "15.2.6", NotAffected, nil, ""},
+		{"CVE-2025-55182", "vercel:next.js", "14.2.5", NotAffected, nil, ""},
+		{"CVE-2025-55182", "vercel:next.js", "14.3.0", Unknown, nil, ""}, // only canaries carry this number
 		// No data for the product, or no usable version.
 		{"CVE-2026-109618", "wordpress:wordpress", "6.8.1", Unknown, nil, ""},
 		{"CVE-2026-109618", "php:php", "", Unknown, nil, ""},

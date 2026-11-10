@@ -202,10 +202,11 @@ var rules = []rule{{
 	check:      notVariableName,
 }}
 
-var variableName = regexp.MustCompile(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+[=:]?$`)
+var variableName = regexp.MustCompile(`^\$?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+[=:]?$`)
 
 // notVariableName rejects values that name an environment variable, such as
-// "DB_PASSWORD" or "GITHUB_TOKEN=", rather than hold a secret.
+// "DB_PASSWORD" or "GITHUB_TOKEN=", or refer to one, such as "$UPLOAD_TOKEN",
+// rather than hold a secret.
 func notVariableName(line string, m []int) bool {
 	return !variableName.MatchString(line[m[2]:m[3]])
 }

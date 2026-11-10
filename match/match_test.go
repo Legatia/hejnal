@@ -419,3 +419,50 @@ func TestMailUnderParentDMARC(t *testing.T) {
 		t.Errorf("findings = %+v", fs)
 	}
 }
+
+// A service that only redirects shows no version. The version read on the
+// service it leads to counts for both, whichever is listed first.
+func TestVersionOfRedirectTarget(t *testing.T) {
+	cat, err := kev.Parse(strings.NewReader(`{"title":"t","catalogVersion":"1","dateReleased":"2026-11-01T00:00:00.000Z","count":1,"vulnerabilities":[
+		{"cveID":"CVE-2025-55182","vendorProject":"Meta","product":"React Server Components","vulnerabilityName":"Meta React Server Components Remote Code Execution Vulnerability","dateAdded":"2025-12-05","shortDescription":"x","requiredAction":"Apply mitigations.","dueDate":"2025-12-12","knownRansomwareCampaignUse":"Unknown","notes":""}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, _ := fingerprint.Default()
+	records := loadNVD(t, "CVE-2025-55182")
+	run := func(version string) []Finding {
+		read := tech("nextjs-app-router", "Next.js App Router", "framework", version, false)
+		read.Evidence = "version from /_next/static/chunks/main.js"
+		inv := &inventory.Inventory{Assets: []inventory.Asset{{Host: "www.example.com", Services: []inventory.Service{
+			{Port: 80, Scheme: "http", URL: "http://www.example.com/", FinalURL: "https://www.example.com/",
+				Technologies: []inventory.Technology{tech("nextjs-app-router", "Next.js App Router", "framework", "", false)}},
+			{Port: 443, Scheme: "https", URL: "https://www.example.com/", Technologies: []inventory.Technology{read}},
+		}}}}
+		var out []Finding
+		for _, f := range Run(inv, cat, eng, Options{Now: now, NVD: records}) {
+			if f.Kind == KindKEV {
+				out = append(out, f)
+			}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		version string
+		want    string
+	}{
+		{"16.4.5", ConfidenceRuledOut},
+		{"15.0.0", ConfidenceVersion},
+	} {
+		fs := run(c.version)
+		if len(fs) != 1 {
+			t.Fatalf("Next.js %s: %d findings, want 1: %+v", c.version, len(fs), fs)
+		}
+		f := fs[0]
+		if f.Confidence != c.want || f.Version != c.version || f.Port != 443 {
+			t.Errorf("Next.js %s: confidence %s, version %q, port %d; want %s on 443", c.version, f.Confidence, f.Version, f.Port, c.want)
+		}
+		if !strings.Contains(f.Evidence, "version from") {
+			t.Errorf("Next.js %s: evidence %q does not say where the version was read", c.version, f.Evidence)
+		}
+	}
+}

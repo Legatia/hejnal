@@ -170,7 +170,7 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 			}
 			names, err := opts.CT.Subdomains(ctx, d)
 			if err != nil {
-				opts.Logf("certificate transparency lookup for %s failed: %v", d, err)
+				opts.Logf("certificate transparency lookup for %s failed (%v): names known only from certificates are left out of this run", d, err)
 				continue
 			}
 			before := len(batch)

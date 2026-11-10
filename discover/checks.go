@@ -19,7 +19,8 @@ import (
 //
 // Per service there are at most three exposure checks, one version check
 // per recognised product that did not show its version, and up to eight
-// scripts the front page loads from the same site, read for server secrets.
+// scripts the front page loads from the same site, read for server secrets
+// and for the version of a product that names it there.
 
 // maxCheckBody limits how much of a check response is read.
 const maxCheckBody = 64 << 10
@@ -94,6 +95,13 @@ var versionChecks = map[string]versionCheck{
 	"exchange-owa": {"/owa/auth/logon.aspx", regexp.MustCompile(`/owa/(?:auth/)?([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)/`)},
 }
 
+// ReadsVersion reports whether the opt-in checks can read the version of
+// the product with this rule ID when its pages do not show it.
+func ReadsVersion(id string) bool {
+	_, path := versionChecks[id]
+	return path || scriptVersions[id] != nil
+}
+
 // runChecks performs the opt-in checks for a web service that answered.
 func (w *webClient) runChecks(ctx context.Context, host string, port int, svc *inventory.Service) {
 	if svc.Scheme != "http" && svc.Scheme != "https" {
@@ -108,7 +116,7 @@ func (w *webClient) runChecks(ctx context.Context, host string, port int, svc *i
 			svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: c.kind, Path: c.path, Evidence: ev})
 		}
 	}
-	w.scriptSecrets(ctx, host, port, svc)
+	w.readScripts(ctx, host, port, svc)
 	for i := range svc.Technologies {
 		t := &svc.Technologies[i]
 		vc, ok := versionChecks[t.ID]
