@@ -183,9 +183,10 @@ func TestPlaceholdersAndAllowMarker(t *testing.T) {
 		`password = "${DB_PASSWORD}"`,
 		`api_key = "<your-api-key>"`,
 		`token = "{{.Values.apiToken}}"`,
-		`password = "aaaaaaaabbbbbbbb"`,     // too little entropy
-		`secret := "SLACK_BOT_TOKEN_PROD="`, // a variable name
-		`if password == "` + pw + `" {`,     // a comparison, not an assignment
+		`password = "aaaaaaaabbbbbbbb"`,              // too little entropy
+		`secret := "SLACK_BOT_TOKEN_PROD="`,          // a variable name
+		`export HEJNAL_UPLOAD_TOKEN="$UPLOAD_TOKEN"`, // a reference to a variable
+		`if password == "` + pw + `" {`,              // a comparison, not an assignment
 		"postgres://user:password@db.acme.pl/app",
 		"postgres://user:${DB_PASS}@db.acme.pl/app",
 		"postgres://app:" + pw + "@localhost:5432/app",
@@ -239,6 +240,20 @@ func TestPlaceholder(t *testing.T) {
 	for _, s := range []string{fake(alnum, 40, 60), "0000000", "Password1!"} {
 		if placeholder(s, true) || placeholder(s, false) {
 			t.Errorf("placeholder(%q) = true", s)
+		}
+	}
+}
+
+func TestDollarPasswordsAreStillFound(t *testing.T) {
+	// Only upper-case names with an underscore read as variables; a
+	// password that merely starts with a dollar sign is still a secret.
+	for _, secret := range []string{"$" + fake(alnum, 15, 60), "$Zima_" + fake(alnum, 12, 61)} {
+		leaks, err := ScanReader("x", strings.NewReader(`password = "`+secret+`"`), Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(leaks) != 1 || leaks[0].RuleID != "generic-secret" {
+			t.Errorf("%d leaks for a password starting with $: %+v", len(leaks), leaks)
 		}
 	}
 }
