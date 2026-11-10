@@ -122,3 +122,63 @@ func TestChecksIgnorePagesThatAnswerEverything(t *testing.T) {
 		t.Errorf("a site answering every path with a page produced exposures: %+v", x)
 	}
 }
+
+// nextSite serves a Next.js App Router page that names its version only in
+// one of its scripts, as Next.js does.
+func nextSite(t *testing.T, runtime string) *httptest.Server {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			w.Header().Set("Vary", "RSC, Next-Router-State-Tree, Next-Router-Prefetch")
+			io.WriteString(w, `<html><head><title>Shop</title><script src="/_next/static/chunks/a.js" async></script>`+
+				`<script src="/_next/static/chunks/b.js?dpl=1" async></script></head>`+
+				`<body><script>(self.__next_f=self.__next_f||[]).push([0])</script></body></html>`)
+		case "/_next/static/chunks/a.js":
+			io.WriteString(w, `(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[1],{}]);`)
+		case "/_next/static/chunks/b.js":
+			io.WriteString(w, runtime)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestChecksReadNextVersionFromScripts(t *testing.T) {
+	for _, c := range []struct {
+		runtime, want string
+		checks        bool
+	}{
+		{`e.exports=n,window.next={version:"16.4.5",appDir:!0};`, "16.4.5", true},
+		{`window.next = { version: "15.2.3", appDir: true };`, "15.2.3", true},
+		// Without -checks the scripts are not read.
+		{`window.next={version:"16.4.5",appDir:!0};`, "", false},
+		// A pre-release cannot be placed in NVD's ranges, and another
+		// library's version is not Next.js's.
+		{`window.next={version:"15.6.0-canary.57",appDir:!0};`, "", true},
+		{`var React={version:"19.2.0"};window.nextTick={version:"1.0.0"};`, "", true},
+	} {
+		srv := nextSite(t, c.runtime)
+		s := testScope(t, nil, []string{"127.0.0.1"}, []int{portOf(t, srv.URL)}, nil)
+		inv, err := Run(context.Background(), Options{Scope: s, Engine: engine(t), Timeout: 2 * time.Second, Checks: c.checks})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var next *inventory.Technology
+		for _, tech := range onlyService(t, inv).Technologies {
+			if tech.ID == "nextjs-app-router" {
+				next = &tech
+			}
+		}
+		if next == nil {
+			t.Fatalf("%s: Next.js not recognised: %+v", c.runtime, onlyService(t, inv).Technologies)
+		}
+		if next.Version != c.want {
+			t.Errorf("%s (checks %v): version %q, want %q", c.runtime, c.checks, next.Version, c.want)
+		}
+		if c.want != "" && !strings.Contains(next.Evidence, "version from /_next/static/chunks/b.js") || strings.Contains(next.Evidence, "dpl=") {
+			t.Errorf("%s: evidence %q", c.runtime, next.Evidence)
+		}
+	}
+}

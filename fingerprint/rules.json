@@ -1671,6 +1671,7 @@
           {"source": "header:X-Powered-By", "regex": "^Next\\.js"}, {"source": "header:X-Nextjs-Cache", "regex": "."},
           {"source": "header:X-Nextjs-Prerender", "regex": "."}, {"source": "header:X-Nextjs-Stale-Time", "regex": "."}],
         "static": {"source": "header:Content-Type", "regex": "^text/html"}},
+      "cpe": ["vercel:next.js"],
       "kev": [{"vendor": "^Meta$", "product": "^React Server Components$"}]
     },
     {

@@ -594,9 +594,19 @@ func (r *runner) noteScripts(host string, port int, page *url.URL, body string) 
 	r.mu.Unlock()
 }
 
-// scriptSecrets reads the scripts the front page loads and reports server
-// secrets in them, redacted.
-func (w *webClient) scriptSecrets(ctx context.Context, host string, port int, svc *inventory.Service) {
+// scriptVersions reads the version a product writes into the scripts its
+// pages load, by product ID. Only plain release numbers are read: a
+// pre-release such as 15.6.0-canary.57 cannot be placed in NVD's ranges, so
+// it stays without a version instead of being ruled out by mistake.
+var scriptVersions = map[string]*regexp.Regexp{
+	// Next.js sets window.next = {version: "..."} in its browser runtime.
+	"nextjs-app-router": regexp.MustCompile(`\bwindow\.next\s*=\s*\{\s*version\s*:\s*"([0-9]+\.[0-9]+\.[0-9]+)"`),
+}
+
+// readScripts reads the scripts the front page loads. It reports server
+// secrets in them, redacted, and fills in the version of a product that
+// names it there.
+func (w *webClient) readScripts(ctx context.Context, host string, port int, svc *inventory.Service) {
 	w.r.mu.Lock()
 	scripts := w.r.scripts[fmt.Sprintf("%s|%d", host, port)]
 	w.r.mu.Unlock()
@@ -606,6 +616,17 @@ func (w *webClient) scriptSecrets(ctx context.Context, host string, port int, sv
 		status, _, body, err := w.getN(ctx, host, port, svc.Scheme, p, maxScript)
 		if err != nil || status != http.StatusOK {
 			continue
+		}
+		for i := range svc.Technologies {
+			t := &svc.Technologies[i]
+			re := scriptVersions[t.ID]
+			if re == nil || t.Version != "" {
+				continue
+			}
+			if m := re.FindSubmatch(body); m != nil {
+				t.Version = string(m[1])
+				t.Evidence += "; version from " + clipRecord(scriptPath(p))
+			}
 		}
 		// Scripts carry libraries' key headers, excerpts and placeholders;
 		// only a complete private key counts.
@@ -623,4 +644,10 @@ func (w *webClient) scriptSecrets(ctx context.Context, host string, port int, sv
 	}
 	ev := fmt.Sprintf("%d server secret(s) in scripts every visitor downloads: %s", len(found), strings.Join(found[:min(len(found), 3)], "; "))
 	svc.Exposures = append(svc.Exposures, inventory.Exposure{Kind: ExposureScriptSecret, Path: "/", Evidence: clipRecord(ev)})
+}
+
+// scriptPath is a script's path without its query, for evidence.
+func scriptPath(p string) string {
+	p, _, _ = strings.Cut(p, "?")
+	return p
 }

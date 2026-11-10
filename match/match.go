@@ -283,6 +283,21 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 		return idx
 	}
 
+	// A service that redirects is answered by the service it leads to. When
+	// only one of the two showed the product's version, it holds for both.
+	versions := map[string]inventory.Technology{}
+	for _, a := range inv.Assets {
+		for _, s := range a.Services {
+			host, port, _ := origin(a.Host, s)
+			for _, t := range s.Technologies {
+				k := fmt.Sprintf("%s|%d|%s", host, port, t.ID)
+				if _, ok := versions[k]; t.Version != "" && !ok {
+					versions[k] = t
+				}
+			}
+		}
+	}
+
 	for _, a := range inv.Assets {
 		for _, s := range a.Services {
 			if f, ok := tlsFinding(a.Host, s, opts); ok {
@@ -318,6 +333,11 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 			}
 			host, port, where := origin(a.Host, s)
 			for _, t := range s.Technologies {
+				if t.Version == "" {
+					if v, ok := versions[fmt.Sprintf("%s|%d|%s", host, port, t.ID)]; ok {
+						t.Version, t.Packaged, t.Evidence = v.Version, v.Packaged, v.Evidence
+					}
+				}
 				base := Finding{
 					Host:       host,
 					Port:       port,
