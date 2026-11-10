@@ -121,8 +121,9 @@ jobs:
       - id: scan
         uses: ./
         with:
-          version: 0.6.0
-          fail-on: none
+          version: 0.7.0
+          # The fixtures under testdata are vulnerable on purpose.
+          exclude: testdata
       - name: The SARIF file is valid JSON
         env:
           SARIF: ${{ steps.scan.outputs.sarif }}
