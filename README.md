@@ -456,7 +456,9 @@ docker save acme/api:1.4 -o api.tar && hejnal code scan -image api.tar
 CVE IDs, to FIRST's EPSS API. Never code, file names or secrets. Output is
 text, `-format json`, or `-format sarif` for GitHub code scanning and other
 tools. `-fail-on high` (the default) makes the command exit 2 when an item
-reaches that severity, to stop a build. `-save` keeps the result in the
+reaches that severity, to stop a build. Items accepted with `hejnal accept`
+in the same state directory are shown as accepted and do not stop it.
+`-save` keeps the result in the
 state directory, so the daily fix list and alerts include it, scored again
 each day: a dependency flaw that joins CISA's list tomorrow becomes urgent
 tomorrow. `-upload <address>` sends the results, never the code, to Hejnal

@@ -15,6 +15,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/state"
 )
 
 // fakeOSV answers for lodash, log4j-core, an OpenSSL Debian package and a
@@ -235,5 +238,53 @@ func TestSavedCodeScanJoinsRuns(t *testing.T) {
 		if !strings.Contains(string(fix), want) {
 			t.Errorf("fix list lacks %q:\n%s", want, fix)
 		}
+	}
+}
+
+func TestCodeScanHonoursAcceptances(t *testing.T) {
+	h := newHarness(t)
+	proj := filepath.Join(h.dir, "shop")
+	writeFiles(t, proj, map[string]string{"gradle.lockfile": "org.apache.logging.log4j:log4j-core:2.14.1=runtimeClasspath\n"})
+	// Log4Shell on CISA's list makes the item critical, so it fails the build.
+	kevFile := filepath.Join(h.dir, "kev-log4j.json")
+	os.WriteFile(kevFile, []byte(`{"catalogVersion":"2026.11.01","vulnerabilities":[{"cveID":"CVE-2021-44228","vendorProject":"Apache","product":"Log4j2","dateAdded":"2021-12-10","dueDate":"2021-12-24"}]}`), 0o600)
+	osvSrv := fakeOSV(t)
+	scan := func(args ...string) (int, string) {
+		var out, errOut bytes.Buffer
+		a := newApp(&out, &errOut)
+		a.now = func() time.Time { return testNow }
+		a.osvURL = osvSrv.URL
+		code := a.run(context.Background(), append([]string{"code", "scan", "-state", h.state, "-kev-file", kevFile, "-no-euvd", "-no-epss", "-no-secrets"}, append(args, proj)...))
+		return code, out.String() + errOut.String()
+	}
+	if code, out := scan("-save", "-fail-on", "none"); code != exitOK {
+		t.Fatalf("code scan: %d\n%s", code, out)
+	}
+	if code, stdout, stderr := h.run(h.runArgs()...); code != exitOK {
+		t.Fatalf("run: %d\n%s\n%s", code, stdout, stderr)
+	}
+	// Before the acceptance the scan fails the build.
+	if code, out := scan("-fail-on", "high"); code != exitFindings || !strings.Contains(out, "log4j-core") {
+		t.Fatalf("the item should fail the build before it is accepted (exit %d):\n%s", code, out)
+	}
+	snap, err := state.Store{Dir: h.state}.LoadFindings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := ""
+	for _, g := range match.Groups(snap.Findings) {
+		if g.Kind == match.KindDependency {
+			id = g.ID()
+		}
+	}
+	if id == "" {
+		t.Fatal("no dependency item in the run")
+	}
+	if code, stdout, stderr := h.run("accept", "-state", h.state, "-item", id, "-reason", "Not loaded at runtime"); code != exitOK {
+		t.Fatalf("accept: %d\n%s\n%s", code, stdout, stderr)
+	}
+	code, out := scan("-fail-on", "high")
+	if code != exitOK || strings.Contains(out, "log4j-core") {
+		t.Errorf("an accepted item still fails the build (exit %d):\n%s", code, out)
 	}
 }

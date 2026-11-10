@@ -146,6 +146,16 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitError, err
 	}
+	// Items accepted with "hejnal accept" are shown as accepted and do not
+	// fail the build. What is saved or uploaded stays unmarked: "hejnal run"
+	// and Hejnal Cloud apply acceptances when they use it, since an
+	// acceptance can end.
+	accepted, err := store.LoadAccepted()
+	if err != nil {
+		return exitError, err
+	}
+	shown := *scan
+	shown.Findings = match.MarkAccepted(scan.Findings, accepted, a.now())
 
 	var w io.Writer = a.stdout
 	if *out != "" {
@@ -160,18 +170,18 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	case "json":
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		err = enc.Encode(scan)
+		err = enc.Encode(&shown)
 	case "sarif":
-		err = report.SARIF(w, scan.Findings, version.Version, o.lang)
+		err = report.SARIF(w, shown.Findings, version.Version, o.lang)
 	default:
-		err = a.printCodeScan(w, scan, o.lang, *all)
+		err = a.printCodeScan(w, &shown, o.lang, *all)
 	}
 	if err != nil {
 		return exitError, err
 	}
 	if *out != "" && *format != "text" {
 		// The file is for tools; the log still says what was found.
-		if err := a.printCodeScan(a.stdout, scan, o.lang, false); err != nil {
+		if err := a.printCodeScan(a.stdout, &shown, o.lang, false); err != nil {
 			return exitError, err
 		}
 	}
@@ -190,7 +200,7 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 		}
 		fmt.Fprintf(a.stderr, "Sent the results for %s to Hejnal Cloud.\n", name)
 	}
-	if failOn != "" && match.AtLeast(match.Open(scan.Findings), failOn) {
+	if failOn != "" && match.AtLeast(match.Open(shown.Findings), failOn) {
 		return exitFindings, nil
 	}
 	return exitOK, nil
