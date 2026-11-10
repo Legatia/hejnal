@@ -7,7 +7,7 @@ anything that could make it contact systems outside the authorised scope.
 
 Please report privately through GitHub: open the **Security** tab of this
 repository and choose **Report a vulnerability**. If you cannot use GitHub,
-email [hejnal@legatia.solutions](mailto:hejnal@legatia.solutions). Do not open
+email [hello@legatia.solutions](mailto:hello@legatia.solutions). Do not open
 a public issue.
 
 Include what you found, how to reproduce it and the version

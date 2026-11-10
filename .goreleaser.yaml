@@ -35,7 +35,7 @@ nfpms:
     ids: [hejnal]
     vendor: Legatia Solutions
     homepage: https://hejnal.legatia.solutions
-    maintainer: Legatia Solutions <hejnal@legatia.solutions>
+    maintainer: Legatia Solutions <hello@legatia.solutions>
     description: Early warning when attackers start exploiting software you run.
     license: Apache-2.0
     section: net

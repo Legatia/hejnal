@@ -20,7 +20,7 @@ to be treated at work.
 
 ## Reporting
 
-Email [hejnal@legatia.solutions](mailto:hejnal@legatia.solutions). Reports are
+Email [hello@legatia.solutions](mailto:hello@legatia.solutions). Reports are
 read by the maintainer only and kept confidential.
 
 ## What happens
