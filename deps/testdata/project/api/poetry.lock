@@ -1,0 +1,13 @@
+[[package]]
+name = "Jinja2"
+version = "2.11.2"
+description = "x"
+optional = false
+
+[package.dependencies]
+MarkupSafe = ">=0.23"
+
+[[package]]
+name = "pytest"
+version = "6.0.0"
+category = "dev"

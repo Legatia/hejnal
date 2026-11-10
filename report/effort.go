@@ -40,6 +40,17 @@ func Effort(g match.Group) int {
 		return 15
 	case match.KindSecret, match.KindBreach:
 		return 60
+	case match.KindDependency:
+		if malicious, _, _ := depStatus(g); malicious {
+			// Remove it, and replace every secret on machines that ran it.
+			return 240
+		}
+		if depFixedIn(g) == "" {
+			return 120
+		}
+		return 30
+	case match.KindMisconfig:
+		return 30
 	}
 	return 60
 }

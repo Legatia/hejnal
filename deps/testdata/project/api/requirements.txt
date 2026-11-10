@@ -1,0 +1,7 @@
+# pinned
+Django==3.2.0
+requests[socks] == 2.25.1 ; python_version > "3"
+flask>=2.0
+-r base.txt
+git+https://github.com/x/y.git#egg=y
+PyYAML===5.3.1

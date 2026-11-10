@@ -1,0 +1,4 @@
+# This is a Gradle generated file
+org.apache.logging.log4j:log4j-core:2.14.1=compileClasspath,runtimeClasspath
+junit:junit:4.12=testCompileClasspath,testRuntimeClasspath
+empty=

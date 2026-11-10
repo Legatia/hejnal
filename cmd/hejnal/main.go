@@ -27,6 +27,7 @@ import (
 	"github.com/Legatia/hejnal/euvd"
 	"github.com/Legatia/hejnal/kev"
 	"github.com/Legatia/hejnal/nvd"
+	"github.com/Legatia/hejnal/osv"
 	"github.com/Legatia/hejnal/report"
 	"github.com/Legatia/hejnal/version"
 )
@@ -51,6 +52,7 @@ Usage:
   hejnal accept    -item <id> -reason "..."     record that you checked an item and accept it
   hejnal accept    -list | -remove <id>         list accepted items, or remove an acceptance
   hejnal leaks     scan|breaches [flags]        find secrets in code and breached accounts
+  hejnal code      scan [flags] [dir] [-image]  check dependencies, secrets, infrastructure code and images
   hejnal serve     [-addr host:port] [flags]    serve the results over a REST API
   hejnal mcp       [flags]                      serve the results to AI assistants over MCP
   hejnal rules                                  list the products Hejnal recognises
@@ -85,6 +87,7 @@ type app struct {
 	euvdURL        string
 	euvdRecordURL  string
 	epssURL        string
+	osvURL         string
 	ctURL          string
 	nvdURL         string
 	hibpURL        string // empty uses Have I Been Pwned's API
@@ -103,6 +106,7 @@ func newApp(stdout, stderr io.Writer) *app {
 		euvdURL:       euvd.DefaultURL,
 		euvdRecordURL: euvd.DefaultRecordURL,
 		epssURL:       epss.DefaultAPI,
+		osvURL:        osv.DefaultAPI,
 		ctURL:         discover.CrtShURL,
 		nvdURL:        nvd.DefaultAPI,
 	}
@@ -131,6 +135,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		err = a.cmdReport(rest)
 	case "accept":
 		err = a.cmdAccept(rest)
+	case "code":
+		code, err = a.cmdCode(ctx, rest)
 	case "leaks":
 		code, err = a.cmdLeaks(ctx, rest)
 	case "serve":
@@ -234,6 +240,7 @@ func (a *app) engine(o *options) (*engine.Engine, error) {
 		EUVDFile:      o.euvdFile,
 		NoEUVD:        o.noEUVD,
 		EPSSURL:       a.epssURL,
+		OSVURL:        a.osvURL,
 		CTURL:         a.ctURL,
 		Offline:       o.offline,
 		NoEPSS:        o.noEPSS,

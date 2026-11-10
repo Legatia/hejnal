@@ -52,8 +52,10 @@ type Config struct {
 	KEVFile string
 	KEVURL  string
 	EPSSURL string
-	CTURL   string
-	NVDURL  string
+	// OSVURL is OSV's API, for dependency advisories; empty means osv.dev.
+	OSVURL string
+	CTURL  string
+	NVDURL string
 	// NVDKey raises NVD's rate limit, so version checks finish sooner.
 	NVDKey string
 	// EUVDURL and EUVDRecordURL are ENISA's EUVD endpoints for its list of
@@ -480,6 +482,11 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 	if err != nil {
 		return nil, err
 	}
+	code, err := e.codeFindings(ctx, cat, now)
+	if err != nil {
+		return nil, err
+	}
+	leaked = append(leaked, code...)
 	if len(leaked) > 0 {
 		fs = append(fs, leaked...)
 		match.Sort(fs)

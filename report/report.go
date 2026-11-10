@@ -5,6 +5,7 @@
 package report
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"net"
@@ -231,6 +232,10 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 		}
 		proofLines(b, tr, g)
 		b.WriteString("\n")
+	case match.KindDependency:
+		writeDependency(b, tr, g, func(t string) { head(mdEscape(t)) })
+	case match.KindMisconfig:
+		writeMisconfig(b, tr, g, func(t string) { head(mdEscape(t)) })
 	case match.KindBreach:
 		withPasswords := 0
 		for _, f := range g.Findings {
@@ -483,6 +488,11 @@ func ItemTitle(g match.Group, lang string) string {
 	return itemTitle(newTranslator(lang), g)
 }
 
+// GroupTitle names an item with its flaws, as the fix list does.
+func GroupTitle(g match.Group, lang string) string {
+	return groupTitle(newTranslator(lang), g)
+}
+
 // ItemText says why an item matters and what to do about it, as plain
 // text in the given language, for trackers and other tools.
 func ItemText(g match.Group, lang string) (why, todo string) {
@@ -495,6 +505,17 @@ func ItemText(g match.Group, lang string) (why, todo string) {
 // groupTitle names an item in plain text, with its first flaws for known
 // exploited ones.
 func groupTitle(tr translator, g match.Group) string {
+	if g.Kind == match.KindDependency {
+		var ids []string
+		for i, f := range match.Active(g.Findings) {
+			if i == 3 {
+				ids = append(ids, fmt.Sprintf("+%d", len(match.Active(g.Findings))-3))
+				break
+			}
+			ids = append(ids, cmp.Or(f.CVE, f.Advisory))
+		}
+		return itemTitle(tr, g) + ": " + strings.Join(ids, ", ")
+	}
 	if g.Kind != match.KindKEV {
 		return itemTitle(tr, g)
 	}
@@ -528,6 +549,10 @@ func itemTitle(tr translator, g match.Group) string {
 		return tr("secret.title", g.Technology) + ": " + secretPlace(tr, g.Findings[0], false)
 	case match.KindBreach:
 		return tr("breach.title", g.Host)
+	case match.KindDependency:
+		return tr("dep.title", g.Technology, g.Version, ecosystemLabel(g.Findings[0].Ecosystem), g.Host)
+	case match.KindMisconfig:
+		return tr("misconfig.title."+g.TechID, g.Technology)
 	}
 	return where
 }

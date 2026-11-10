@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: agent
+spec:
+  template:
+    spec:
+      hostPID: true
+      containers:
+      - name: agent
+        image: agent:1
+        securityContext:
+          privileged: true
+      volumes:
+      - name: sock
+        hostPath:
+          path: /var/run/docker.sock
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: safe
+spec:
+  containers:
+  - name: app
+    image: app:1
+    securityContext:
+      privileged: false

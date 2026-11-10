@@ -177,6 +177,13 @@ func proofOf(tr translator, g match.Group) Proof {
 	case match.KindBreach:
 		step(false, "proof.breach.accounts")
 		p.SeeIt = tr("proof.see.breach")
+	case match.KindDependency:
+		p.Verdict, p.SeeIt, p.Command = depProof(tr, g, step)
+	case match.KindMisconfig:
+		step(true, "proof.misconfig.file", codePlace(f), plain(f.Evidence))
+		step(false, "proof.misconfig.deployed")
+		p.Verdict = VerdictLikely
+		p.SeeIt = tr("proof.see.file", codePlace(f))
 	}
 	p.Summary = tr("proof.verdict." + p.Verdict)
 	return p

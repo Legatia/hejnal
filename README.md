@@ -333,6 +333,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal report fixlist\|overview\|evidence\|nis2\|monthly` | Prints a report from the saved runs. |
 | `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
 | `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
+| `hejnal code scan` | Checks dependencies, secrets, infrastructure code and container images, for CI. |
 | `hejnal serve` | Serves the results over a REST API. |
 | `hejnal mcp` | Serves the results to AI assistants over MCP. |
 | `hejnal rules` | Lists the products Hejnal recognises. |
@@ -409,6 +410,94 @@ storing them, because they are personal data.
 HEJNAL_HIBP_API_KEY=your-hibp-key
 10 7 * * *  cd /srv/hejnal && hejnal leaks breaches > /dev/null; hejnal leaks scan -save -fail-on none /srv/repos/* > /dev/null; hejnal run -lang pl
 ```
+
+## Code, dependencies, infrastructure and images
+
+`hejnal code scan` checks what you build, from inside your CI, with the
+same rule as the rest of Hejnal: what attackers exploit comes first, and
+everything else waits quietly.
+
+```sh
+hejnal code scan .                                   # the current repository
+hejnal code scan -image app.tar -format sarif -out hejnal.sarif .
+docker save acme/api:1.4 -o api.tar && hejnal code scan -image api.tar
+```
+
+- **Dependencies.** It reads the lockfiles that pin exact versions: npm
+  (`package-lock.json`), Yarn, pnpm, pip (`requirements*.txt` pins),
+  Pipenv, Poetry, uv, PDM, Go (`go.mod`), Cargo, Bundler, Composer, Gradle
+  lockfiles, Maven POMs with literal versions, and NuGet. Each package
+  version is looked up in [OSV](https://osv.dev), the open advisory
+  database. **Malicious packages** come first, then flaws on CISA's or
+  ENISA's lists of exploited ones, then flaws EPSS rates likely to be
+  exploited within 30 days. Every other advisory is low, whatever its own
+  rating, because most are never exploited; `-all` lists them. Packages only
+  development or tests use rank lower, except malware, which ran on every
+  machine that installed it. Each item names the version that fixes it.
+- **Container images.** An image saved with `docker save` or `podman save`,
+  or as an OCI layout, is read layer by layer, without Docker: Debian,
+  Ubuntu and Alpine packages (by their source package, as advisories name
+  them), the modules compiled into Go programs, installed Python and Node.js
+  packages, and lockfiles in the image. Other distributions are reported as
+  not checked.
+- **Secrets**, with the rules of `hejnal leaks scan`, and in the Git
+  history with `-history`.
+- **Infrastructure code.** Terraform files and `terraform show -json`
+  plans, CloudFormation, Kubernetes manifests and Compose files, read by
+  Hejnal's own small readers. A short list of settings that cause breaches:
+  admin and database ports open to the internet, public buckets and
+  databases, policies that allow every action on every resource, privileged
+  containers and containers that mount the Docker socket or the host, and
+  shared host namespaces. Only literal values count: a variable, a function
+  or a `!Ref` never makes a finding, so every item is something the file
+  says outright. Helm templates are skipped until rendered.
+
+**What leaves the machine:** package names, ecosystems and versions, to OSV;
+CVE IDs, to FIRST's EPSS API. Never code, file names or secrets. Output is
+text, `-format json`, or `-format sarif` for GitHub code scanning and other
+tools. `-fail-on high` (the default) makes the command exit 2 when an item
+reaches that severity, to stop a build. Items accepted with `hejnal accept`
+in the same state directory are shown as accepted and do not stop it.
+`-save` keeps the result in the
+state directory, so the daily fix list and alerts include it, scored again
+each day: a dependency flaw that joins CISA's list tomorrow becomes urgent
+tomorrow. `-upload <address>` sends the results, never the code, to Hejnal
+Cloud with the token in `HEJNAL_UPLOAD_TOKEN`.
+
+### In GitHub Actions
+
+```yaml
+name: Hejnal
+on: [push, pull_request]
+permissions:
+  contents: read
+  security-events: write   # to upload SARIF to code scanning
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Legatia/hejnal@v0.6.0
+        id: hejnal
+        with:
+          fail-on: high
+          # images: api.tar
+          # upload-url: https://your-hejnal-cloud
+          # upload-token: ${{ secrets.HEJNAL_UPLOAD_TOKEN }}
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ steps.hejnal.outputs.sarif }}
+```
+
+The action downloads the release for the runner from GitHub, checks it
+against the release's checksums, and runs it on the runner.
+
+**Limits.** Matching is by exact version, as the lockfile records it;
+Hejnal does not check whether your code calls the flawed function, and says
+so on each item. Versions a parent POM or a BOM decides are not known from a
+`pom.xml` alone: use Gradle lockfiles or check the built image. RPM-based
+images (Fedora, RHEL, Amazon Linux) are not read yet.
 
 ## API and AI assistants
 
@@ -583,6 +672,9 @@ about. Treat a clean report as "nothing obvious", not "nothing at all".
 ## Roadmap
 
 - More products, and version pages for more of them
+- Live cloud-account checks (public buckets, open security groups) beside
+  the infrastructure-code rules
+- RPM-based container images
 - OSV version ranges for open-source products NVD has not analysed yet
 - Detection-only confirmation checks for high-impact flaws
 - Packages for Debian, Ubuntu and RHEL, and a container image
@@ -608,7 +700,10 @@ It uses the CISA Known Exploited Vulnerabilities catalog (public domain, CC0),
 ENISA's list of exploited vulnerabilities and EUVD records (Source: ENISA
 European Vulnerability Database (EUVD), reused under [ENISA's legal
 notice](https://www.enisa.europa.eu/about-enisa/legal-notice)), EPSS scores from [FIRST](https://www.first.org/epss/), affected-version data
-from NVD and certificate transparency search from [crt.sh](https://crt.sh/).
+from NVD, certificate transparency search from [crt.sh](https://crt.sh/), and
+open-source advisories from [OSV](https://osv.dev), each under the terms of
+the database it comes from (GitHub, PyPI, Go, RustSec, Debian, Ubuntu,
+Alpine and others).
 `hejnal leaks breaches` uses [Have I Been Pwned](https://haveibeenpwned.com/)
 (CC BY 4.0).
 

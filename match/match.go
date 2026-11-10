@@ -34,6 +34,8 @@ const (
 	KindEmail        Kind = "email"         // mail records that let others send email as the domain
 	KindSecret       Kind = "secret"        // a secret in source code, found by `hejnal leaks scan`
 	KindBreach       Kind = "breach"        // accounts on a domain in a known data breach
+	KindDependency   Kind = "dependency"    // a package version with an advisory, found by `hejnal code scan`
+	KindMisconfig    Kind = "misconfig"     // infrastructure code that opens a way in, found by `hejnal code scan`
 )
 
 // exposureScores rates exposed files: environment files usually hold
@@ -204,9 +206,23 @@ type Finding struct {
 	// BreachDate, Accounts and Passwords describe a data breach: when it
 	// happened, how many accounts on the domain it exposed and whether it
 	// exposed passwords.
-	BreachDate string   `json:"breachDate,omitempty"`
-	Accounts   int      `json:"accounts,omitempty"`
-	Passwords  bool     `json:"passwords,omitempty"`
+	BreachDate string `json:"breachDate,omitempty"`
+	Accounts   int    `json:"accounts,omitempty"`
+	Passwords  bool   `json:"passwords,omitempty"`
+	// Ecosystem, Advisory and FixedIn describe a dependency's advisory:
+	// the package registry or distribution, the OSV ID, and the first
+	// version with the fix. Dev marks a package only development or tests
+	// use, and Malicious one that is malware itself.
+	Ecosystem string `json:"ecosystem,omitempty"`
+	Advisory  string `json:"advisory,omitempty"`
+	FixedIn   string `json:"fixedIn,omitempty"`
+	Dev       bool   `json:"dev,omitempty"`
+	Malicious bool   `json:"malicious,omitempty"`
+	// Aliases are the advisory's CVE IDs, and Rating its own severity,
+	// kept so later runs can score it again as lists of exploited flaws
+	// change.
+	Aliases    []string `json:"aliases,omitempty"`
+	Rating     string   `json:"rating,omitempty"`
 	Score      int      `json:"score"`
 	Severity   Severity `json:"severity"`
 	Confidence string   `json:"confidence"`
@@ -601,6 +617,13 @@ func GroupKey(f Finding) string {
 		return fmt.Sprintf("%s|%s", f.Kind, f.Fingerprint)
 	case KindBreach:
 		return fmt.Sprintf("%s|%s", f.Kind, f.Host)
+	case KindMisconfig:
+		// One resource to change, however many of its settings a rule
+		// flags.
+		return fmt.Sprintf("%s|%s|%s|%s|%s", f.Kind, f.Host, f.File, f.TechID, f.Technology)
+	case KindDependency:
+		// One package version to upgrade, wherever the project uses it.
+		return fmt.Sprintf("%s|%s|%s|%s|%s", f.Kind, f.Host, f.Ecosystem, f.Technology, f.Version)
 	}
 	return f.Key
 }
