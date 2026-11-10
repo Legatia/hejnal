@@ -96,8 +96,9 @@ signs:
     output: true
 
 changelog:
-  use: github
-  sort: asc
+  # GitHub's own release notes: one line per merged pull request, by its
+  # title, instead of every commit including merges.
+  use: github-native
 
 release:
   # Releases start as drafts so a person checks them before publishing.
