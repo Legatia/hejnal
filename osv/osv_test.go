@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -123,5 +124,58 @@ func TestLookup(t *testing.T) {
 	}
 	if _, err := c.Vuln(context.Background(), "../x", mod); err == nil {
 		t.Error("a path as an ID was fetched")
+	}
+}
+
+func TestLookupFetchesSeveralAtOnce(t *testing.T) {
+	const n = 24
+	mod := time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC)
+	var inFlight, most atomic.Int32
+	var fail atomic.Value
+	fail.Store("")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/querybatch" {
+			var vulns []map[string]any
+			for i := range n {
+				vulns = append(vulns, map[string]any{"id": fmt.Sprintf("DSA-%d-1", 5000+i), "modified": mod})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{{"vulns": vulns}}})
+			return
+		}
+		cur := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			m := most.Load()
+			if cur <= m || most.CompareAndSwap(m, cur) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		id := strings.TrimPrefix(r.URL.Path, "/v1/vulns/")
+		if id == fail.Load().(string) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, `{"id":%q,"modified":%q}`, id, mod.Format(time.RFC3339))
+	}))
+	defer srv.Close()
+	c := &Client{Base: srv.URL}
+	qs := []Query{{"Debian:12", "openssl", "3.0.9-1"}}
+	ms, err := c.Lookup(context.Background(), qs)
+	if err != nil || len(ms) != n {
+		t.Fatalf("%d matches, %v", len(ms), err)
+	}
+	if most.Load() < 2 || most.Load() > fetchers {
+		t.Errorf("at most %d advisories fetched at once, want 2 to %d", most.Load(), fetchers)
+	}
+	for i, m := range ms {
+		if want := fmt.Sprintf("DSA-%d-1", 5000+i); m.Vuln == nil || m.Vuln.ID != want {
+			t.Fatalf("match %d = %+v, want %s in order", i, m.Vuln, want)
+		}
+	}
+	// One failed download fails the lookup.
+	fail.Store("DSA-5007-1")
+	if _, err := c.Lookup(context.Background(), qs); err == nil || !strings.Contains(err.Error(), "500") {
+		t.Errorf("error = %v", err)
 	}
 }

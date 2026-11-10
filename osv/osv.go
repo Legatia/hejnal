@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -466,6 +467,11 @@ type Match struct {
 	Vuln  *Vuln
 }
 
+// fetchers is how many advisories Lookup downloads at once. A Debian or
+// Ubuntu image can match thousands, and one at a time that adds minutes to
+// a build with an empty cache.
+const fetchers = 8
+
 // Lookup finds the advisories covering each package, fetching each
 // advisory once. Withdrawn advisories are left out.
 func (c *Client) Lookup(ctx context.Context, qs []Query) ([]Match, error) {
@@ -473,22 +479,80 @@ func (c *Client) Lookup(ctx context.Context, qs []Query) ([]Match, error) {
 	if err != nil {
 		return nil, err
 	}
-	cache := map[string]*Vuln{}
+	// Each advisory once, as of the newest change any query reported.
+	newest := map[string]time.Time{}
+	var ids []string
+	for _, hs := range hits {
+		for _, h := range hs {
+			t, seen := newest[h.ID]
+			if !seen {
+				ids = append(ids, h.ID)
+			}
+			if !seen || h.Modified.After(t) {
+				newest[h.ID] = h.Modified
+			}
+		}
+	}
+	vulns, err := c.fetch(ctx, ids, newest)
+	if err != nil {
+		return nil, err
+	}
 	var out []Match
 	for i, hs := range hits {
 		for _, h := range hs {
-			v, ok := cache[h.ID]
-			if !ok {
-				if v, err = c.Vuln(ctx, h.ID, h.Modified); err != nil {
-					return nil, err
-				}
-				cache[h.ID] = v
+			if v := vulns[h.ID]; v.Withdrawn.IsZero() {
+				out = append(out, Match{Query: qs[i], Vuln: v})
 			}
-			if !v.Withdrawn.IsZero() {
-				continue
-			}
-			out = append(out, Match{Query: qs[i], Vuln: v})
 		}
+	}
+	return out, nil
+}
+
+// fetch downloads the advisories, several at once. The first error stops
+// the rest.
+func (c *Client) fetch(ctx context.Context, ids []string, modified map[string]time.Time) (map[string]*Vuln, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	got := make([]*Vuln, len(ids))
+	var (
+		wg    sync.WaitGroup
+		once  sync.Once
+		first error
+	)
+	next := make(chan int)
+	for range min(fetchers, len(ids)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				v, err := c.Vuln(ctx, ids[i], modified[ids[i]])
+				if err != nil {
+					once.Do(func() { first = err; cancel() })
+					continue
+				}
+				got[i] = v
+			}
+		}()
+	}
+feed:
+	for i := range ids {
+		select {
+		case next <- i:
+		case <-ctx.Done():
+			break feed
+		}
+	}
+	close(next)
+	wg.Wait()
+	if first == nil {
+		first = ctx.Err() // the caller gave up
+	}
+	if first != nil {
+		return nil, first
+	}
+	out := make(map[string]*Vuln, len(ids))
+	for i, id := range ids {
+		out[id] = got[i]
 	}
 	return out, nil
 }
