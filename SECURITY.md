@@ -6,7 +6,9 @@ anything that could make it contact systems outside the authorised scope.
 ## Reporting a vulnerability
 
 Please report privately through GitHub: open the **Security** tab of this
-repository and choose **Report a vulnerability**. Do not open a public issue.
+repository and choose **Report a vulnerability**. If you cannot use GitHub,
+email [hejnal@legatia.solutions](mailto:hejnal@legatia.solutions). Do not open
+a public issue.
 
 Include what you found, how to reproduce it and the version
 (`hejnal version`). We aim to acknowledge reports within three working days.

@@ -1,0 +1,57 @@
+name: Wrong or missed finding
+description: Hejnal reported something that is not there, or missed something that is.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Leave out host names, addresses and anything else that identifies your systems. Describe the product and what it sent instead.
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Kind of mistake
+      options:
+        - Reported, but not there (false positive)
+        - There, but not reported (missed)
+        - Right item, wrong severity or advice
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of item
+      options:
+        - Known exploited flaw (CISA or ENISA)
+        - Admin interface
+        - Exposed file, listing or test site
+        - Subdomain takeover
+        - Email records (SPF or DMARC)
+        - Certificate
+        - Leaked secret
+        - Breached accounts
+        - Dependency (code scan)
+        - Infrastructure code (code scan)
+    validations:
+      required: true
+  - type: textarea
+    id: said
+    attributes:
+      label: What Hejnal said
+      description: The item from the fix list, including its "How sure" verdict and steps.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it is wrong
+      description: For example the product and version really running, or the vendor advisory that rules the flaw out.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `hejnal version`.
+      placeholder: hejnal 0.6.0
+    validations:
+      required: true

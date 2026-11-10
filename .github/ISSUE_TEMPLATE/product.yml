@@ -1,0 +1,33 @@
+name: Recognise a product
+description: Ask Hejnal to recognise a product it does not know yet.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Hejnal recognises a product from one ordinary `GET /`, or from the greeting a non-web service sends. See [Adding a product](https://github.com/Legatia/hejnal/blob/main/CONTRIBUTING.md#adding-a-product) if you'd like to write the rule yourself.
+  - type: input
+    id: product
+    attributes:
+      label: Product and vendor
+      placeholder: Example Secure Gateway by Example Corp
+    validations:
+      required: true
+  - type: textarea
+    id: markers
+    attributes:
+      label: What it sends
+      description: Headers, cookie names, page title, script or path names, or the service greeting. Only markers the product itself produces, with host names removed.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Where it shows its version
+      description: For example a Server header, a file name in the page, or the greeting.
+  - type: textarea
+    id: flaws
+    attributes:
+      label: Exploited flaws
+      description: CVE IDs of flaws in it that CISA's or ENISA's list includes, if you know them.
