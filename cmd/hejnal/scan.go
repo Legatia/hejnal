@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/Legatia/hejnal/discover"
 	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/match"
 	"github.com/Legatia/hejnal/notify"
@@ -20,12 +22,44 @@ import (
 )
 
 func (a *app) cmdInit(args []string) error {
-	fs := a.flags("init", "[-scope scope.json]", "Write an example scope file to edit.")
+	fs := a.flags("init", "[-domain your-domain.pl -by \"Your name, role\"] [-scope scope.json]",
+		"Write a scope file: the systems Hejnal may check, and who confirmed that.\n\n"+
+			"With -domain and -by the file is ready to run. Without them Hejnal writes\nan example to edit.")
 	path := fs.String("scope", "scope.json", "where to write the scope file")
+	domains := fs.String("domain", "", "your domain; Hejnal covers its subdomains too (comma-separated for several)")
+	by := fs.String("by", "", "who confirms you may test these systems, such as \"Anna Nowak, owner\"")
+	org := fs.String("org", "", "organisation name for the reports (default: the first domain)")
 	if err := a.parse(fs, args); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(scope.Example(a.now()), "", "  ")
+	s := scope.Example(a.now())
+	ready := *domains != "" || *by != "" || *org != ""
+	if ready {
+		if *domains == "" || strings.TrimSpace(*by) == "" {
+			return errors.New("init needs both -domain and -by: the domain to check, and the person who confirms you may test it")
+		}
+		s.Domains, s.Hosts, s.CIDRs, s.Exclude = nil, nil, nil, nil
+		for _, d := range strings.Split(*domains, ",") {
+			if d = strings.TrimSpace(d); d != "" {
+				s.Domains = append(s.Domains, d)
+			}
+		}
+		if len(s.Domains) == 0 {
+			return errors.New("-domain is empty")
+		}
+		s.Authorization.ConfirmedBy = strings.TrimSpace(*by)
+		s.Organization = strings.TrimSpace(*org)
+		if s.Organization == "" {
+			s.Organization = s.Domains[0]
+		}
+		if err := s.Validate(a.now()); err != nil {
+			return err
+		}
+		if left := s.Placeholders(); len(left) > 0 {
+			return fmt.Errorf("%s is an example, not a system of yours", strings.Join(left, ", "))
+		}
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -43,28 +77,66 @@ func (a *app) cmdInit(args []string) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.stdout, "Wrote %s.\n\nEdit it to list your domains, hosts and IP ranges, and record who confirmed\nthat you may test them. Then run:\n\n  hejnal run -scope %s\n", *path, *path)
+	if ready {
+		fmt.Fprintf(a.stdout, "Wrote %s for %s.\n\nIt records that %s confirmed: %q\nAdd single hosts, IP ranges or exclusions by editing the file. Then run:\n\n  hejnal run -scope %s\n",
+			*path, strings.Join(s.Domains, ", "), s.Authorization.ConfirmedBy, s.Authorization.Statement, *path)
+		return nil
+	}
+	fmt.Fprintf(a.stdout, "Wrote %s, an example.\n\nReplace its entries with your domains, hosts and IP ranges, and with the name\nof the person who confirmed that you may test them. Hejnal does not run the\nexample as it is. Then run:\n\n  hejnal run -scope %s\n\nOr write a ready file in one step:\n\n  hejnal init -domain your-domain.pl -by \"Your name, role\"\n", *path, *path)
 	return nil
 }
 
 func (a *app) loadScope(path string) (*scope.Scope, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("scope file %s not found; create one with `hejnal init`", path)
+		return nil, fmt.Errorf("scope file %s not found; create one with `hejnal init -domain your-domain.pl -by \"Your name, role\"`", path)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return scope.Parse(data, a.now())
+	s, err := scope.Parse(data, a.now())
+	if err != nil {
+		return nil, err
+	}
+	if left := s.Placeholders(); len(left) > 0 {
+		return nil, fmt.Errorf("%s still has entries from the example: %s. Replace them with your own systems and the name of the person who confirmed you may test them",
+			path, strings.Join(left, ", "))
+	}
+	return s, nil
 }
 
 func (a *app) printBanner(s *scope.Scope) {
 	auth := s.Authorization
 	fmt.Fprintf(a.stderr, "Hejnal %s · %s\n", version.Version, s.Organization)
 	fmt.Fprintf(a.stderr, "Authorised by %s on %s: %q\n", auth.ConfirmedBy, auth.Date, auth.Statement)
-	fmt.Fprintf(a.stderr, "Scope: %d domains · %d hosts · %d addresses in ranges · ports %s\n",
-		len(s.Domains), len(s.Hosts), len(s.Addresses()), joinInts(s.Ports))
+	fmt.Fprintf(a.stderr, "Scope: %s · %s · %s in ranges · ports %s\n",
+		count(len(s.Domains), "domain", "domains"), count(len(s.Hosts), "host", "hosts"),
+		count(len(s.Addresses()), "address", "addresses"), joinInts(s.Ports))
 	fmt.Fprintln(a.stderr, "Only check systems you own or have written permission to test.")
+}
+
+// count is a number with its noun, such as "1 domain" or "3 domains".
+func count(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", one)
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// checksTip suggests -checks when a run without it left exploited flaws open
+// only because a product hides its version, and -checks could read it.
+func checksTip(fs []match.Finding) string {
+	var names []string
+	for _, f := range match.Open(fs) {
+		if f.Kind == match.KindKEV && f.Version == "" && discover.ReadsVersion(f.TechID) && !slices.Contains(names, f.Technology) {
+			names = append(names, f.Technology)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	slices.Sort(names)
+	return fmt.Sprintf("Tip: %s did not show its version, so every exploited flaw of the product is listed.\nRun again with -checks: Hejnal then reads the version and drops the flaws it does not have.\n", strings.Join(names, ", "))
 }
 
 func (a *app) cmdDiscover(ctx context.Context, args []string) error {
@@ -92,8 +164,9 @@ func (a *app) cmdDiscover(ctx context.Context, args []string) error {
 		return err
 	}
 	assets, services, techs := inv.Counts()
-	fmt.Fprintf(a.stdout, "Found %d hosts, %d services and %d products. Inventory saved to %s.\n",
-		assets, services, techs, filepath.Join(o.stateDir, "inventory.json"))
+	fmt.Fprintf(a.stdout, "Found %s, %s and %s. Inventory saved to %s.\n",
+		count(assets, "host", "hosts"), count(services, "service", "services"), count(techs, "product", "products"),
+		filepath.Join(o.stateDir, "inventory.json"))
 	return nil
 }
 
@@ -222,6 +295,9 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	summary := report.Summary(snap.Findings, ch.Added, ch.Resolved, ch.First, m)
 	fmt.Fprint(a.stdout, summary)
 	fmt.Fprintf(a.stdout, "Fix list written to %s.\n", o.out)
+	if !o.checks {
+		fmt.Fprint(a.stdout, checksTip(snap.Findings))
+	}
 
 	if len(notifiers) > 0 && (ch.First || len(ch.Added) > 0) {
 		title, lines := report.SummaryLines(snap.Findings, ch.Added, ch.Resolved, ch.First, m)

@@ -14,6 +14,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/scope"
 )
 
 var testNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
@@ -243,11 +246,76 @@ func TestInit(t *testing.T) {
 	if code, _, errOut := h.run("init", "-scope", path); code != exitError || !strings.Contains(errOut, "already exists") {
 		t.Errorf("second init exit %d: %s", code, errOut)
 	}
-	// The example must be a valid scope (it fails only on the network).
+	// The example is a valid scope file, but Hejnal does not run it: its
+	// entries are not the user's systems.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scope.Parse(data, testNow); err != nil {
+		t.Errorf("example scope does not parse: %v", err)
+	}
+	code, _, errOut := h.run("run", "-scope", path, "-offline")
+	if code != exitError {
+		t.Errorf("run with the example scope: exit %d", code)
+	}
+	for _, want := range []string{"still has entries from the example", "example.com", "Jan Kowalski", "203.0.113.0/29"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("refusal does not name %q:\n%s", want, errOut)
+		}
+	}
+}
+
+func TestInitReady(t *testing.T) {
+	h := newHarness(t)
+	path := filepath.Join(h.dir, "ready.json")
+	code, out, errOut := h.run("init", "-scope", path, "-domain", "sklep.test, biuro.test", "-by", "Anna Nowak, owner")
+	if code != exitOK {
+		t.Fatalf("init exit %d: %s", code, errOut)
+	}
+	if !strings.Contains(out, "sklep.test, biuro.test") || !strings.Contains(out, "Anna Nowak, owner") {
+		t.Errorf("init does not say what it recorded:\n%s", out)
+	}
 	a := newApp(io.Discard, io.Discard)
 	a.now = func() time.Time { return testNow }
-	if _, err := a.loadScope(path); err != nil {
-		t.Errorf("example scope does not load: %v", err)
+	s, err := a.loadScope(path)
+	if err != nil {
+		t.Fatalf("ready scope does not load: %v", err)
+	}
+	if s.Organization != "sklep.test" || len(s.Domains) != 2 || len(s.Hosts)+len(s.CIDRs)+len(s.Exclude) != 0 {
+		t.Errorf("scope = %+v", s)
+	}
+	if s.Authorization.ConfirmedBy != "Anna Nowak, owner" || s.Authorization.Date != testNow.Format("2006-01-02") {
+		t.Errorf("authorization = %+v", s.Authorization)
+	}
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-domain", "sklep.test"}, "needs both -domain and -by"},
+		{[]string{"-by", "Anna Nowak"}, "needs both -domain and -by"},
+		{[]string{"-org", "Sklep"}, "needs both -domain and -by"},
+		{[]string{"-domain", "example.com", "-by", "Anna Nowak"}, "is an example"},
+		{[]string{"-domain", "not a domain", "-by", "Anna Nowak"}, ""},
+	} {
+		p := filepath.Join(h.dir, "bad.json")
+		code, _, errOut := h.run(append([]string{"init", "-scope", p}, tc.args...)...)
+		if code != exitError || !strings.Contains(errOut, tc.want) {
+			t.Errorf("init %v: exit %d: %s", tc.args, code, errOut)
+		}
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("init %v wrote a file", tc.args)
+			os.Remove(p)
+		}
+	}
+
+	path = filepath.Join(h.dir, "org.json")
+	if code, _, errOut := h.run("init", "-scope", path, "-domain", "sklep.test", "-by", "Anna Nowak", "-org", "Sklep Sp. z o.o."); code != exitOK {
+		t.Fatalf("init -org exit %d: %s", code, errOut)
+	}
+	if s, err := a.loadScope(path); err != nil || s.Organization != "Sklep Sp. z o.o." {
+		t.Errorf("-org: %v %+v", err, s)
 	}
 }
 
@@ -334,5 +402,30 @@ func TestFeedsDownloadsBothLists(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "cache", f)); err != nil {
 			t.Errorf("%s not saved: %v", f, err)
 		}
+	}
+}
+
+func TestChecksTip(t *testing.T) {
+	kev := func(tech, name, version string) match.Finding {
+		return match.Finding{Kind: match.KindKEV, TechID: tech, Technology: name, Version: version, Confidence: match.ConfidenceProduct}
+	}
+	// Next.js and WordPress can show a version to -checks; FortiGate cannot.
+	fs := []match.Finding{
+		kev("nextjs-app-router", "Next.js", ""), kev("nextjs-app-router", "Next.js", ""),
+		kev("wordpress", "WordPress", ""), kev("fortinet-fortigate", "FortiGate", ""),
+	}
+	tip := checksTip(fs)
+	if !strings.HasPrefix(tip, "Tip: Next.js, WordPress did not show its version") || !strings.Contains(tip, "-checks") || strings.Contains(tip, "FortiGate") {
+		t.Errorf("tip = %q", tip)
+	}
+	// Nothing to say when the version is known, the flaw is ruled out or
+	// accepted, or the finding is not about a product.
+	ruledOut := kev("wordpress", "WordPress", "")
+	ruledOut.Confidence = match.ConfidenceRuledOut
+	accepted := kev("wordpress", "WordPress", "")
+	accepted.Accepted = &match.Acceptance{}
+	quiet := []match.Finding{kev("wordpress", "WordPress", "6.8.1"), ruledOut, accepted, {Kind: match.KindExposedFile, TechID: "wordpress"}}
+	if tip := checksTip(quiet); tip != "" {
+		t.Errorf("tip = %q, want none", tip)
 	}
 }

@@ -190,7 +190,7 @@ func TestCommandsSurviveHostileInput(t *testing.T) {
 			t.Errorf("%s: the overview shows markup from the scanned server", raw)
 		}
 		if s := Summary(fs, fs, nil, false, Meta{Organization: "Acme", Lang: "en"}); strings.Contains(s, "<script>") {
-			t.Errorf("%s: the chat summary shows markup: %q", raw, s)
+			t.Errorf("%s: the summary shows markup: %q", raw, s)
 		}
 	}
 	// Names that are not plain host names never reach a command.
