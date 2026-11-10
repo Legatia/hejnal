@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Legatia/hejnal/container"
@@ -40,6 +41,31 @@ type CodeRequest struct {
 	History bool
 	// FingerprintKey keys secret fingerprints, as `hejnal leaks` does.
 	FingerprintKey []byte
+	// Exclude names directories to leave out of Dirs, such as test
+	// fixtures: a name matches a directory anywhere, and a path with a
+	// slash matches that one directory under the scanned one.
+	Exclude []string
+}
+
+// excluded reports whether the file at rel, a slash-separated path under
+// the scanned directory, lies in a directory named by exclude.
+func excluded(rel string, exclude []string) bool {
+	if len(exclude) == 0 {
+		return false
+	}
+	parts := strings.Split(rel, "/")
+	for i := range len(parts) - 1 {
+		for _, e := range exclude {
+			if strings.Contains(e, "/") {
+				if strings.Join(parts[:i+1], "/") == e {
+					return true
+				}
+			} else if parts[i] == e {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ScanCode checks source directories and container images: dependencies
@@ -70,15 +96,22 @@ func (e *Engine) ScanCode(ctx context.Context, req CodeRequest) (*state.CodeScan
 				return nil, err
 			}
 			for _, p := range problems {
-				scan.Notes = append(scan.Notes, fmt.Sprintf("could not read %s%s: %s", prefix, p.File, p.Err))
+				if !excluded(p.File, req.Exclude) {
+					scan.Notes = append(scan.Notes, fmt.Sprintf("could not read %s%s: %s", prefix, p.File, p.Err))
+				}
 			}
-			for i := range ps {
-				ps[i].File = prefix + ps[i].File
+			for _, p := range ps {
+				if !excluded(p.File, req.Exclude) {
+					p.File = prefix + p.File
+					pkgs = append(pkgs, p)
+				}
 			}
-			pkgs = append(pkgs, ps...)
 		}
 		if !skip(PartSecrets) {
 			opts := leaks.Options{FingerprintKey: req.FingerprintKey}
+			if len(req.Exclude) > 0 {
+				opts.SkipDirs = append(leaks.DefaultSkipDirs(), req.Exclude...)
+			}
 			ls, err := leaks.ScanDir(ctx, root, opts)
 			if err != nil {
 				return nil, err
@@ -104,6 +137,7 @@ func (e *Engine) ScanCode(ctx context.Context, req CodeRequest) (*state.CodeScan
 			if err != nil {
 				return nil, err
 			}
+			issues = slices.DeleteFunc(issues, func(is iac.Issue) bool { return excluded(is.File, req.Exclude) })
 			for i := range issues {
 				issues[i].File = prefix + issues[i].File
 			}

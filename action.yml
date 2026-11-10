@@ -15,6 +15,9 @@ inputs:
   images:
     description: Container images to check, saved with `docker save` or as OCI layouts, one per line.
     default: ""
+  exclude:
+    description: Directories to leave out, such as test fixtures, one per line. A name matches anywhere, a path with a slash only under the scanned directory. Needs Hejnal 0.7.0 or later.
+    default: ""
   fail-on:
     description: Fail the step when an item reaches this severity (critical, high, medium, low or none).
     default: high
@@ -80,6 +83,7 @@ runs:
       env:
         SCAN_PATH: ${{ inputs.path }}
         IMAGES: ${{ inputs.images }}
+        EXCLUDE: ${{ inputs.exclude }}
         FAIL_ON: ${{ inputs.fail-on }}
         HISTORY: ${{ inputs.history }}
         SARIF: ${{ inputs.sarif }}
@@ -92,6 +96,9 @@ runs:
         while IFS= read -r img; do
           if [ -n "$img" ]; then args+=(-image "$img"); fi
         done <<< "$IMAGES"
+        while IFS= read -r dir; do
+          if [ -n "$dir" ]; then args+=(-exclude "$dir"); fi
+        done <<< "$EXCLUDE"
         if [ "$HISTORY" = "true" ]; then args+=(-history); fi
         if [ -n "$PROJECT" ]; then args+=(-project "$PROJECT"); fi
         if [ -n "$UPLOAD_URL" ]; then

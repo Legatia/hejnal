@@ -248,7 +248,7 @@ func TestENISAListings(t *testing.T) {
 func TestSummary(t *testing.T) {
 	fs := findings()
 	first := Summary(fs, fs, nil, true, meta("en"))
-	for _, want := range []string{"*Hejnal* · Przykład &lt;Sp. z o.o.&gt;", "First check · Open: 3", "[critical] Fortinet FortiGate SSL VPN on vpn.example.com:443: CVE-2025-61624, CVE-2018-13379"} {
+	for _, want := range []string{"Hejnal · Przykład <Sp. z o.o.>\n", "First check · Open: 3", "[critical] Fortinet FortiGate SSL VPN on vpn.example.com:443: CVE-2025-61624, CVE-2018-13379"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("first-run summary is missing %q:\n%s", want, first)
 		}
@@ -411,5 +411,36 @@ func TestItemText(t *testing.T) {
 	}
 	if why, todo := ItemText(match.Group{}, "en"); why+todo != "" {
 		t.Errorf("an empty group has text: %q %q", why, todo)
+	}
+}
+
+func TestDependencyTitleNamesEachFlawOnce(t *testing.T) {
+	dep := func(advisory, cve, file string) match.Finding {
+		return match.Finding{Kind: match.KindDependency, Host: "shop", Ecosystem: "PyPI", TechID: "PyPI:jinja2", Technology: "jinja2",
+			Version: "2.10", Advisory: advisory, CVE: cve, File: file, Score: 60, Severity: match.High, Confidence: match.ConfidenceVersion,
+			Key: "dependency|shop|PyPI|jinja2|2.10|" + advisory + "|" + file}
+	}
+	// One flaw under two advisory IDs, in a package two files pin.
+	fs := []match.Finding{
+		dep("GHSA-g3rq-g295-4j3m", "CVE-2020-28493", "requirements.txt"),
+		dep("PYSEC-2021-66", "CVE-2020-28493", "requirements.txt"),
+		dep("GHSA-g3rq-g295-4j3m", "CVE-2020-28493", "docs/requirements.txt"),
+		dep("GHSA-462w-v97r-4m45", "", "requirements.txt"),
+	}
+	gs := match.Groups(fs)
+	if len(gs) != 1 {
+		t.Fatalf("%d groups, want 1", len(gs))
+	}
+	title := GroupTitle(gs[0], "en")
+	if strings.Count(title, "CVE-2020-28493") != 1 || !strings.Contains(title, "GHSA-462w-v97r-4m45") || strings.Contains(title, "+") {
+		t.Errorf("title = %q", title)
+	}
+	// More than three different flaws are counted, not listed.
+	for _, id := range []string{"CVE-2019-10906", "CVE-2024-22195", "CVE-2024-34064"} {
+		fs = append(fs, dep("GHSA-"+id, id, "requirements.txt"))
+	}
+	title = GroupTitle(match.Groups(fs)[0], "en")
+	if !strings.HasSuffix(title, ", +2") || strings.Count(title, "CVE-2020-28493") > 1 {
+		t.Errorf("title = %q", title)
 	}
 }

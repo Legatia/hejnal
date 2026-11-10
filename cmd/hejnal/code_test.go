@@ -288,3 +288,71 @@ func TestCodeScanHonoursAcceptances(t *testing.T) {
 		t.Errorf("an accepted item still fails the build (exit %d):\n%s", code, out)
 	}
 }
+
+func TestCodeScanExclude(t *testing.T) {
+	dir := t.TempDir()
+	proj := filepath.Join(dir, "shop")
+	key := "sk_" + "live_" + strings.Repeat("4eC39HqLyjWDarjtT1zdp7dc", 2)
+	tf := "resource \"aws_security_group\" \"ssh\" {\n  ingress {\n    from_port = 22\n    to_port = 22\n    protocol = \"tcp\"\n    cidr_blocks = [\"0.0.0.0/0\"]\n  }\n}\n"
+	// The project itself is clean; its fixtures and examples are not.
+	writeFiles(t, proj, map[string]string{
+		"package-lock.json":                    `{"packages":{"node_modules/react":{"version":"18.2.0"}}}`,
+		"parser/testdata/package-lock.json":    `{"packages":{"node_modules/lodash":{"version":"4.17.20"}}}`,
+		"parser/testdata/broken/composer.lock": "{not json",
+		"testdata/main.tf":                     tf,
+		"testdata/app.env":                     "STRIPE_KEY=" + key + "\n",
+		"docs/examples/main.tf":                tf,
+		"src/examples/package-lock.json":       `{"packages":{"node_modules/lodash":{"version":"4.17.20"}}}`,
+	})
+	osvSrv := fakeOSV(t)
+	kevFile := filepath.Join(dir, "kev.json")
+	os.WriteFile(kevFile, []byte(`{"catalogVersion":"2026.11.01","vulnerabilities":[{"cveID":"CVE-2021-44228","vendorProject":"Apache","product":"Log4j2","dateAdded":"2021-12-10","dueDate":"2021-12-24"}]}`), 0o600)
+	run := func(args ...string) (int, string, string) {
+		var out, errOut bytes.Buffer
+		a := newApp(&out, &errOut)
+		a.now = func() time.Time { return testNow }
+		a.osvURL = osvSrv.URL
+		code := a.run(context.Background(), append([]string{"code", "scan", "-state", filepath.Join(dir, "state"), "-kev-file", kevFile, "-no-euvd", "-no-epss", "-all"}, args...))
+		return code, out.String(), errOut.String()
+	}
+
+	code, out, errOut := run(proj)
+	if code != exitFindings {
+		t.Fatalf("exit %d without -exclude:\n%s%s", code, out, errOut)
+	}
+	for _, want := range []string{"lodash", "Stripe", "testdata/main.tf", "docs/examples/main.tf"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("without -exclude the output is missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(errOut, "parser/testdata/broken/composer.lock") {
+		t.Errorf("no note about the broken lockfile:\n%s", errOut)
+	}
+
+	// A name matches at any depth; a path only from the scanned directory,
+	// so src/examples stays in.
+	// What is left is an advisory nobody exploits, which does not fail.
+	code, out, errOut = run(proj, "-exclude", "testdata/", "-exclude", "./docs/examples")
+	if code != exitOK {
+		t.Fatalf("exit %d:\n%s%s", code, out, errOut)
+	}
+	if !strings.Contains(out, "lodash") || !strings.Contains(out, "src/examples/package-lock.json") {
+		t.Errorf("src/examples was left out too:\n%s", out)
+	}
+	for _, gone := range []string{"Stripe", "main.tf", "testdata"} {
+		if strings.Contains(out+errOut, gone) {
+			t.Errorf("-exclude kept %q:\n%s%s", gone, out, errOut)
+		}
+	}
+
+	code, out, errOut = run(proj, "-exclude", "testdata", "-exclude", "docs/examples", "-exclude", "examples")
+	if code != exitOK || !strings.Contains(out, "Nothing found.") {
+		t.Errorf("exit %d with everything excluded:\n%s%s", code, out, errOut)
+	}
+
+	for _, bad := range []string{"..", "../other", "/etc", "."} {
+		if code, _, errOut := run(proj, "-exclude", bad); code != exitError || !strings.Contains(errOut, "-exclude") {
+			t.Errorf("-exclude %q: exit %d: %s", bad, code, errOut)
+		}
+	}
+}

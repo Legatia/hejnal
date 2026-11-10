@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -423,14 +424,15 @@ func mdCode(s string) string {
 	return "`" + s + "`"
 }
 
-// Summary is a short chat message about a run: what is new, what was fixed
-// and what is still open, in Slack's text format.
+// Summary is the run summary as plain text for a terminal: what is new,
+// what was fixed and what is still open. Chat channels build their own
+// message from SummaryLines.
 func Summary(open, added, resolved []match.Finding, first bool, m Meta) string {
-	_, lines := SummaryLines(open, added, resolved, first, m)
+	title, lines := SummaryLines(open, added, resolved, first, m)
 	var b strings.Builder
-	fmt.Fprintf(&b, "*Hejnal* · %s\n", chatEscape(m.Organization))
+	b.WriteString(match.CleanNote(title) + "\n")
 	for _, l := range lines {
-		b.WriteString(chatEscape(l) + "\n")
+		b.WriteString(match.CleanNote(l) + "\n")
 	}
 	return b.String()
 }
@@ -475,13 +477,6 @@ func SummaryLines(open, added, resolved []match.Finding, first bool, m Meta) (st
 	return title, lines
 }
 
-// chatEscape escapes the characters Slack-style chat formats treat as
-// markup, and puts an invisible word joiner after every @ so text from
-// scanned systems cannot mention @channel or @here.
-func chatEscape(s string) string {
-	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "@", "@\u2060").Replace(s)
-}
-
 // ItemTitle names an item to fix in plain text, such as "WordPress on
 // www.example.com:443", in the given language.
 func ItemTitle(g match.Group, lang string) string {
@@ -505,29 +500,27 @@ func ItemText(g match.Group, lang string) (why, todo string) {
 // groupTitle names an item in plain text, with its first flaws for known
 // exploited ones.
 func groupTitle(tr translator, g match.Group) string {
-	if g.Kind == match.KindDependency {
-		var ids []string
-		for i, f := range match.Active(g.Findings) {
-			if i == 3 {
-				ids = append(ids, fmt.Sprintf("+%d", len(match.Active(g.Findings))-3))
-				break
+	var ids []string
+	switch g.Kind {
+	case match.KindDependency:
+		// Two advisories about one flaw carry the same CVE; name it once.
+		for _, f := range match.Active(g.Findings) {
+			if id := cmp.Or(f.CVE, f.Advisory); !slices.Contains(ids, id) {
+				ids = append(ids, id)
 			}
-			ids = append(ids, cmp.Or(f.CVE, f.Advisory))
 		}
-		return itemTitle(tr, g) + ": " + strings.Join(ids, ", ")
-	}
-	if g.Kind != match.KindKEV {
+	case match.KindKEV:
+		for _, f := range g.Findings {
+			ids = append(ids, f.CVE)
+		}
+	default:
 		return itemTitle(tr, g)
 	}
-	var cves []string
-	for i, f := range g.Findings {
-		if i == 3 {
-			cves = append(cves, fmt.Sprintf("+%d", len(g.Findings)-3))
-			break
-		}
-		cves = append(cves, f.CVE)
+	const maxIDs = 3
+	if len(ids) > maxIDs {
+		ids = append(ids[:maxIDs:maxIDs], fmt.Sprintf("+%d", len(ids)-maxIDs))
 	}
-	return itemTitle(tr, g) + ": " + strings.Join(cves, ", ")
+	return itemTitle(tr, g) + ": " + strings.Join(ids, ", ")
 }
 
 func itemTitle(tr translator, g match.Group) string {

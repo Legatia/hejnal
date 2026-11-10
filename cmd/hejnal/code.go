@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -54,6 +55,22 @@ type listFlag []string
 func (l *listFlag) String() string     { return strings.Join(*l, ",") }
 func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 
+const excludeHelp = "leave out this `directory`, such as test fixtures: a name matches anywhere, a path with a slash only under the scanned directory (repeatable)"
+
+// excludeDirs tidies the values of -exclude into the form the scanners
+// compare with: slash-separated, without "./" or a trailing slash.
+func excludeDirs(values []string) ([]string, error) {
+	var out []string
+	for _, v := range values {
+		d := path.Clean(filepath.ToSlash(strings.TrimSpace(v)))
+		if d == "." || d == ".." || strings.HasPrefix(d, "../") || path.IsAbs(d) || filepath.IsAbs(v) {
+			return nil, fmt.Errorf("-exclude %q: name a directory inside the scanned one, such as testdata or docs/examples", v)
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
 func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	o := &options{}
 	fs := a.flags("code scan", "[flags] [<directory>...]",
@@ -67,6 +84,8 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	format := fs.String("format", "text", "output: text, json or sarif")
 	out := fs.String("out", "", "write the output to this file instead of standard output")
 	all := fs.Bool("all", false, "with -format text, also list the low items one by one")
+	var exclude listFlag
+	fs.Var(&exclude, "exclude", excludeHelp)
 	history := fs.Bool("history", false, "also scan every commit in the Git history for secrets")
 	noDeps := fs.Bool("no-deps", false, "do not check dependencies")
 	noSecrets := fs.Bool("no-secrets", false, "do not look for secrets")
@@ -127,6 +146,9 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 		return exitError, err
 	}
 	req := engine.CodeRequest{Project: name, Dirs: dirs, Images: images, History: *history}
+	if req.Exclude, err = excludeDirs(exclude); err != nil {
+		return exitError, err
+	}
 	if *noDeps {
 		req.Skip = append(req.Skip, engine.PartDeps)
 	}
@@ -209,7 +231,7 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 func (a *app) printCodeScan(w io.Writer, scan *state.CodeScan, lang string, all bool) error {
 	checked := []string{}
 	if scan.Packages > 0 {
-		checked = append(checked, fmt.Sprintf("%d packages", scan.Packages))
+		checked = append(checked, count(scan.Packages, "package", "packages"))
 	}
 	for _, p := range scan.Parts {
 		if p != engine.PartDeps && p != engine.PartImages {
@@ -251,7 +273,7 @@ func (a *app) printCodeScan(w io.Writer, scan *state.CodeScan, lang string, all 
 				a.printCodeItem(w, g, lang)
 			}
 		} else {
-			fmt.Fprintf(w, "Low: %d more items, such as advisories nobody is known to exploit. Add -all to list them.\n", len(low))
+			fmt.Fprintf(w, "Low: %s, such as advisories nobody is known to exploit. Add -all to list them.\n", count(len(low), "more item", "more items"))
 		}
 	}
 	return nil

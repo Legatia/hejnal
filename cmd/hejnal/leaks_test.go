@@ -32,7 +32,7 @@ func TestLeaksScan(t *testing.T) {
 	if code != exitFindings {
 		t.Fatalf("code %d, want %d\n%s%s", code, exitFindings, out, errOut)
 	}
-	for _, want := range []string{"GitHub token", "website/app/settings.py:1", "ghp_a1… (40 chars)", "1 secrets found (critical 1"} {
+	for _, want := range []string{"GitHub token", "website/app/settings.py:1", "ghp_a1… (40 chars)", "1 secret found (critical 1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output is missing %q:\n%s", want, out)
 		}
@@ -101,6 +101,41 @@ func TestLeaksScan(t *testing.T) {
 	}
 }
 
+// TestLeaksScanExclude checks that -exclude leaves a directory out and that
+// the default skip list still applies with it.
+func TestLeaksScanExclude(t *testing.T) {
+	h := newHarness(t)
+	repo := filepath.Join(h.dir, "website")
+	secret := []byte("GITHUB_TOKEN = \"" + fakeToken + "\"\n")
+	for _, file := range []string{"parser/testdata/token.py", "node_modules/pkg/token.py"} {
+		full := filepath.Join(repo, filepath.FromSlash(file))
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, secret, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	code, out, errOut := h.run("leaks", "scan", repo)
+	if code != exitFindings || !strings.Contains(out, "website/parser/testdata/token.py:1") || strings.Contains(out, "node_modules") {
+		t.Fatalf("without -exclude: code %d\n%s%s", code, out, errOut)
+	}
+	for _, dir := range []string{"testdata", "parser/testdata"} {
+		code, out, errOut = h.run("leaks", "scan", "-exclude", dir, repo)
+		if code != exitOK || !strings.Contains(out, "No secrets found.") {
+			t.Errorf("-exclude %s: code %d\n%s%s", dir, code, out, errOut)
+		}
+	}
+	// A path counts from the scanned directory, so this one names nothing.
+	if code, _, _ := h.run("leaks", "scan", "-exclude", "website/parser", repo); code != exitFindings {
+		t.Errorf("-exclude website/parser: code %d, want %d", code, exitFindings)
+	}
+	if code, _, errOut := h.run("leaks", "scan", "-exclude", "../other", repo); code != exitError || !strings.Contains(errOut, "-exclude") {
+		t.Errorf("-exclude ../other: code %d, %q", code, errOut)
+	}
+}
+
 func TestLeaksBreaches(t *testing.T) {
 	h := newHarness(t)
 	hibp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +144,7 @@ func TestLeaksBreaches(t *testing.T) {
 			return
 		}
 		switch r.URL.Path {
-		case "/breacheddomain/example.com":
+		case "/breacheddomain/sklep.test":
 			io.WriteString(w, `{"anna":["Adobe"],"jan":["Adobe","Spamlist"]}`)
 		case "/breach/Adobe":
 			io.WriteString(w, `{"Name":"Adobe","Title":"Adobe","Domain":"adobe.com","BreachDate":"2013-10-04","AddedDate":"2013-12-04T00:00:00Z","PwnCount":152445165,"DataClasses":["Email addresses","Password hints","Passwords","Usernames"],"IsVerified":true,"IsSensitive":false,"IsSpamList":false}`)
@@ -121,7 +156,7 @@ func TestLeaksBreaches(t *testing.T) {
 	}))
 	defer hibp.Close()
 	scopePath := filepath.Join(h.dir, "domains.json")
-	scope := `{"organization": "Sklep", "authorization": {"confirmedBy": "Anna Nowak, IT", "date": "2026-11-01", "statement": "We own this domain."}, "domains": ["example.com"]}`
+	scope := `{"organization": "Sklep", "authorization": {"confirmedBy": "Anna Nowak, IT", "date": "2026-11-01", "statement": "We own this domain."}, "domains": ["sklep.test"]}`
 	if err := os.WriteFile(scopePath, []byte(scope), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +179,7 @@ func TestLeaksBreaches(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("code %d\n%s", code, errOut)
 	}
-	for _, want := range []string{"example.com: 2 accounts in 2 breaches.", "Adobe (2013-10-04): 2 accounts, passwords exposed", "Spam list (2020-01-01): 1 accounts"} {
+	for _, want := range []string{"sklep.test: 2 accounts in 2 breaches.", "Adobe (2013-10-04): 2 accounts, passwords exposed", "Spam list (2020-01-01): 1 account"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output is missing %q:\n%s", want, out)
 		}
@@ -158,7 +193,7 @@ func TestLeaksBreaches(t *testing.T) {
 	}
 
 	code, out, _ = run("leaks", "breaches", "-accounts", "-scope", scopePath, "-state", h.state)
-	if code != exitOK || !strings.Contains(out, "anna@example.com, jan@example.com") {
+	if code != exitOK || !strings.Contains(out, "anna@sklep.test, jan@sklep.test") {
 		t.Errorf("-accounts: code %d\n%s", code, out)
 	}
 	saved, _ = os.ReadFile(filepath.Join(h.state, "breaches.json"))

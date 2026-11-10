@@ -38,11 +38,15 @@ const (
 	exitFindings = 2
 )
 
-const usage = `Hejnal watches your internet-facing systems for software that attackers
-are exploiting right now, and tells you what to fix first.
+const usage = `Hejnal checks your internet-facing systems and the code you ship for flaws
+that attackers are exploiting right now, and tells you what to fix first.
+
+Start:
+  hejnal init -domain your-domain.pl -by "Your name, role"
+  hejnal run
 
 Usage:
-  hejnal init      [-scope scope.json]          write an example scope file
+  hejnal init      [-domain d -by "who"]        write the scope file: what Hejnal may check
   hejnal run       [-scope scope.json] [flags]  discover, match and report in one go
   hejnal discover  [-scope scope.json] [flags]  find hosts and identify their software
   hejnal feeds     [flags]                      download the CISA and ENISA lists of exploited flaws
@@ -60,9 +64,9 @@ Usage:
 
 Run "hejnal <command> -h" for the flags of a command.
 
-Exit status: 0 when done, 1 on errors, 2 when "run -fail-on" finds new
-problems, or "leaks scan -fail-on" finds secrets, at or above the given
-severity.
+Exit status: 0 when done, 1 on errors, 2 when problems reach the -fail-on
+severity: new findings for "run" (off unless set), any item for "code scan"
+and "leaks scan" (high unless set).
 
 Only check systems you own or have written permission to test.
 `

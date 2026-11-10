@@ -23,7 +23,15 @@ type CrtSh struct {
 	Client    *http.Client
 	BaseURL   string
 	UserAgent string
+	// Wait is the pause before asking again after crt.sh fails to answer
+	// (default 3 seconds).
+	Wait time.Duration
 }
+
+// crtShTries is how often a lookup is sent while crt.sh answers with an
+// error. It often does for a moment, with 502, 503 and even 404, and for a
+// domain it has no certificates for it answers 200 and an empty list.
+const crtShTries = 3
 
 // Subdomains returns the names under domain seen in certificates.
 func (c *CrtSh) Subdomains(ctx context.Context, domain string) ([]string, error) {
@@ -44,9 +52,29 @@ func (c *CrtSh) Subdomains(ctx context.Context, domain string) ([]string, error)
 		return nil
 	}
 	u := base + "/?q=" + url.QueryEscape("%."+domain) + "&output=json"
+	wait := c.Wait
+	if wait <= 0 {
+		wait = 3 * time.Second
+	}
+	for try := 1; ; try++ {
+		names, again, err := c.lookup(ctx, client, u, domain)
+		if !again || try == crtShTries {
+			return names, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+}
+
+// lookup sends one query. It reports again when crt.sh answered with an
+// error status, which is worth another try.
+func (c *CrtSh) lookup(ctx context.Context, client *http.Client, u, domain string) (names []string, again bool, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if c.UserAgent != "" {
 		req.Header.Set("User-Agent", c.UserAgent)
@@ -54,25 +82,25 @@ func (c *CrtSh) Subdomains(ctx context.Context, domain string) ([]string, error)
 	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("crt.sh: %w", err)
+		return nil, false, fmt.Errorf("crt.sh: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("crt.sh: %s", resp.Status)
+		return nil, true, fmt.Errorf("crt.sh: %s", resp.Status)
 	}
 	var rows []struct {
 		CommonName string `json:"common_name"`
 		NameValue  string `json:"name_value"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(&rows); err != nil {
-		return nil, fmt.Errorf("crt.sh: decode: %w", err)
+		return nil, false, fmt.Errorf("crt.sh: decode: %w", err)
 	}
 	var raw []string
 	for _, r := range rows {
 		raw = append(raw, r.CommonName)
 		raw = append(raw, strings.Split(r.NameValue, "\n")...)
 	}
-	return namesUnder(domain, raw), nil
+	return namesUnder(domain, raw), false, nil
 }
 
 // namesUnder normalises names, drops wildcard labels and keeps the ones that
