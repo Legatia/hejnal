@@ -458,7 +458,7 @@ func TestScriptSecretsSkipExamples(t *testing.T) {
 	}
 	real := strings.ReplaceAll(string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE " + "KEY", Bytes: der})), "\n", `\n`)
 	begin, end := "-----BEGIN PRIVATE "+"KEY-----", "-----END PRIVATE "+"KEY-----"
-	examples := `var aws={accessKeyId:"AKIA` + `IOSFODNN7EXAMPLE",secretAccessKey:"wJalrXUtnFEMI/K7MDENG/` + `bPxRfiCYEXAMPLEKEY"};` +
+	examples := `var aws={accessKeyId:"AKIA` + `IOSFODNN7EXAMPLE",secretAccessKey:"wJalrXUtnFEMI/K7MDENG/` + `bPxRfiCYEXAMPLEKEY"};` + // hejnal:allow (the example key from AWS's documentation)
 		`var doc="` + begin + `\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ...\n-----END";` +
 		`var tpl="` + begin + `\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ\n` + end + `";` +
 		`if(k.indexOf("` + begin + `")===0){}`

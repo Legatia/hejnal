@@ -47,7 +47,21 @@ jobs:
             "deps FuzzParse" "iac FuzzHCL" "iac FuzzYAML"; do
             set -- $target
             echo "== $1 $2"
-            go test -run='^$' -fuzz="^$2\$" -fuzztime=20s "./$1/"
+            # Go's fuzzer now and then fails as the time runs out with
+            # "context deadline exceeded" and no failing input. That says
+            # nothing about the code, so such a run gets one more try.
+            for attempt in 1 2; do
+              status=0
+              go test -run='^$' -fuzz="^$2\$" -fuzztime=20s "./$1/" > fuzz.log 2>&1 || status=$?
+              cat fuzz.log
+              if [ "$status" -eq 0 ]; then
+                break
+              fi
+              if [ "$attempt" -eq 2 ] || grep -q 'Failing input written' fuzz.log || ! grep -q 'context deadline exceeded' fuzz.log; then
+                exit "$status"
+              fi
+              echo "== $1 $2: the fuzzer timed out without a failing input; trying once more"
+            done
           done
       - name: Keep crashing inputs
         if: failure()
@@ -91,6 +105,28 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Build
         run: go build -trimpath -o /dev/null ./cmd/hejnal
+      # The fixtures under testdata are vulnerable on purpose.
+      - name: Hejnal scans its own code
+        run: go run ./cmd/hejnal code scan -exclude testdata -state "$RUNNER_TEMP/hejnal-state" .
+
+  # Runs the action from this checkout with the latest release, the way a
+  # user's workflow does, so a mistake in action.yml shows up here.
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: scan
+        uses: ./
+        with:
+          version: 0.6.0
+          fail-on: none
+      - name: The SARIF file is valid JSON
+        env:
+          SARIF: ${{ steps.scan.outputs.sarif }}
+        run: python3 -m json.tool "$SARIF" > /dev/null
 
   # Builds the release locally, without publishing or signing, so a broken
   # release config shows up here rather than when a tag is pushed.
