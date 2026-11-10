@@ -30,9 +30,10 @@ func world(s string) bool {
 }
 
 // openPorts describes the admin ports a rule opens between from and to, or
-// "" if none. all is set for "every port".
+// "" if none. all is set for "every port". A rule from 0 to 0 means every
+// port only when it covers every protocol, which the caller passes as all.
 func openPorts(from, to int, all bool) string {
-	if all || from <= 0 && to >= 65535 || from == 0 && to == 0 {
+	if all || from <= 0 && to >= 65535 {
 		return "every port"
 	}
 	var hit []string
@@ -55,6 +56,25 @@ func allProtocols(p any) bool {
 	return s == "-1" || s == "all" || s == "*"
 }
 
+// icmp reports whether a rule is for ICMP, whose "ports" are message types
+// and codes, not ports.
+func icmp(p any) bool {
+	switch strings.ToLower(strings.TrimSpace(fmt.Sprint(p))) {
+	case "icmp", "icmpv6", "1", "58":
+		return true
+	}
+	return false
+}
+
+// hostPath cleans a host path for the hostMounts lookup, so "/var/run/" and
+// "/var/run" match alike and "/" stays "/".
+func hostPath(p string) string {
+	if t := strings.TrimRight(p, "/"); t != "" || p == "" {
+		return t
+	}
+	return "/"
+}
+
 // ingress checks one AWS-style ingress rule.
 func (c *checker) ingress(resource string, line int, from, to, proto any, cidrs ...any) {
 	var open []string
@@ -65,7 +85,7 @@ func (c *checker) ingress(resource string, line int, from, to, proto any, cidrs 
 			}
 		}
 	}
-	if len(open) == 0 {
+	if len(open) == 0 || icmp(proto) {
 		return
 	}
 	f, okf := number(from)
@@ -398,10 +418,7 @@ func (c *checker) kubernetes(m map[string]any) {
 		}
 	}
 	for _, v := range list(get(spec, "volumes")) {
-		p := strings.TrimRight(str(get(v, "hostPath", "path")), "/")
-		if p == "" {
-			p = str(get(v, "hostPath", "path"))
-		}
+		p := hostPath(str(get(v, "hostPath", "path")))
 		if what, ok := hostMounts[p]; ok {
 			c.add(RulePrivileged, resource, lineOf(v, line), "volume "+str(get(v, "name"))+" mounts "+what+" ("+p+")")
 		}
@@ -442,11 +459,8 @@ func (c *checker) compose(m map[string]any) {
 			if s, ok := v.(string); ok {
 				src, _, _ = strings.Cut(s, ":")
 			}
-			src = strings.TrimRight(src, "/")
-			if what, ok := hostMounts[src]; ok || src == "" && str(v) != "" && strings.HasPrefix(str(v), "/:") {
-				if !ok {
-					what, src = hostMounts["/"], "/"
-				}
+			src = hostPath(src)
+			if what, ok := hostMounts[src]; ok {
 				c.add(RulePrivileged, resource, line, "mounts "+what+" ("+src+")")
 			}
 		}

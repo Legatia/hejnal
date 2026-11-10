@@ -114,12 +114,12 @@ func (p *yamlParser) seq(depth, indent int) any {
 			break
 		}
 		rest := strings.TrimSpace(strings.TrimPrefix(l.text, "-"))
-		if rest == "" {
+		if rest == "" || nodeProperty(rest) {
 			p.i++
 			if p.i < len(p.lines) && p.lines[p.i].indent > indent {
-				out = append(out, p.block(depth+1, p.lines[p.i].indent))
+				out = append(out, propertyNode(rest, p.block(depth+1, p.lines[p.i].indent)))
 			} else {
-				out = append(out, nil)
+				out = append(out, scalar(rest))
 			}
 			continue
 		}
@@ -147,7 +147,7 @@ func (p *yamlParser) mapping(depth, indent int) any {
 			break
 		}
 		p.i++
-		if v != "" {
+		if v != "" && !nodeProperty(v) {
 			m[k] = scalar(v)
 			continue
 		}
@@ -155,13 +155,31 @@ func (p *yamlParser) mapping(depth, indent int) any {
 			next := p.lines[p.i]
 			// A sequence may sit at its key's own indent.
 			if next.indent > indent || next.indent == indent && (next.text == "-" || strings.HasPrefix(next.text, "- ")) {
-				m[k] = p.block(depth+1, next.indent)
+				m[k] = propertyNode(v, p.block(depth+1, next.indent))
 				continue
 			}
 		}
-		m[k] = nil
+		m[k] = scalar(v)
 	}
 	return m
+}
+
+// nodeProperty reports whether v is only an anchor or a tag, such as
+// "&common" or "!If", so the node it belongs to follows on the next lines.
+// Without this, the lines below would end the mapping and everything after
+// them would be lost.
+func nodeProperty(v string) bool {
+	return (v[0] == '&' || v[0] == '!') && !strings.ContainsAny(v, " \t")
+}
+
+// propertyNode returns the node read below an anchor or a tag. An anchor
+// keeps the node; a tag such as CloudFormation's !If computes the value,
+// so it reads as Unknown.
+func propertyNode(prop string, node any) any {
+	if prop != "" && prop[0] == '!' {
+		return Unknown{}
+	}
+	return node
 }
 
 // splitKey splits "key: value" outside quotes and flow collections.
