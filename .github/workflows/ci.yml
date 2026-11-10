@@ -43,7 +43,8 @@ jobs:
             "fingerprint FuzzIdentify" "fingerprint FuzzBanner" \
             "kev FuzzParse" "euvd FuzzParse" "euvd FuzzParseRecord" \
             "nvd FuzzParseAndCheck" "nvd FuzzParseVersion" \
-            "scope FuzzParse" "leaks FuzzScanReader"; do
+            "scope FuzzParse" "leaks FuzzScanReader" \
+            "deps FuzzParse" "iac FuzzHCL" "iac FuzzYAML"; do
             set -- $target
             echo "== $1 $2"
             go test -run='^$' -fuzz="^$2\$" -fuzztime=20s "./$1/"

@@ -323,3 +323,20 @@ func (c *cappedBuffer) Write(b []byte) (int, error) {
 }
 
 func (c *cappedBuffer) String() string { return c.buf.String() }
+
+// Merge adds to the leaks found in the working tree those found only in the
+// Git history. A secret counts once per file, by its fingerprint.
+func Merge(tree, hist []Leak) []Leak {
+	seen := map[string]bool{}
+	for _, l := range tree {
+		seen[l.Fingerprint+"|"+l.File] = true
+	}
+	out := slices.Clone(tree)
+	for _, l := range hist {
+		if !seen[l.Fingerprint+"|"+l.File] {
+			seen[l.Fingerprint+"|"+l.File] = true
+			out = append(out, l)
+		}
+	}
+	return out
+}

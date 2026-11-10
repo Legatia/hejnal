@@ -88,7 +88,7 @@ func (e *Engine) ScanCode(ctx context.Context, req CodeRequest) (*state.CodeScan
 				if err != nil {
 					scan.Notes = append(scan.Notes, "Git history not scanned: "+err.Error())
 				}
-				ls = mergeLeaks(ls, hist)
+				ls = leaks.Merge(ls, hist)
 			}
 			for i := range ls {
 				ls[i].File = prefix + ls[i].File
@@ -216,21 +216,4 @@ func (e *Engine) codeFindings(ctx context.Context, cat *kev.Catalog, now time.Ti
 	slices.Sort(cves)
 	match.RescoreDependencies(out, cat, e.epssScores(ctx, slices.Compact(cves)), now)
 	return out, nil
-}
-
-// mergeLeaks adds secrets from the Git history that the working tree scan
-// did not already report in the same file.
-func mergeLeaks(tree, hist []leaks.Leak) []leaks.Leak {
-	seen := map[string]bool{}
-	for _, l := range tree {
-		seen[l.Fingerprint+"|"+l.File] = true
-	}
-	out := slices.Clone(tree)
-	for _, l := range hist {
-		if !seen[l.Fingerprint+"|"+l.File] {
-			seen[l.Fingerprint+"|"+l.File] = true
-			out = append(out, l)
-		}
-	}
-	return out
 }
