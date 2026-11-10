@@ -100,7 +100,10 @@ func parseYarnLock(name string, data []byte) ([]Package, error) {
 			return
 		}
 		if line[0] != ' ' && strings.HasSuffix(line, ":") {
-			first := strings.SplitN(strings.TrimSuffix(line, ":"), ",", 2)[0]
+			// Yarn 1 quotes each descriptor ("a@^1", "a@^1.1":); Yarn 2+
+			// quotes the whole list ("a@npm:^1, a@npm:^1.1":). Trimming the
+			// quotes from the first descriptor handles both.
+			first := strings.Trim(strings.SplitN(strings.TrimSuffix(line, ":"), ",", 2)[0], " \"'")
 			cur, curLine = npmName(first), n
 			if strings.Contains(first, "@workspace:") || strings.Contains(first, "@patch:") || cur == "__metadata" {
 				cur = ""
@@ -238,7 +241,7 @@ func tomlPackages(data []byte) []map[string]string {
 					v = v[1 : end+1]
 				}
 			} else if strings.HasPrefix(v, "{") {
-				v = "table"
+				v = "table " + v // an inline table, such as uv's sources
 			}
 			cur[k] = v
 		}
@@ -261,8 +264,10 @@ func atoi(s string) int {
 func parsePyTOMLLock(name string, data []byte) ([]Package, error) {
 	var out []Package
 	for _, t := range tomlPackages(data) {
-		// uv lists the project itself, from a local source.
-		if strings.HasPrefix(t["source"], "table") && strings.HasSuffix(name, "uv.lock") && t["version"] == "" {
+		// uv lists the project itself, and any local or Git package, with a
+		// source such as { editable = "." }. Only registry packages come
+		// from PyPI.
+		if strings.HasSuffix(name, "uv.lock") && strings.HasPrefix(t["source"], "table") && !strings.Contains(t["source"], "registry") {
 			continue
 		}
 		out = append(out, Package{Ecosystem: PyPI, Name: pyName(t["name"]), Version: t["version"], File: name, Line: atoi(t["#line"]), Dev: t["category"] == "dev"})

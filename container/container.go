@@ -531,7 +531,7 @@ func (img *Image) analyse(files map[string][]byte, found map[string][]deps.Packa
 func cleanPackages(pkgs []deps.Package) []deps.Package {
 	var out []deps.Package
 	for _, p := range pkgs {
-		if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.Version) == "" || strings.ContainsAny(p.Version, " /<>=^~*|") {
+		if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.Version) == "" || strings.ContainsAny(p.Version, " /<>=^*|") {
 			continue
 		}
 		out = append(out, p)

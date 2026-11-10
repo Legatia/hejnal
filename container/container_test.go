@@ -10,9 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -61,15 +64,59 @@ Status: deinstall ok config-files
 Version: 1.0
 `
 
+var (
+	linuxProgOnce sync.Once
+	linuxProg     []byte
+	linuxProgErr  error
+)
+
+// goProgram returns a Linux Go program, as images hold: the test binary
+// itself on Linux, or elsewhere (where it is Mach-O or PE) a small one
+// built for Linux.
+func goProgram(t *testing.T) []byte {
+	t.Helper()
+	if runtime.GOOS == "linux" {
+		self, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prog, err := os.ReadFile(self)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return prog
+	}
+	linuxProgOnce.Do(func() {
+		goTool, err := exec.LookPath("go")
+		if err != nil {
+			linuxProgErr = err
+			return
+		}
+		dir, err := os.MkdirTemp("", "hejnal-goprog")
+		if err != nil {
+			linuxProgErr = err
+			return
+		}
+		defer os.RemoveAll(dir)
+		os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/tool\n\ngo 1.22\n"), 0o600)
+		os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o600)
+		cmd := exec.Command(goTool, "build", "-o", "tool", ".")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS=")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			linuxProgErr = fmt.Errorf("%v: %s", err, out)
+			return
+		}
+		linuxProg, linuxProgErr = os.ReadFile(filepath.Join(dir, "tool"))
+	})
+	if linuxProgErr != nil {
+		t.Skipf("cannot build a Linux Go program here: %v", linuxProgErr)
+	}
+	return linuxProg
+}
+
 func layers(t *testing.T) [][]byte {
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	prog, err := os.ReadFile(self)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prog := goProgram(t)
 	one := tarOf(t, []file{
 		{name: "etc/os-release", data: []byte("PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nID=debian\nVERSION_ID=\"12\"\n")},
 		{name: "var/lib/dpkg/status", data: []byte(dpkg)},
@@ -204,5 +251,14 @@ func TestAlpineAndUnknown(t *testing.T) {
 	}
 	if _, err := Read(context.Background(), filepath.Join(t.TempDir(), "missing.tar")); err == nil {
 		t.Error("no error for a missing file")
+	}
+}
+
+func TestSecurityUpdateVersions(t *testing.T) {
+	// Packages patched by a Debian or Ubuntu security update must be kept.
+	pkgs := parseDpkg([]byte("Package: libssl3\nStatus: install ok installed\nSource: openssl (3.0.15-1~deb12u1)\nVersion: 3.0.15-1~deb12u1\n\nPackage: openssh-client\nStatus: install ok installed\nSource: openssh\nVersion: 1:8.9p1-3ubuntu0.10~22.04\n"), "Debian:12", "/var/lib/dpkg/status")
+	got := cleanPackages(pkgs)
+	if len(got) != 2 || got[0].Version != "1:8.9p1-3ubuntu0.10~22.04" || got[1].Version != "3.0.15-1~deb12u1" {
+		t.Errorf("security updates dropped: %+v", got)
 	}
 }

@@ -120,3 +120,79 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+func TestVersionWithTilde(t *testing.T) {
+	// Debian and Ubuntu security updates carry a "~"; ranges start with one.
+	for v, want := range map[string]bool{
+		"3.0.15-1~deb12u1": true,
+		"2.36-9+deb12u4":   true,
+		"1:9.2p1-2~22.04":  true,
+		"1.0.0~beta1":      true,
+		"~1.2.3":           false,
+		"^1.0.0":           false,
+		">=1.0":            false,
+	} {
+		if got := validVersion(v); got != want {
+			t.Errorf("validVersion(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
+func TestYarnBerryDescriptorLists(t *testing.T) {
+	lock := `__metadata:
+  version: 8
+
+"@babel/core@npm:^7.0.0, @babel/core@npm:^7.1.0":
+  version: 7.23.2
+  resolution: "@babel/core@npm:7.23.2"
+
+"lodash@npm:^4.17.0, lodash@npm:^4.17.21":
+  version: 4.17.21
+
+"left-pad@npm:1.3.0":
+  version: 1.3.0
+`
+	pkgs, _ := Parse("yarn.lock", []byte(lock))
+	var got []string
+	for _, p := range pkgs {
+		got = append(got, p.Name+" "+p.Version)
+	}
+	sort.Strings(got)
+	if strings.Join(got, ", ") != "@babel/core 7.23.2, left-pad 1.3.0, lodash 4.17.21" {
+		t.Errorf("yarn 2+ names: %q", got)
+	}
+	// Yarn 1 quotes each descriptor on its own.
+	pkgs, _ = Parse("yarn.lock", []byte("\"@babel/core@^7.0.0\", \"@babel/core@^7.1.0\":\n  version \"7.23.2\"\n"))
+	if len(pkgs) != 1 || pkgs[0].Name != "@babel/core" {
+		t.Errorf("yarn 1 names: %+v", pkgs)
+	}
+}
+
+func TestUvLocalPackages(t *testing.T) {
+	lock := `version = 1
+
+[[package]]
+name = "myapp"
+version = "0.1.0"
+source = { editable = "." }
+
+[[package]]
+name = "shared"
+version = "0.2.0"
+source = { directory = "../shared" }
+
+[[package]]
+name = "forked"
+version = "1.0.0"
+source = { git = "https://github.com/example/forked?rev=abc#abc" }
+
+[[package]]
+name = "requests"
+version = "2.25.1"
+source = { registry = "https://pypi.org/simple" }
+`
+	pkgs, _ := Parse("uv.lock", []byte(lock))
+	if len(pkgs) != 1 || pkgs[0].Name != "requests" {
+		t.Errorf("only registry packages are PyPI's: %+v", pkgs)
+	}
+}

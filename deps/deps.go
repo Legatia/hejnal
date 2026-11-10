@@ -226,11 +226,14 @@ func validName(s string) bool {
 
 // validVersion accepts versions a registry gives out, and refuses paths,
 // URLs, Git references and ranges, which no advisory can be matched to.
+// A "~" inside a version is allowed: Debian and Ubuntu use it for every
+// security update (3.0.15-1~deb12u1). A range such as "~1.2" is still
+// refused, because a version must start with a digit.
 func validVersion(s string) bool {
 	if s == "" || len(s) > 128 {
 		return false
 	}
-	if strings.ContainsAny(s, " /\\<>=^~*|") || strings.Contains(s, "://") {
+	if strings.ContainsAny(s, " /\\<>=^*|") || strings.Contains(s, "://") {
 		return false
 	}
 	for _, pre := range []string{"file:", "link:", "git", "http", "workspace:", "portal:", "patch:", "npm:", "github:", "dev-"} {
