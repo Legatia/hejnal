@@ -439,12 +439,32 @@ func TestCrtSh(t *testing.T) {
 		t.Errorf("names = %v, want %v", names, want)
 	}
 
-	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "busy", http.StatusBadGateway)
-	}))
-	defer down.Close()
-	if _, err := (&CrtSh{Client: down.Client(), BaseURL: down.URL}).Subdomains(context.Background(), "example.test"); err == nil {
-		t.Error("expected an error on HTTP 502")
+	// An error answer gets two more tries. crt.sh answers 404 for a moment
+	// too, and 200 with an empty list when it knows no certificates.
+	for _, tc := range []struct {
+		status, failures, wantHits int
+		wantErr                    bool
+	}{
+		{http.StatusBadGateway, 2, 3, false},
+		{http.StatusBadGateway, 5, 3, true},
+		{http.StatusNotFound, 1, 2, false},
+		{http.StatusNotFound, 5, 3, true},
+	} {
+		var count atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if int(count.Add(1)) <= tc.failures {
+				http.Error(w, "busy", tc.status)
+				return
+			}
+			io.WriteString(w, `[{"common_name":"a.example.test"}]`)
+		}))
+		c := &CrtSh{Client: srv.Client(), BaseURL: srv.URL, Wait: time.Millisecond}
+		names, err := c.Subdomains(context.Background(), "example.test")
+		srv.Close()
+		hits := int(count.Load())
+		if hits != tc.wantHits || (err != nil) != tc.wantErr || (err == nil && !slices.Equal(names, []string{"a.example.test"})) {
+			t.Errorf("HTTP %d for the first %d answers: %d requests, names %v, error %v", tc.status, tc.failures, hits, names, err)
+		}
 	}
 }
 
