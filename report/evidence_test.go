@@ -211,3 +211,87 @@ func TestEvidenceControlsAndJSON(t *testing.T) {
 		t.Errorf("%d fixed, want 2", fixed)
 	}
 }
+
+// ruledOutHistory is the README's quick start: a run that sees Next.js
+// without a version, then a run with -checks that sees a version outside
+// the affected range. conf is how sure the first run was.
+func ruledOutHistory(conf string) []*state.Snapshot {
+	next := kevFinding("www.example.com", "CVE-2025-55182", match.High)
+	next.TechID, next.Technology, next.DateAdded, next.Confidence = "nextjs", "Next.js", "2025-12-05", conf
+	ruled := next
+	ruled.Version, ruled.Confidence, ruled.Score, ruled.Severity = "16.4.5", match.ConfidenceRuledOut, 20, match.Low
+	return []*state.Snapshot{snap("2026-11-10", 1, next), snap("2026-11-12", 1, ruled)}
+}
+
+// A flaw reported without a version and then ruled out by the version was
+// never confirmed, so the evidence must not count it as found and fixed.
+func TestEvidenceRuledOutIsNotAFix(t *testing.T) {
+	_, _, exps := Exposures(ruledOutHistory(match.ConfidenceProduct))
+	if len(exps) != 1 || !exps[0].RuledOut || exps[0].Open() {
+		t.Fatalf("exposures: %+v", exps)
+	}
+	var b strings.Builder
+	if err := Evidence(&b, ruledOutHistory(match.ConfidenceProduct), meta("en"), EvidenceOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		"<b>0</b><span>Exploited-flaw items found</span>",
+		"<b>0</b><span>Of them fixed</span>",
+		"No flaws known to be exploited were found in this period.",
+		`<span class="st fixed">Ruled out by version</span>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("evidence is missing %q", want)
+		}
+	}
+	for _, not := range []string{"<span>Median days to fix</span>", "the median time from detection to fix", `<span class="st fixed">Fixed</span>`} {
+		if strings.Contains(out, not) {
+			t.Errorf("evidence counts a ruled-out item as fixed: found %q", not)
+		}
+	}
+
+	b.Reset()
+	if err := EvidenceJSON(&b, ruledOutHistory(match.ConfidenceProduct), meta("en"), EvidenceOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	var rec EvidenceRecord
+	if err := json.Unmarshal([]byte(b.String()), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.Exploited) != 1 {
+		t.Fatalf("exploited: %+v", rec.Exploited)
+	}
+	if it := rec.Exploited[0]; it.Status != "ruled-out" || it.Fixed != nil || it.RuledOut == nil || it.DaysExposed != 0 {
+		t.Errorf("JSON item: %+v", it)
+	}
+}
+
+// An item seen with an affected version and later with a fixed one was
+// upgraded: that is a real fix.
+func TestEvidenceUpgradeIsAFix(t *testing.T) {
+	_, _, exps := Exposures(ruledOutHistory(match.ConfidenceVersion))
+	if len(exps) != 1 || exps[0].RuledOut || exps[0].Open() || exps[0].Days(time.Time{}) != 2 {
+		t.Fatalf("exposures: %+v", exps)
+	}
+	var b strings.Builder
+	if err := Evidence(&b, ruledOutHistory(match.ConfidenceVersion), meta("en"), EvidenceOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<b>1</b><span>Exploited-flaw items found</span>", "<b>1</b><span>Of them fixed</span>", `<span class="st fixed">Fixed</span>`} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("evidence is missing %q", want)
+		}
+	}
+}
+
+// An item ruled out and then seen without a version again is open again.
+func TestExposureReopensAfterRuledOut(t *testing.T) {
+	h := ruledOutHistory(match.ConfidenceProduct)
+	again := h[0].Findings[0]
+	h = append(h, snap("2026-11-14", 1, again))
+	_, _, exps := Exposures(h)
+	if len(exps) != 1 || exps[0].RuledOut || !exps[0].Open() {
+		t.Fatalf("exposures: %+v", exps)
+	}
+}

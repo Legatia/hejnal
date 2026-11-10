@@ -84,3 +84,47 @@ func TestMonthlyIgnoresRunsThatReachedNothing(t *testing.T) {
 		}
 	}
 }
+
+// A flaw reported without a version and then ruled out by the version was
+// never confirmed: the month counts it neither as new nor as fixed, but
+// says what happened to it.
+func TestMonthlyRuledOutIsNotAFix(t *testing.T) {
+	month := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	var b strings.Builder
+	if err := Monthly(&b, ruledOutHistory(match.ConfidenceProduct), month, meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		"New items to fix: 0",
+		"Items fixed: 0",
+		"Still open: 0",
+		"Ruled out by version, never confirmed: 1",
+		"## Ruled out by version this month\n\nHejnal first saw these products without a version",
+		"- [high] Next.js on www.example.com:443",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("monthly report is missing %q\n%s", want, out)
+		}
+	}
+	for _, not := range []string{"Median time to fix", "## Fixed this month", "## Found this month"} {
+		if strings.Contains(out, not) {
+			t.Errorf("monthly report counts a ruled-out item as fixed: found %q\n%s", not, out)
+		}
+	}
+
+	// Seen with an affected version first, it was upgraded: a real fix.
+	b.Reset()
+	if err := Monthly(&b, ruledOutHistory(match.ConfidenceVersion), month, meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	out = b.String()
+	for _, want := range []string{"New items to fix: 1", "Items fixed: 1", "Median time to fix: 2.0 days", "## Fixed this month"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("monthly report is missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Ruled out by version") && strings.Contains(out, "never confirmed") {
+		t.Errorf("an upgrade is shown as ruled out:\n%s", out)
+	}
+}

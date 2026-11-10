@@ -49,6 +49,14 @@ type Exposure struct {
 	// AtStart is set when the item was already there in the first run, so
 	// it was exposed for longer than Hejnal saw.
 	AtStart bool
+	// RuledOut is set when Hejnal only ever saw the product without a
+	// version, and the run at Fixed saw a version outside the affected
+	// range. The flaw was never confirmed, so the item counts neither as
+	// found nor as fixed.
+	RuledOut bool
+	// confirmed is set once a run saw the item with more than a product
+	// name: an affected version, or the problem itself.
+	confirmed bool
 }
 
 // Open reports whether the item was still there in the latest run.
@@ -86,8 +94,15 @@ func Exposures(history []*state.Snapshot) (runs []*state.Snapshot, unreachable i
 	}
 	idx := map[string]int{}
 	present := map[string]bool{}
+	ruledOut := map[string]bool{}
 	for i, s := range runs {
 		clear(present)
+		clear(ruledOut)
+		for _, f := range s.Findings {
+			if f.RuledOut() {
+				ruledOut[match.GroupKey(f)] = true
+			}
+		}
 		for _, g := range match.Groups(match.Active(s.Findings)) {
 			present[g.Key] = true
 			j, ok := idx[g.Key]
@@ -97,19 +112,24 @@ func Exposures(history []*state.Snapshot) (runs []*state.Snapshot, unreachable i
 				out = append(out, Exposure{FirstSeen: s.GeneratedAt, AtStart: i == 0})
 			}
 			e := &out[j]
-			e.Group, e.LastSeen, e.Fixed = g, s.GeneratedAt, time.Time{}
+			e.Group, e.LastSeen, e.Fixed, e.RuledOut = g, s.GeneratedAt, time.Time{}, false
 			e.Accepted = slices.ContainsFunc(g.Findings, func(f match.Finding) bool { return f.Accepted != nil })
 			for _, f := range g.Findings {
+				if f.Confidence != match.ConfidenceProduct {
+					e.confirmed = true
+				}
 				if l := f.FirstListed(); l != "" && (e.Listed == "" || l < e.Listed) {
 					e.Listed = l
 				}
 			}
 		}
 		// Items missing from this run were fixed by it, if they were there
-		// in the run before.
+		// in the run before. An item flagged without a version, which this
+		// run rules out by the version it saw, was a false alarm instead.
 		for key, j := range idx {
 			if !present[key] && out[j].Fixed.IsZero() && out[j].LastSeen.Before(s.GeneratedAt) {
 				out[j].Fixed = s.GeneratedAt
+				out[j].RuledOut = ruledOut[key] && !out[j].confirmed
 			}
 		}
 	}
@@ -228,10 +248,18 @@ func Evidence(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOptions)
 	}
 
 	// Exploited flaws: how long each was exposed and how fast it was fixed.
-	var kev []Exposure
+	// Items ruled out by version were never confirmed: they are listed, but
+	// count neither as found nor as fixed.
+	var kev, ruledOut []Exposure
 	var allFix, kevFix []float64
 	var accepted []Exposure
 	for _, e := range exps {
+		if e.RuledOut {
+			if e.Group.Kind == match.KindKEV {
+				ruledOut = append(ruledOut, e)
+			}
+			continue
+		}
 		if !e.Open() {
 			allFix = append(allFix, e.Days(now))
 		}
@@ -317,14 +345,16 @@ func Evidence(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOptions)
 		}
 		return kev[i].FirstSeen.After(kev[j].FirstSeen)
 	})
-	for i, e := range kev {
+	sort.SliceStable(ruledOut, func(i, j int) bool { return ruledOut[i].FirstSeen.After(ruledOut[j].FirstSeen) })
+	listed := slices.Concat(kev, ruledOut)
+	for i, e := range listed {
 		if i == evidenceRows {
-			d.MoreRows = tr("ev.more", len(kev)-evidenceRows)
+			d.MoreRows = tr("ev.more", len(listed)-evidenceRows)
 			break
 		}
 		d.Rows = append(d.Rows, exposureRow(tr, lang, e, now))
 	}
-	if len(kev) == 0 {
+	if len(listed) == 0 {
 		d.NoExploited = tr("ev.noexploited")
 	}
 	for _, e := range accepted {
@@ -363,6 +393,10 @@ func exposureRow(tr translator, lang string, e Exposure, now time.Time) evRow {
 		r.Days = "≥ " + r.Days
 	}
 	switch {
+	case e.RuledOut:
+		// Never confirmed, so there is no exposure to count.
+		r.Days = ""
+		r.Status, r.StatusClass = tr("label.ruledout"), "fixed"
 	case e.Accepted && e.Open():
 		r.Status, r.StatusClass = tr("ev.st.accepted"), "medium"
 	case e.Open():
@@ -395,7 +429,7 @@ func evidenceMonths(lang string, runs []*state.Snapshot, exps []Exposure) []evMo
 	}
 	fixes := map[int][]float64{}
 	for _, e := range exps {
-		if e.Group.Kind != match.KindKEV || e.Open() {
+		if e.Group.Kind != match.KindKEV || e.Open() || e.RuledOut {
 			continue
 		}
 		if i, ok := idx[e.Fixed.UTC().Format("2006-01")]; ok {

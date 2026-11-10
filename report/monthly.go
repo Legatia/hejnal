@@ -80,6 +80,9 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 	firstSeen := map[string]time.Time{}
 	lastSeen := map[string]time.Time{}
 	lastFinding := map[string]match.Finding{}
+	// confirmed holds the findings a run saw with more than a product name:
+	// an affected version, or the problem itself.
+	confirmed := map[string]bool{}
 	for _, s := range snaps {
 		if !s.GeneratedAt.Before(end) {
 			break
@@ -87,6 +90,9 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 		for _, f := range match.Active(s.Findings) {
 			if _, ok := firstSeen[f.Key]; !ok {
 				firstSeen[f.Key] = s.GeneratedAt
+			}
+			if f.Confidence != match.ConfidenceProduct {
+				confirmed[f.Key] = true
 			}
 			lastSeen[f.Key] = s.GeneratedAt
 			lastFinding[f.Key] = f
@@ -98,8 +104,25 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 	open := match.Open(last.Findings)
 	_, accepted := match.SplitAccepted(last.Findings)
 	present := map[string]bool{}
+	presentItem := map[string]bool{}
 	for _, f := range match.Active(last.Findings) {
 		present[f.Key] = true
+		presentItem[match.GroupKey(f)] = true
+	}
+	// closedBy returns the run of the month that first found a finding
+	// gone, and whether that run ruled it out by the version it saw. A flaw
+	// reported without a version and then ruled out was never confirmed: it
+	// is neither new nor fixed.
+	closedBy := func(key string) (at time.Time, ruledOut bool) {
+		for _, s := range in {
+			if s.GeneratedAt.After(lastSeen[key]) {
+				ruledOut = !confirmed[key] && slices.ContainsFunc(s.Findings, func(f match.Finding) bool {
+					return f.Key == key && f.RuledOut()
+				})
+				return s.GeneratedAt, ruledOut
+			}
+		}
+		return time.Time{}, false
 	}
 	// Candidates for "fixed": open at the start of the month or seen during it.
 	candidates := map[string]bool{}
@@ -113,21 +136,29 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 			candidates[f.Key] = true
 		}
 	}
-	var newFs, fixedFs []match.Finding
+	var newFs, fixedFs, ruledFs []match.Finding
 	var fixDays []float64
 	for key := range candidates {
 		f := lastFinding[key]
+		// Fixed by the first run after it was last seen.
+		at, ruledOut := time.Time{}, false
+		if !present[key] {
+			at, ruledOut = closedBy(key)
+		}
+		if ruledOut {
+			// Not worth a line while other flaws keep the item open.
+			if !presentItem[match.GroupKey(f)] {
+				ruledFs = append(ruledFs, f)
+			}
+			continue
+		}
 		if fs := firstSeen[key]; !fs.Before(start) && fs.Before(end) {
 			newFs = append(newFs, f)
 		}
 		if !present[key] {
 			fixedFs = append(fixedFs, f)
-			// Fixed by the first run after it was last seen.
-			for _, s := range in {
-				if s.GeneratedAt.After(lastSeen[key]) {
-					fixDays = append(fixDays, s.GeneratedAt.Sub(firstSeen[key]).Hours()/24)
-					break
-				}
+			if !at.IsZero() {
+				fixDays = append(fixDays, at.Sub(firstSeen[key]).Hours()/24)
 			}
 		}
 	}
@@ -152,18 +183,24 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 		fmt.Fprintf(&b, "- %s\n", tr("mon.median", median(fixDays)))
 	}
 	fmt.Fprintf(&b, "- %s\n", tr("mon.open", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
+	if rg := match.Groups(ruledFs); len(rg) > 0 {
+		fmt.Fprintf(&b, "- %s\n", tr("mon.ruledout", len(rg)))
+	}
 	if ag := match.Groups(accepted); len(ag) > 0 {
 		fmt.Fprintf(&b, "- %s\n", tr("mon.accepted", len(ag)))
 	}
 	b.WriteString("\n")
 
 	// writeList lists items, adding what note says about each, if anything.
-	writeList := func(heading string, fs []match.Finding, note func(match.Group) string) {
+	writeList := func(heading, intro string, fs []match.Finding, note func(match.Group) string) {
 		gs := match.Groups(fs)
 		if len(gs) == 0 {
 			return
 		}
 		fmt.Fprintf(&b, "## %s\n\n", heading)
+		if intro != "" {
+			fmt.Fprintf(&b, "%s\n\n", intro)
+		}
 		for i, g := range gs {
 			if i == 15 {
 				fmt.Fprintf(&b, "- %s\n", tr("sum.more", len(gs)-15))
@@ -193,10 +230,11 @@ func Monthly(w io.Writer, history []*state.Snapshot, month time.Time, m Meta) er
 		}
 		return ""
 	}
-	writeList(tr("mon.newlist"), newFs, none)
-	writeList(tr("mon.fixedlist"), fixedFs, none)
-	writeList(tr("mon.openlist"), open, since)
-	writeList(tr("acc.title"), accepted, until)
+	writeList(tr("mon.newlist"), "", newFs, none)
+	writeList(tr("mon.fixedlist"), "", fixedFs, none)
+	writeList(tr("mon.openlist"), "", open, since)
+	writeList(tr("mon.ruledoutlist"), tr("mon.ruledoutintro"), ruledFs, none)
+	writeList(tr("acc.title"), "", accepted, until)
 
 	fmt.Fprintf(&b, "---\n\n%s\n", tr("mon.footer"))
 	_, err := io.WriteString(w, b.String())
