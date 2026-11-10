@@ -47,7 +47,8 @@ Usage:
   hejnal discover  [-scope scope.json] [flags]  find hosts and identify their software
   hejnal feeds     [flags]                      download the CISA and ENISA lists of exploited flaws
   hejnal match     [flags]                      match the last inventory against the catalog
-  hejnal report    fixlist|nis2|monthly [flags] print a report from the saved runs
+  hejnal report    <report> [flags]             print a report from the saved runs: fixlist,
+                                                overview, evidence, nis2 or monthly
   hejnal accept    -item <id> -reason "..."     record that you checked an item and accept it
   hejnal accept    -list | -remove <id>         list accepted items, or remove an acceptance
   hejnal leaks     scan|breaches [flags]        find secrets in code and breached accounts

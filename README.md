@@ -13,7 +13,7 @@ The name comes from the *hejnał mariacki*, the bugle call played every hour
 from St Mary's Church in Kraków. Legend has it a trumpeter once used it to warn
 the city of an attack.
 
-> **Status:** early (v0.2). The open-source core works end to end. Hosted,
+> **Status:** early. The open-source core works end to end. Hosted,
 > managed and partner (MSP) editions are built on top of it as a separate
 > commercial product.
 
