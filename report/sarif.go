@@ -109,11 +109,13 @@ func sarifRule(g match.Group) (id, name, help string) {
 }
 
 // sarifURI makes a finding's file a relative URI: an image's files are
-// named after the image, whose name may hold a colon.
+// named after the image, whose name may hold a colon. url.PathEscape keeps
+// colons, and "nginx:1.25:/var/..." would then read as a URI with the
+// scheme "nginx", so colons are escaped too.
 func sarifURI(file string) string {
 	parts := strings.Split(file, "/")
 	for i, p := range parts {
-		parts[i] = url.PathEscape(p)
+		parts[i] = strings.ReplaceAll(url.PathEscape(p), ":", "%3A")
 	}
 	return strings.TrimPrefix(strings.Join(parts, "/"), "/")
 }

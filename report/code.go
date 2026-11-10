@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/osv"
 )
 
 // Reports for what `hejnal code scan` finds: dependencies with advisories
@@ -20,44 +21,11 @@ func depFixedIn(g match.Group) string {
 		if f.FixedIn == "" {
 			return ""
 		}
-		if best == "" || compareVersions(f.FixedIn, best) > 0 {
+		if best == "" || osv.Compare(f.FixedIn, best) > 0 {
 			best = f.FixedIn
 		}
 	}
 	return best
-}
-
-// compareVersions orders versions by their numeric parts, enough to pick
-// the highest of several fixes.
-func compareVersions(a, b string) int {
-	pa, pb := strings.FieldsFunc(a, notAlnum), strings.FieldsFunc(b, notAlnum)
-	for i := 0; i < max(len(pa), len(pb)); i++ {
-		var x, y string
-		if i < len(pa) {
-			x = pa[i]
-		}
-		if i < len(pb) {
-			y = pb[i]
-		}
-		if x == y {
-			continue
-		}
-		var xn, yn int
-		_, ex := fmt.Sscan(x, &xn)
-		_, ey := fmt.Sscan(y, &yn)
-		if ex == nil && ey == nil && xn != yn {
-			if xn < yn {
-				return -1
-			}
-			return 1
-		}
-		return strings.Compare(x, y)
-	}
-	return 0
-}
-
-func notAlnum(r rune) bool {
-	return !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
 }
 
 // depStatus sums up a dependency item: malicious, exploited, likely to be,
