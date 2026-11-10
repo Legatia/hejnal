@@ -244,8 +244,8 @@ cd hejnal
 go build -o hejnal ./cmd/hejnal
 ```
 
-Hejnal uses only the Go standard library. It is tested on Linux and used on
-macOS. Releases include Windows builds, which are not tested yet.
+Hejnal uses only the Go standard library. It is tested on Linux and macOS.
+Releases include Windows builds, which are not tested yet.
 
 ## Quick start
 
@@ -512,11 +512,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Legatia/hejnal@v0.6.0
+      - uses: Legatia/hejnal@v0.7.0
         id: hejnal
         with:
           fail-on: high
-          # exclude: testdata        # from v0.7.0
+          # exclude: testdata
           # images: api.tar
           # upload-url: https://your-hejnal-cloud
           # upload-token: ${{ secrets.HEJNAL_UPLOAD_TOKEN }}
