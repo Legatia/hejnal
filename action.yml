@@ -37,7 +37,7 @@ inputs:
     description: The organisation's upload token for Hejnal Cloud; pass it from a secret.
     default: ""
   version:
-    description: Hejnal release to use, such as 0.7.0 (default the version of this action's tag).
+    description: Hejnal release to use, such as 0.7.1 (default the version of this action's tag).
     default: ""
 
 outputs:
@@ -57,7 +57,7 @@ runs:
         set -euo pipefail
         v="${VERSION:-${ACTION_REF#v}}"
         if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-          echo "::error::Use the action at a release tag (Legatia/hejnal@v0.7.0) or set the version input."
+          echo "::error::Use the action at a release tag (Legatia/hejnal@v0.7.1) or set the version input."
           exit 1
         fi
         case "$RUNNER_OS" in Linux) os=linux ;; macOS) os=darwin ;; *) echo "::error::Hejnal's action runs on Linux and macOS runners."; exit 1 ;; esac
