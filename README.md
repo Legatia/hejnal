@@ -624,7 +624,10 @@ exposure with its CVEs and dates, the accepted risks and the controls, for
 compliance tools and audit workpapers.
 
 It is not an audit or a certification, and it says so. Times to fix are
-measured between runs, so they include the wait for the next run. `-since
+measured between runs, so they include the wait for the next run. An item
+Hejnal reported without seeing a version, and later ruled out by the version
+it saw, is listed as ruled out: it counts neither as found nor as fixed, here
+and in the monthly report. `-since
 2026-01-01` limits the period; Hejnal keeps the last 400 runs, over a year of
 daily runs. Same format and options as the overview.
 

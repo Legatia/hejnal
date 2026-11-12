@@ -43,20 +43,24 @@ type EvidenceRecord struct {
 
 // EvidenceItem is one item's exposure.
 type EvidenceItem struct {
-	ID          string     `json:"id"`
-	Kind        match.Kind `json:"kind"`
-	Title       string     `json:"title"`
-	Host        string     `json:"host"`
-	Port        int        `json:"port,omitempty"`
-	Severity    string     `json:"severity"`
-	CVEs        []string   `json:"cves,omitempty"`
-	Listed      string     `json:"listedAsExploited,omitempty"`
-	FirstSeen   time.Time  `json:"firstSeen"`
-	Fixed       *time.Time `json:"fixed,omitempty"`
+	ID        string     `json:"id"`
+	Kind      match.Kind `json:"kind"`
+	Title     string     `json:"title"`
+	Host      string     `json:"host"`
+	Port      int        `json:"port,omitempty"`
+	Severity  string     `json:"severity"`
+	CVEs      []string   `json:"cves,omitempty"`
+	Listed    string     `json:"listedAsExploited,omitempty"`
+	FirstSeen time.Time  `json:"firstSeen"`
+	Fixed     *time.Time `json:"fixed,omitempty"`
+	// RuledOut is when a run saw a version outside the affected range, for
+	// an item flagged before without a version. Such an item was never
+	// confirmed, so it has no fix date and no days exposed.
+	RuledOut    *time.Time `json:"ruledOut,omitempty"`
 	DaysExposed float64    `json:"daysExposed"`
 	// BeforeMonitoring is set when the item was there in the first run.
 	BeforeMonitoring bool              `json:"beforeMonitoring,omitempty"`
-	Status           string            `json:"status"` // open, fixed or accepted
+	Status           string            `json:"status"` // open, fixed, accepted or ruled-out
 	Acceptance       *match.Acceptance `json:"acceptance,omitempty"`
 }
 
@@ -107,6 +111,9 @@ func EvidenceJSON(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOpti
 				}
 			}
 			switch {
+			case e.RuledOut:
+				at := e.Fixed.UTC()
+				it.Status, it.RuledOut, it.DaysExposed = "ruled-out", &at, 0
 			case e.Accepted && e.Open():
 				it.Status, it.Acceptance = "accepted", g.Acceptance()
 			case !e.Open():
