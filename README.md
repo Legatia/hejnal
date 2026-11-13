@@ -512,7 +512,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Legatia/hejnal@v0.7.0
+      - uses: Legatia/hejnal@v0.7.1
         id: hejnal
         with:
           fail-on: high
