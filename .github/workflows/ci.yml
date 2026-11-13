@@ -124,7 +124,7 @@ jobs:
       - id: scan
         uses: ./
         with:
-          version: 0.7.0
+          version: 0.7.1
           # The fixtures under testdata are vulnerable on purpose.
           exclude: testdata
       - name: The SARIF file is valid JSON
