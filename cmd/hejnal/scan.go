@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -121,6 +122,13 @@ func count(n int, one, many string) string {
 		return fmt.Sprintf("1 %s", one)
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// printLines prints lines of text, one per line.
+func printLines(w io.Writer, lines []string) {
+	for _, l := range lines {
+		fmt.Fprintln(w, l)
+	}
 }
 
 // checksTip suggests -checks when a run without it left exploited flaws open
@@ -245,6 +253,7 @@ func (a *app) cmdMatch(ctx context.Context, args []string) error {
 		return err
 	}
 	fmt.Fprint(a.stdout, report.Summary(snap.Findings, ch.Added, ch.Resolved, ch.First, engine.Meta(snap, o.lang)))
+	printLines(a.stdout, report.SystemLines(ch.Systems, o.lang))
 	return e.MarkReported(snap)
 }
 
@@ -304,13 +313,16 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	}
 	summary := report.Summary(snap.Findings, ch.Added, ch.Resolved, ch.First, m)
 	fmt.Fprint(a.stdout, summary)
+	systems := report.SystemLines(ch.Systems, o.lang)
+	printLines(a.stdout, systems)
 	fmt.Fprintf(a.stdout, "Fix list written to %s.\n", o.out)
 	if !o.checks {
 		fmt.Fprint(a.stdout, checksTip(snap.Findings))
 	}
 
-	if len(notifiers) > 0 && (ch.First || len(ch.Added) > 0) {
+	if len(notifiers) > 0 && (ch.First || len(ch.Added) > 0 || len(systems) > 0) {
 		title, lines := report.SummaryLines(snap.Findings, ch.Added, ch.Resolved, ch.First, m)
+		lines = append(lines, systems...)
 		msg := notify.Message{Title: title, Lines: lines, FixList: fix.Bytes()}
 		var errs []error
 		for _, n := range notifiers {

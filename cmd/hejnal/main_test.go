@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -30,8 +31,17 @@ type harness struct {
 	state    string
 	mu       sync.Mutex
 	messages []string
-	failHook bool // the webhook answers 503 once
+	failHook bool   // the webhook answers 503 once
+	php      string // the PHP version the site shows; 8.3.12 when empty
+	siteURL  string
 	hook     *httptest.Server
+}
+
+// setPHP changes the PHP version the site shows.
+func (h *harness) setPHP(v string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.php = v
 }
 
 // newHarness starts a WordPress-on-PHP site and a chat webhook, and writes a
@@ -39,7 +49,10 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	h := &harness{t: t, dir: t.TempDir()}
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Powered-By", "PHP/8.3.12")
+		h.mu.Lock()
+		php := cmp.Or(h.php, "8.3.12")
+		h.mu.Unlock()
+		w.Header().Set("X-Powered-By", "PHP/"+php)
 		io.WriteString(w, `<html><head><title>Sklep</title><meta name="generator" content="WordPress 6.8.1"></head></html>`)
 	}))
 	t.Cleanup(site.Close)
@@ -57,6 +70,7 @@ func newHarness(t *testing.T) *harness {
 	}))
 	t.Cleanup(h.hook.Close)
 
+	h.siteURL = site.URL
 	u, _ := url.Parse(site.URL)
 	scope := `{
   "organization": "Sklep Sp. z o.o.",
@@ -179,6 +193,38 @@ func TestRunEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(out, "New: 0 · Resolved: 0") {
 		t.Errorf("match summary:\n%s", out)
+	}
+}
+
+func TestRunReportsSystemChanges(t *testing.T) {
+	h := newHarness(t)
+	if code, out, errOut := h.run(h.runArgs()...); code != exitOK || strings.Contains(out, "Systems ·") {
+		t.Fatalf("first run exit %d: the first run only records what answers\n%s\n%s", code, out, errOut)
+	}
+	port := strings.TrimPrefix(h.siteURL, "http://127.0.0.1:")
+	updated := "• Updated: PHP 8.3.12 → 8.3.14 on 127.0.0.1 (" + port + ")"
+
+	// PHP is upgraded; the message about it fails to go out.
+	h.setPHP("8.3.14")
+	h.failHook = true
+	code, out, errOut := h.run(h.runArgs()...)
+	if code != exitError || !strings.Contains(out, "Systems · new: 0 · gone: 0 · updated: 1") || !strings.Contains(out, updated) {
+		t.Fatalf("second run exit %d:\n%s\n%s", code, out, errOut)
+	}
+	// The next run delivers it, though nothing else is new.
+	if code, _, errOut = h.run(h.runArgs()...); code != exitOK {
+		t.Fatalf("third run exit %d:\n%s", code, errOut)
+	}
+	if len(h.messages) != 2 || !strings.Contains(h.messages[1], updated) {
+		t.Fatalf("webhook messages = %q", h.messages)
+	}
+	// Once told, it is not news any more.
+	if code, out, _ = h.run(h.runArgs()...); code != exitOK || strings.Contains(out, "Systems ·") || len(h.messages) != 2 {
+		t.Errorf("fourth run exit %d, %d messages:\n%s", code, len(h.messages), out)
+	}
+	recs, err := os.ReadFile(filepath.Join(h.state, "systems.json"))
+	if err != nil || !strings.Contains(string(recs), `"version": "8.3.14"`) {
+		t.Errorf("systems.json: %v\n%s", err, recs)
 	}
 }
 

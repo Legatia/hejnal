@@ -170,7 +170,9 @@ func (e *Engine) Store() state.Store { return e.store }
 // Rules returns the fingerprint rules.
 func (e *Engine) Rules() *fingerprint.Engine { return e.rules }
 
-// Discover finds hosts and services in the scope and saves the inventory.
+// Discover finds hosts and services in the scope, saves the inventory and
+// adds it to the record of the services seen, keeping what changed until
+// people are told.
 func (e *Engine) Discover(ctx context.Context, s *scope.Scope) (*inventory.Inventory, error) {
 	opts := discover.Options{
 		Scope:       s,
@@ -195,7 +197,28 @@ func (e *Engine) Discover(ctx context.Context, s *scope.Scope) (*inventory.Inven
 	if err := e.store.SaveInventory(inv); err != nil {
 		return nil, err
 	}
+	if err := e.recordSystems(inv, s); err != nil {
+		return nil, err
+	}
 	return inv, nil
+}
+
+// recordSystems adds an inventory to the record of the services seen, and
+// keeps what changed for the next report.
+func (e *Engine) recordSystems(inv *inventory.Inventory, s *scope.Scope) error {
+	recs, err := e.store.LoadSystems()
+	if err != nil {
+		return err
+	}
+	now := e.cfg.Now()
+	recs, ch := inventory.Update(recs, inv, now, s.HostInScope)
+	if err := e.store.SaveSystems(recs); err != nil {
+		return err
+	}
+	if !ch.Empty() {
+		e.cfg.Logf("systems since the last run: %d new, %d gone, %d updated", len(ch.New), len(ch.Gone), len(ch.Updated))
+	}
+	return e.store.AddSystemChanges(ch, now)
 }
 
 func (e *Engine) kevPath() string { return filepath.Join(e.cfg.CacheDir, "kev.json") }
@@ -603,6 +626,9 @@ type Changes struct {
 	Resolved []match.Finding
 	// First is true before anything was reported.
 	First bool
+	// Systems are the changes among the services seen that people have
+	// not been told about: new ones, gone ones and new versions.
+	Systems inventory.Changes
 }
 
 // leakFindings returns findings from the saved secret scan and breach check,
@@ -633,6 +659,10 @@ func (e *Engine) Changes(snap *state.Snapshot) (Changes, error) {
 	if err != nil {
 		return Changes{}, err
 	}
+	systems, err := e.store.SystemChanges()
+	if err != nil {
+		return Changes{}, err
+	}
 	// Flaws the version check rules out are not news, and neither are
 	// findings people accepted. Comparing only the open findings also
 	// announces a flaw that becomes active again, say when a server stops
@@ -640,17 +670,21 @@ func (e *Engine) Changes(snap *state.Snapshot) (Changes, error) {
 	// findings that are gone count as resolved, so accepting one does not
 	// resolve it, while a flaw the version check now rules out is resolved.
 	if prev == nil {
-		return Changes{Added: match.Open(snap.Findings), First: true}, nil
+		return Changes{Added: match.Open(snap.Findings), First: true, Systems: systems}, nil
 	}
 	added, _ := state.Diff(match.Open(prev.Findings), match.Open(snap.Findings))
 	_, resolved := state.Diff(match.Active(prev.Findings), match.Active(snap.Findings))
-	return Changes{Added: added, Resolved: resolved}, nil
+	return Changes{Added: added, Resolved: resolved, Systems: systems}, nil
 }
 
-// MarkReported records that people were told about snap. Call it only after
-// every notification succeeded, so failed ones are repeated next time.
+// MarkReported records that people were told about snap and about the
+// changes among the services seen. Call it only after every notification
+// succeeded, so failed ones are repeated next time.
 func (e *Engine) MarkReported(snap *state.Snapshot) error {
-	return e.store.SaveReported(snap)
+	if err := e.store.SaveReported(snap); err != nil {
+		return err
+	}
+	return e.store.ClearSystemChanges()
 }
 
 // Result is one complete run.

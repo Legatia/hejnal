@@ -251,6 +251,8 @@ type changesResponse struct {
 	First    bool            `json:"first"`
 	Added    []match.Finding `json:"added"`
 	Resolved []match.Finding `json:"resolved"`
+	// Systems are the services new, gone or updated since the last report.
+	Systems inventory.Changes `json:"systems"`
 }
 
 // changes serves GET /v1/changes: what is new and what was resolved since the
@@ -278,6 +280,7 @@ func (h *handler) changes(w http.ResponseWriter, r *http.Request) {
 		First:        ch.First,
 		Added:        nonNil(ch.Added),
 		Resolved:     nonNil(ch.Resolved),
+		Systems:      ch.Systems,
 	})
 }
 

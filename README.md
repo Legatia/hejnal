@@ -319,6 +319,28 @@ ports to `ports`, for example `21`, `22`, `25`, `587`, `27017` and `61616`.
 first run and when something new appears. If a notification cannot be sent,
 the run exits with status 1 and the next run reports the same findings again.
 
+Each run also compares the services that answer with what answered before,
+and says what changed even when no finding is new:
+
+- **new**: a service that answers for the first time, with what runs there
+  and how its host was found (a certificate log, a redirect, a certificate
+  one of your servers sent, your DNS provider's records);
+- **gone**: a service that did not answer in two runs in a row, so one
+  timeout is not news. When its name still resolves, the message says to
+  remove the DNS record if the system is retired;
+- **updated**: a product that shows a new version, such as nginx 1.24.0 →
+  1.30.6.
+
+```
+Systems · new: 1 · gone: 1 · updated: 1
+• New: api.example.com (443) · Grafana 12.3.1 · found in a certificate log
+• Gone: old.example.com (80, 443) · no answer in the last two checks, but the name still resolves: if the system is retired, remove its DNS record
+• Updated: nginx 1.24.0 → 1.30.6 on shop.example.com (80, 443)
+```
+
+The first run only records what answers. Hosts that leave the scope are
+dropped without a word.
+
 ```cron
 HEJNAL_WEBHOOK=https://hooks.slack.com/services/T000/B000/XXXX
 HEJNAL_NVD_API_KEY=your-free-nvd-key
@@ -394,6 +416,8 @@ change it):
 | `findings.json` | Findings from the last run. |
 | `reported.json` | The findings people were last told about, used to tell what is new. |
 | `accepted.json` | Items accepted with `hejnal accept`: which findings, why, by whom and until when. |
+| `systems.json` | Every service that answered: how its host was found, what runs there, when it was first and last seen, and when it went away. Gone ones are kept for 400 days. |
+| `system-changes.json` | New, gone and updated services people have not been told about yet. |
 | `history/` | Findings from earlier runs; the last 400 are kept, over a year of daily runs. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
 | `leaks.json`, `breaches.json` | Saved secret scans (secrets partly hidden) and breach counts, included in the next run. |
@@ -567,7 +591,7 @@ curl -H "Authorization: Bearer $HEJNAL_API_TOKEN" http://127.0.0.1:8080/v1/group
 | `GET /v1/findings` | Findings from the last run. Filters: `min_severity`, `kind`, `host`. |
 | `GET /v1/groups` | Items to fix and accepted items, as in the fix list. Filter: `min_severity`. |
 | `GET /v1/inventory` | Hosts, services and recognised products. |
-| `GET /v1/changes` | What is new and what was resolved since the last notification. |
+| `GET /v1/changes` | What is new and what was resolved since the last notification, and which services are new, gone or updated. |
 | `GET /v1/reports/fixlist`, `GET /v1/reports/nis2` | The reports as Markdown. Parameter: `lang`. |
 | `POST /v1/runs`, `GET /v1/runs/{id}` | Start a scan of the scope and follow it. Only with `-allow-runs`. |
 
@@ -812,6 +836,10 @@ wykorzystują, i mówi, co naprawić najpierw.
   projekt wczesnego ostrzeżenia NIS2 (zgłoszenie do właściwego CSIRT, zwykle
   przez system S46).
 - **Udostępnia wyniki** przez REST API i serwer MCP dla asystentów AI.
+- **Śledzi zmiany w systemach:** każde uruchomienie mówi, które usługi
+  odpowiadają pierwszy raz (z tym, co na nich działa, i skąd Hejnal je zna),
+  które nie odpowiadają od dwóch sprawdzeń (z podpowiedzią, by usunąć rekord
+  DNS wycofanego systemu) i które produkty mają nową wersję.
 - **Pamięta sprawdzone punkty:** każdy punkt listy ma identyfikator. Polecenie
   `hejnal accept` zapisuje, kto sprawdził punkt, dlaczego i do kiedy.
   Powiadomienia i kod wyjścia pomijają go wtedy przez 90 dni albo do daty z
