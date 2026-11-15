@@ -172,10 +172,11 @@ func (a *app) cmdDiscover(ctx context.Context, args []string) error {
 
 func (a *app) cmdFeeds(ctx context.Context, args []string) error {
 	o := &options{}
-	fs := a.flags("feeds", "[flags]", "Download CISA's Known Exploited Vulnerabilities catalog and ENISA's list of\nexploited vulnerabilities from the EUVD.")
+	fs := a.flags("feeds", "[flags]", "Download CISA's Known Exploited Vulnerabilities catalog, ENISA's list of\nexploited vulnerabilities from the EUVD and endoflife.date's end-of-support dates.")
 	o.stateFlags(fs)
 	o.cacheFlag(fs)
 	fs.BoolVar(&o.noEUVD, "no-euvd", false, "do not download ENISA's list of exploited vulnerabilities")
+	fs.BoolVar(&o.noEOL, "no-eol", false, "do not download endoflife.date's end-of-support dates")
 	if err := a.parse(fs, args); err != nil {
 		return err
 	}
@@ -202,6 +203,15 @@ func (a *app) cmdFeeds(ctx context.Context, args []string) error {
 	fmt.Fprintf(a.stdout, "CISA KEV catalog %s: %d known exploited flaws.\n", cat.CatalogVersion, cisa)
 	if cat.EUVDDate != "" {
 		fmt.Fprintf(a.stdout, "ENISA EUVD list of %s: %d known exploited flaws, %d of them not in CISA's catalog.\n", cat.EUVDDate, enisa, only)
+	}
+	if !o.noEOL {
+		dates, err := e.RefreshEOL(ctx)
+		if err != nil {
+			// The dates are optional, like ENISA's list.
+			a.logf("could not download end-of-support dates from endoflife.date (%v)", err)
+			return nil
+		}
+		fmt.Fprintf(a.stdout, "endoflife.date end-of-support dates of %s: %d products.\n", dates.Generated, dates.Products())
 	}
 	return nil
 }

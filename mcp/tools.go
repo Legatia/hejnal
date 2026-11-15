@@ -466,6 +466,21 @@ func findingLine(f match.Finding) string {
 		return head + fmt.Sprintf("TLS certificate expiring soon on %s: %q expires on %s", where, clip(f.Subject), day(f.Expires))
 	case match.KindAdminExposed:
 		return head + fmt.Sprintf("%s admin interface reachable on %s", f.Technology, where)
+	case match.KindEOL:
+		line := fmt.Sprintf("%s %s on %s", f.Technology, f.Release, where)
+		switch {
+		case !f.SupportEnded:
+			line += ": support ends on " + f.SupportEnds
+		case f.SupportEnds != "":
+			line += ": support ended on " + f.SupportEnds
+		default:
+			line += ": past its end of support"
+		}
+		line += " (endoflife.date) · version " + f.Version
+		if len(f.UpgradeTo) > 0 {
+			line += " · supported releases: " + strings.Join(f.UpgradeTo, ", ")
+		}
+		return head + line
 	case match.KindTakeover:
 		return head + fmt.Sprintf("Subdomain takeover possible on %s (%q)", where, clip(f.Evidence))
 	case match.KindEmail:
@@ -974,6 +989,8 @@ func title(g match.Group) string {
 		return "TLS certificate expiring soon on " + where
 	case match.KindAdminExposed:
 		return fmt.Sprintf("%s admin interface reachable on %s", g.Technology, where)
+	case match.KindEOL:
+		return report.ItemTitle(g, "en")
 	case match.KindExposedFile:
 		return fileKind(g.TechID) + " on " + where
 	case match.KindTakeover:

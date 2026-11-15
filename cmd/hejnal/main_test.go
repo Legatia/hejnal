@@ -371,12 +371,18 @@ func TestFeedsDownloadsBothLists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	dates, err := os.ReadFile(filepath.Join(filepath.Dir(kevSample), "eol_sample.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/kev.json":
 			w.Write(kevData)
 		case "/dump":
 			w.Write(dump)
+		case "/eol":
+			w.Write(dates)
 		default:
 			http.NotFound(w, r)
 		}
@@ -385,7 +391,7 @@ func TestFeedsDownloadsBothLists(t *testing.T) {
 	var out, errOut bytes.Buffer
 	a := newApp(&out, &errOut)
 	a.now = func() time.Time { return testNow }
-	a.kevURL, a.euvdURL, a.euvdRecordURL = srv.URL+"/kev.json", srv.URL+"/dump", srv.URL+"/record"
+	a.kevURL, a.euvdURL, a.euvdRecordURL, a.eolURL = srv.URL+"/kev.json", srv.URL+"/dump", srv.URL+"/record", srv.URL+"/eol"
 	dir := t.TempDir()
 	if code := a.run(context.Background(), []string{"feeds", "-state", dir}); code != exitOK {
 		t.Fatalf("feeds exit %d: %s", code, errOut.String())
@@ -393,7 +399,8 @@ func TestFeedsDownloadsBothLists(t *testing.T) {
 	// 21 flaws from CISA, and 10 ENISA lists, 7 of them not in this
 	// sample of CISA's catalog.
 	for _, want := range []string{"CISA KEV catalog 2026.11.03: 21 known exploited flaws.",
-		"ENISA EUVD list of " + time.Now().UTC().Add(-7*time.Hour).Format("2006-01-02") + ": 10 known exploited flaws, 7 of them not in CISA's catalog."} {
+		"ENISA EUVD list of " + time.Now().UTC().Add(-7*time.Hour).Format("2006-01-02") + ": 10 known exploited flaws, 7 of them not in CISA's catalog.",
+		"endoflife.date end-of-support dates of 2026-11-14: 7 products."} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("feeds output is missing %q:\n%s", want, out.String())
 		}

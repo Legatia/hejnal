@@ -63,7 +63,17 @@ the city of an attack.
    recently the flaw was added, whether the system is an internet-facing
    gateway, ransomware use, CISA's call for forensic triage and the
    [FIRST EPSS](https://www.first.org/epss/) exploitation probability.
-4. **Tells you what to do.** It writes a fix list in English or Polish and
+4. **Dates what goes out of support.** When a product shows its version,
+   Hejnal looks up its release line on [endoflife.date](https://endoflife.date)
+   for 24 products, among them nginx, Apache HTTP Server, PHP, Tomcat,
+   WordPress, Drupal, Jenkins, Grafana, Confluence, Jira and RouterOS. A
+   release past its end of support gets no more security fixes, so it is
+   an item to fix this month; a release whose support ends within 90 days is
+   an item to plan, with the date. Each item names the closest supported
+   release and the newest. Linux distribution packages are left out, because
+   the distribution keeps fixing its own release after the upstream project
+   stops.
+5. **Tells you what to do.** It writes a fix list in English or Polish and
    sends new findings to Slack, Microsoft Teams or email. Each month it can
    report what was found, what was fixed and how long fixes took. If a system
    was compromised, it can draft a NIS2 early warning.
@@ -116,7 +126,9 @@ be checked from outside, such as a version the product hides) or *check it*
 distribution backports, whose names a certificate carries, or whether a
 site named like a staging copy is one). The fix list starts with **where
 to start**: the urgent items, most urgent first, with a rough effort for
-each and in all, then the quick wins of 30 minutes or less.
+each and in all, then the quick wins of 30 minutes or less. It ends with
+the dates **coming up** in the next 90 days: support that ends, certificates
+about to expire and acceptances that run out.
 
 **Hejnal is not a penetration test.** It never logs in, guesses passwords
 or tries exploits, so it finds known problems anyone can see from outside
@@ -369,7 +381,7 @@ To include leaked secrets and breached accounts, see
 
 Run `hejnal <command> -h` for flags. Useful ones: `-lang en|pl`, `-checks`,
 `-no-ct` to skip certificate transparency, `-no-epss`, `-no-nvd`, `-no-euvd`,
-`-offline`, `-kev-file`, `-euvd-file`, `-concurrency` and `-timeout`.
+`-no-eol`, `-offline`, `-kev-file`, `-euvd-file`, `-concurrency` and `-timeout`.
 
 ### Files
 
@@ -386,13 +398,15 @@ change it):
 | `fixlist.md` | The fix list from the last `hejnal run`. |
 | `leaks.json`, `breaches.json` | Saved secret scans (secrets partly hidden) and breach counts, included in the next run. |
 | `leaks.key` | The private key for secret fingerprints. |
-| `cache/kev.json`, `cache/euvd-kev.json`, `cache/euvd/`, `cache/epss.json`, `cache/nvd/` | Downloaded feeds. KEV is refreshed after 6 hours, ENISA's list once a day after ENISA publishes it at 07:00 UTC, EUVD records and NVD records after a week (NVD's after a day while NVD has not analysed a flaw yet), EPSS scores when they are more than two days old. |
+| `cache/kev.json`, `cache/euvd-kev.json`, `cache/euvd/`, `cache/epss.json`, `cache/nvd/`, `cache/eol.json` | Downloaded feeds. KEV is refreshed after 6 hours, ENISA's list once a day after ENISA publishes it at 07:00 UTC, EUVD records and NVD records after a week (NVD's after a day while NVD has not analysed a flaw yet), EPSS scores when they are more than two days old, and endoflife.date's support dates after a day, only when a product shows a version they cover. |
 
 ### Offline and air-gapped use
 
 Download the feeds on a connected machine with `hejnal feeds`. Copy
-`.hejnal/cache/kev.json` and `.hejnal/cache/euvd-kev.json` across, then run
-with `-offline` (or point `-kev-file` and `-euvd-file` at the copies). Discovery still needs network access to your own
+`.hejnal/cache/kev.json`, `.hejnal/cache/euvd-kev.json` and
+`.hejnal/cache/eol.json` across, then run with `-offline` (or point
+`-kev-file` and `-euvd-file` at the copies; the support dates are then read
+from the cache). Discovery still needs network access to your own
 systems, of course.
 
 ## Leaked secrets and breached accounts
@@ -713,7 +727,10 @@ subdomain takeover scores 80, a public bucket listing 75, a possible
 staging site 50 and a folder listing 45. A certificate that names none of
 your domains scores 55. Missing SPF scores 55, or 30 where an enforced
 DMARC policy applies; an SPF record that lets any server through scores 55,
-a missing DMARC policy 50 and a watch-only one 40.
+a missing DMARC policy 50 and a watch-only one 40. A release past its end of
+support scores 55, or 65 on a gateway, remote-access product, network device
+or camera, and a release whose support ends within 90 days 30. The item
+keeps its ID from the warning to the upgrade.
 
 Hejnal sees what a visitor sees from where it runs. It can miss products
 behind a login page, on ports it does not check, or on hosts it was not told
@@ -750,10 +767,11 @@ It uses the CISA Known Exploited Vulnerabilities catalog (public domain, CC0),
 ENISA's list of exploited vulnerabilities and EUVD records (Source: ENISA
 European Vulnerability Database (EUVD), reused under [ENISA's legal
 notice](https://www.enisa.europa.eu/about-enisa/legal-notice)), EPSS scores from [FIRST](https://www.first.org/epss/), affected-version data
-from NVD, certificate transparency search from [crt.sh](https://crt.sh/), and
-open-source advisories from [OSV](https://osv.dev), each under the terms of
-the database it comes from (GitHub, PyPI, Go, RustSec, Debian, Ubuntu,
-Alpine and others).
+from NVD, certificate transparency search from [crt.sh](https://crt.sh/),
+end-of-support dates from [endoflife.date](https://endoflife.date) (MIT
+License), and open-source advisories from [OSV](https://osv.dev), each under
+the terms of the database it comes from (GitHub, PyPI, Go, RustSec, Debian,
+Ubuntu, Alpine and others).
 `hejnal leaks breaches` uses [Have I Been Pwned](https://haveibeenpwned.com/)
 (CC BY 4.0).
 
@@ -778,6 +796,11 @@ wykorzystują, i mówi, co naprawić najpierw.
   CISA. Gdy produkt pokazuje wersję, sprawdza w NVD, czy ta wersja jest
   podatna. Z opcją `-checks` odczytuje też wersję produktów, które jej nie
   pokazują na stronie głównej, m.in. WordPressa, Grafany i Next.js.
+- **Pilnuje końca wsparcia:** według endoflife.date wskazuje wersje, które
+  nie dostają już poprawek bezpieczeństwa, i te, którym wsparcie kończy się w
+  ciągu 90 dni, z datą oraz najbliższą i najnowszą wspieraną wersją. Lista
+  poprawek kończy się nadchodzącymi terminami: końcem wsparcia, wygasaniem
+  certyfikatów i końcem akceptacji.
 - **Sprawdza kod w CI:** `hejnal code scan` porównuje zależności, obrazy
   kontenerów, kod infrastruktury i sekrety z tym, co atakujący wykorzystują,
   i zapisuje wynik także jako SARIF dla GitHub code scanning.

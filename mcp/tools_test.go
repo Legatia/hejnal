@@ -420,6 +420,15 @@ func TestFindingLineDescribesConfidence(t *testing.T) {
 		{func(f *match.Finding) { f.Condition = "only on microsoft windows" }, "applies only on microsoft windows"},
 		{func(f *match.Finding) { f.Kind, f.Subject, f.Expires = match.KindTLSExpiring, "CN=www", &expiring }, `TLS certificate expiring soon on [2001:db8::1]:443: "CN=www" expires on 2026-11-07`},
 		{func(f *match.Finding) { f.Kind = "new-kind" }, "] new-kind on [2001:db8::1]:443"},
+		{func(f *match.Finding) {
+			f.Kind, f.Release, f.Version, f.SupportEnds, f.SupportEnded, f.UpgradeTo = match.KindEOL, "2.2", "2.2.34", "2017-07-11", true, []string{"2.4.71"}
+		}, "Apache HTTP Server 2.2 on [2001:db8::1]:443: support ended on 2017-07-11 (endoflife.date) · version 2.2.34 · supported releases: 2.4.71"},
+		{func(f *match.Finding) {
+			f.Kind, f.Release, f.Version, f.SupportEnds = match.KindEOL, "2.4", "2.4.71", "2027-01-31"
+		}, "support ends on 2027-01-31"},
+		{func(f *match.Finding) {
+			f.Kind, f.Release, f.Version, f.SupportEnded = match.KindEOL, "2.0", "2.0.65", true
+		}, "2.0 on [2001:db8::1]:443: past its end of support"},
 	} {
 		f := base
 		c.edit(&f)

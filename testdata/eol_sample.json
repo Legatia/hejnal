@@ -1,0 +1,1029 @@
+{
+ "schema_version": "1.2.1",
+ "generated_at": "2026-11-14T22:22:52+00:00",
+ "total": 7,
+ "result": [
+  {
+   "name": "drupal",
+   "aliases": [],
+   "label": "Drupal",
+   "category": "server-app",
+   "tags": [
+    "php-runtime",
+    "server-app"
+   ],
+   "versionCommand": "drush status",
+   "identifiers": [
+    {
+     "type": "repology",
+     "id": "php:drupal"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:composer/drupal/core"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:docker/bitnami/drupal"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:docker/library/drupal"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:github/drupal/core"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:2.3:a:drupal:drupal"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:/a:drupal:drupal"
+    }
+   ],
+   "labels": {
+    "eoas": "Active Support",
+    "discontinued": null,
+    "eol": "Security Support",
+    "eoes": "Commercial Support"
+   },
+   "links": {
+    "icon": "https://cdn.jsdelivr.net/npm/simple-icons/icons/drupal.svg",
+    "html": "https://endoflife.date/drupal",
+    "releasePolicy": "https://www.drupal.org/about/core/policies/core-release-cycles/schedule"
+   },
+   "releases": [
+    {
+     "name": "11.4",
+     "codename": null,
+     "label": "11.4",
+     "releaseDate": "2026-07-01",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": false,
+     "eoasFrom": "2027-01-01",
+     "isEol": false,
+     "eolFrom": "2027-07-07",
+     "isEoes": null,
+     "eoesFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "11.4.12",
+      "date": "2026-11-06",
+      "link": "https://www.drupal.org/project/drupal/releases/11.4.12"
+     },
+     "custom": null
+    },
+    {
+     "name": "11.3",
+     "codename": null,
+     "label": "11.3",
+     "releaseDate": "2025-12-17",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2026-06-16",
+     "isEol": false,
+     "eolFrom": "2026-12-16",
+     "isEoes": null,
+     "eoesFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "11.3.21",
+      "date": "2026-11-06",
+      "link": "https://www.drupal.org/project/drupal/releases/11.3.21"
+     },
+     "custom": null
+    },
+    {
+     "name": "10.6",
+     "codename": null,
+     "label": "10.6",
+     "releaseDate": "2025-12-17",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2026-06-16",
+     "isEol": false,
+     "eolFrom": "2026-12-16",
+     "isEoes": null,
+     "eoesFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "10.6.21",
+      "date": "2026-11-06",
+      "link": "https://www.drupal.org/project/drupal/releases/10.6.21"
+     },
+     "custom": null
+    },
+    {
+     "name": "11.2",
+     "codename": null,
+     "label": "11.2",
+     "releaseDate": "2025-06-18",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2025-12-10",
+     "isEol": true,
+     "eolFrom": "2026-07-01",
+     "isEoes": null,
+     "eoesFrom": null,
+     "isMaintained": false,
+     "latest": {
+      "name": "11.2.14",
+      "date": "2026-06-17",
+      "link": "https://www.drupal.org/project/drupal/releases/11.2.14"
+     },
+     "custom": null
+    },
+    {
+     "name": "7",
+     "codename": null,
+     "label": "7 (LTS)",
+     "releaseDate": "2011-01-05",
+     "isLts": true,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2015-11-19",
+     "isEol": true,
+     "eolFrom": "2025-01-05",
+     "isEoes": false,
+     "eoesFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "7.103",
+      "date": "2024-12-04",
+      "link": "https://www.drupal.org/project/drupal/releases/7.103"
+     },
+     "custom": null
+    }
+   ]
+  },
+  {
+   "name": "exim",
+   "aliases": [],
+   "label": "Exim",
+   "category": "server-app",
+   "tags": [
+    "server-app"
+   ],
+   "versionCommand": null,
+   "identifiers": [
+    {
+     "type": "repology",
+     "id": "exim"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:2.3:a:exim:exim"
+    }
+   ],
+   "labels": {
+    "eoas": null,
+    "discontinued": null,
+    "eol": "Security Support",
+    "eoes": null
+   },
+   "links": {
+    "icon": null,
+    "html": "https://endoflife.date/exim",
+    "releasePolicy": "https://code.exim.org/exim/exim/wiki/EximReleasePolicy"
+   },
+   "releases": [
+    {
+     "name": "4.100",
+     "codename": null,
+     "label": "4.100",
+     "releaseDate": "2026-08-20",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "4.100.1",
+      "date": "2026-09-14",
+      "link": "https://code.exim.org/exim/exim/releases/tag/exim-4.100.1"
+     },
+     "custom": null
+    },
+    {
+     "name": "4.99",
+     "codename": null,
+     "label": "4.99",
+     "releaseDate": "2025-10-28",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2026-08-20",
+     "isMaintained": false,
+     "latest": {
+      "name": "4.99.5",
+      "date": "2026-07-14",
+      "link": "https://code.exim.org/exim/exim/releases/tag/exim-4.99.5"
+     },
+     "custom": null
+    },
+    {
+     "name": "4.98",
+     "codename": null,
+     "label": "4.98",
+     "releaseDate": "2024-07-10",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2025-10-28",
+     "isMaintained": false,
+     "latest": {
+      "name": "4.98.2",
+      "date": "2025-03-21",
+      "link": "https://code.exim.org/exim/exim/releases/tag/exim-4.98.2"
+     },
+     "custom": null
+    },
+    {
+     "name": "4.97",
+     "codename": null,
+     "label": "4.97",
+     "releaseDate": "2023-11-04",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2024-07-10",
+     "isMaintained": false,
+     "latest": {
+      "name": "4.97.1",
+      "date": "2023-12-25",
+      "link": "https://code.exim.org/exim/exim/releases/tag/exim-4.97.1"
+     },
+     "custom": null
+    }
+   ]
+  },
+  {
+   "name": "jenkins",
+   "aliases": [],
+   "label": "Jenkins",
+   "category": "server-app",
+   "tags": [
+    "java-runtime",
+    "linux-foundation",
+    "server-app"
+   ],
+   "versionCommand": null,
+   "identifiers": [
+    {
+     "type": "repology",
+     "id": "jenkins"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:/a:jenkins:jenkins"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:2.3:a:jenkins:jenkins"
+    }
+   ],
+   "labels": {
+    "eoas": null,
+    "discontinued": null,
+    "eol": "Support",
+    "eoes": null
+   },
+   "links": {
+    "icon": "https://cdn.jsdelivr.net/npm/simple-icons/icons/jenkins.svg",
+    "html": "https://endoflife.date/jenkins",
+    "releasePolicy": "https://www.jenkins.io/download/lts/"
+   },
+   "releases": [
+    {
+     "name": "2",
+     "codename": null,
+     "label": "Regular",
+     "releaseDate": "2016-04-20",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "2.590",
+      "date": "2026-11-10",
+      "link": "https://github.com/jenkinsci/jenkins/releases/tag/jenkins-2.590"
+     },
+     "custom": null
+    },
+    {
+     "name": "2.568",
+     "codename": null,
+     "label": "2.568 (LTS)",
+     "releaseDate": "2026-06-10",
+     "isLts": true,
+     "ltsFrom": "2026-07-09",
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "2.568.3",
+      "date": "2026-08-31",
+      "link": "https://github.com/jenkinsci/jenkins/releases/tag/jenkins-2.568.3"
+     },
+     "custom": null
+    },
+    {
+     "name": "2.555",
+     "codename": null,
+     "label": "2.555 (LTS)",
+     "releaseDate": "2026-03-18",
+     "isLts": true,
+     "ltsFrom": "2026-04-15",
+     "isEol": true,
+     "eolFrom": "2026-06-10",
+     "isMaintained": false,
+     "latest": {
+      "name": "2.555.3",
+      "date": "2026-06-08",
+      "link": "https://github.com/jenkinsci/jenkins/releases/tag/jenkins-2.555.3"
+     },
+     "custom": null
+    },
+    {
+     "name": "2.346",
+     "codename": null,
+     "label": "2.346 (LTS)",
+     "releaseDate": "2022-05-03",
+     "isLts": true,
+     "ltsFrom": "2022-06-22",
+     "isEol": true,
+     "eolFrom": "2022-09-07",
+     "isMaintained": false,
+     "latest": {
+      "name": "2.346.3",
+      "date": "2022-08-10",
+      "link": "https://github.com/jenkinsci/jenkins/releases/tag/jenkins-2.346.3"
+     },
+     "custom": null
+    }
+   ]
+  },
+  {
+   "name": "nginx",
+   "aliases": [],
+   "label": "nginx",
+   "category": "server-app",
+   "tags": [
+    "server-app",
+    "web-server"
+   ],
+   "versionCommand": "nginx -v",
+   "identifiers": [
+    {
+     "type": "repology",
+     "id": "nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:generic/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:deb/debian/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:deb/ubuntu/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:rpm/amzn/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:rpm/redhat/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:rpm/centos/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:apk/alpine/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:rpm/opensuse/nginx"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:github/nginx/nginx"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:2.3:a:f5:nginx"
+    }
+   ],
+   "labels": {
+    "eoas": null,
+    "discontinued": null,
+    "eol": "Security Support",
+    "eoes": null
+   },
+   "links": {
+    "icon": "https://cdn.jsdelivr.net/npm/simple-icons/icons/nginx.svg",
+    "html": "https://endoflife.date/nginx",
+    "releasePolicy": "https://www.nginx.com/blog/nginx-1-18-1-19-released/#NGINX-Versioning-Explained"
+   },
+   "releases": [
+    {
+     "name": "1.31",
+     "codename": null,
+     "label": "1.31",
+     "releaseDate": "2026-05-13",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "1.31.8",
+      "date": "2026-10-21",
+      "link": "https://nginx.org/en/CHANGES"
+     },
+     "custom": null
+    },
+    {
+     "name": "1.30",
+     "codename": null,
+     "label": "1.30",
+     "releaseDate": "2026-04-14",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "1.30.6",
+      "date": "2026-10-14",
+      "link": "https://nginx.org/en/CHANGES-1.30"
+     },
+     "custom": null
+    },
+    {
+     "name": "1.29",
+     "codename": null,
+     "label": "1.29",
+     "releaseDate": "2025-06-24",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2026-05-13",
+     "isMaintained": false,
+     "latest": {
+      "name": "1.29.8",
+      "date": "2026-04-07",
+      "link": "https://nginx.org/en/CHANGES"
+     },
+     "custom": null
+    },
+    {
+     "name": "1.28",
+     "codename": null,
+     "label": "1.28",
+     "releaseDate": "2025-04-23",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2026-04-14",
+     "isMaintained": false,
+     "latest": {
+      "name": "1.28.3",
+      "date": "2026-03-24",
+      "link": "https://nginx.org/en/CHANGES-1.28"
+     },
+     "custom": null
+    },
+    {
+     "name": "1.24",
+     "codename": null,
+     "label": "1.24",
+     "releaseDate": "2023-04-11",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2024-04-23",
+     "isMaintained": false,
+     "latest": {
+      "name": "1.24.0",
+      "date": "2023-04-11",
+      "link": "https://nginx.org/en/CHANGES-1.24"
+     },
+     "custom": null
+    },
+    {
+     "name": "1.18",
+     "codename": null,
+     "label": "1.18",
+     "releaseDate": "2020-04-21",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2021-04-20",
+     "isMaintained": false,
+     "latest": {
+      "name": "1.18.0",
+      "date": "2020-04-21",
+      "link": "https://nginx.org/en/CHANGES-1.18"
+     },
+     "custom": null
+    }
+   ]
+  },
+  {
+   "name": "php",
+   "aliases": [],
+   "label": "PHP",
+   "category": "lang",
+   "tags": [
+    "lang"
+   ],
+   "versionCommand": "php --version",
+   "identifiers": [
+    {
+     "type": "purl",
+     "id": "pkg:deb/ubuntu/php"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:deb/debian/php"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:generic/php"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:generic/php-cli"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:generic/php-fpm"
+    },
+    {
+     "type": "repology",
+     "id": "php"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:2.3:a:php:php"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:/a:php:php"
+    }
+   ],
+   "labels": {
+    "eoas": "Active Support",
+    "discontinued": null,
+    "eol": "Security Support",
+    "eoes": null
+   },
+   "links": {
+    "icon": "https://cdn.jsdelivr.net/npm/simple-icons/icons/php.svg",
+    "html": "https://endoflife.date/php",
+    "releasePolicy": "https://www.php.net/supported-versions.php"
+   },
+   "releases": [
+    {
+     "name": "8.5",
+     "codename": null,
+     "label": "8.5",
+     "releaseDate": "2025-11-20",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": false,
+     "eoasFrom": "2027-12-31",
+     "isEol": false,
+     "eolFrom": "2029-12-31",
+     "isMaintained": true,
+     "latest": {
+      "name": "8.5.12",
+      "date": "2026-10-21",
+      "link": "https://www.php.net/ChangeLog-8.php#8.5.12"
+     },
+     "custom": null
+    },
+    {
+     "name": "8.4",
+     "codename": null,
+     "label": "8.4",
+     "releaseDate": "2024-11-21",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": false,
+     "eoasFrom": "2026-12-31",
+     "isEol": false,
+     "eolFrom": "2028-12-31",
+     "isMaintained": true,
+     "latest": {
+      "name": "8.4.27",
+      "date": "2026-10-21",
+      "link": "https://www.php.net/ChangeLog-8.php#8.4.27"
+     },
+     "custom": null
+    },
+    {
+     "name": "8.3",
+     "codename": null,
+     "label": "8.3",
+     "releaseDate": "2023-11-23",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2025-12-31",
+     "isEol": false,
+     "eolFrom": "2027-12-31",
+     "isMaintained": true,
+     "latest": {
+      "name": "8.3.36",
+      "date": "2026-10-21",
+      "link": "https://www.php.net/ChangeLog-8.php#8.3.36"
+     },
+     "custom": null
+    },
+    {
+     "name": "8.2",
+     "codename": null,
+     "label": "8.2",
+     "releaseDate": "2022-12-08",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2024-12-31",
+     "isEol": false,
+     "eolFrom": "2026-12-31",
+     "isMaintained": true,
+     "latest": {
+      "name": "8.2.35",
+      "date": "2026-10-21",
+      "link": "https://www.php.net/ChangeLog-8.php#8.2.35"
+     },
+     "custom": null
+    },
+    {
+     "name": "8.1",
+     "codename": null,
+     "label": "8.1",
+     "releaseDate": "2021-11-25",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2023-11-25",
+     "isEol": true,
+     "eolFrom": "2025-12-31",
+     "isMaintained": false,
+     "latest": {
+      "name": "8.1.34",
+      "date": "2025-12-18",
+      "link": "https://www.php.net/ChangeLog-8.php#8.1.34"
+     },
+     "custom": null
+    },
+    {
+     "name": "7.4",
+     "codename": null,
+     "label": "7.4",
+     "releaseDate": "2019-11-28",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2021-11-28",
+     "isEol": true,
+     "eolFrom": "2022-11-28",
+     "isMaintained": false,
+     "latest": {
+      "name": "7.4.33",
+      "date": "2022-11-03",
+      "link": "https://www.php.net/ChangeLog-7.php#7.4.33"
+     },
+     "custom": null
+    }
+   ]
+  },
+  {
+   "name": "tomcat",
+   "aliases": [],
+   "label": "Apache Tomcat",
+   "category": "server-app",
+   "tags": [
+    "apache",
+    "server-app",
+    "web-server"
+   ],
+   "versionCommand": "./bin/version.sh",
+   "identifiers": [
+    {
+     "type": "repology",
+     "id": "tomcat"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:maven/org.apache.tomcat/tomcat"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:github/apache/tomcat"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:2.3:a:apache:tomcat"
+    }
+   ],
+   "labels": {
+    "eoas": null,
+    "discontinued": null,
+    "eol": "Security Support",
+    "eoes": null
+   },
+   "links": {
+    "icon": "https://cdn.jsdelivr.net/npm/simple-icons/icons/apachetomcat.svg",
+    "html": "https://endoflife.date/tomcat",
+    "releasePolicy": "https://tomcat.apache.org/whichversion.html"
+   },
+   "releases": [
+    {
+     "name": "11.0",
+     "codename": null,
+     "label": "11.0",
+     "releaseDate": "2024-10-03",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "11.0.29",
+      "date": "2026-11-09",
+      "link": "https://tomcat.apache.org/tomcat-11.0-doc/changelog.html"
+     },
+     "custom": {
+      "minJavaVersion": "17"
+     }
+    },
+    {
+     "name": "10.1",
+     "codename": null,
+     "label": "10.1",
+     "releaseDate": "2022-09-23",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "10.1.62",
+      "date": "2026-11-10",
+      "link": "https://tomcat.apache.org/tomcat-10.1-doc/changelog.html"
+     },
+     "custom": {
+      "minJavaVersion": "11"
+     }
+    },
+    {
+     "name": "10.0",
+     "codename": null,
+     "label": "10.0",
+     "releaseDate": "2020-12-03",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2022-10-31",
+     "isMaintained": false,
+     "latest": {
+      "name": "10.0.27",
+      "date": "2022-10-03",
+      "link": "https://tomcat.apache.org/tomcat-10.0-doc/changelog.html"
+     },
+     "custom": {
+      "minJavaVersion": "8"
+     }
+    },
+    {
+     "name": "9.0",
+     "codename": null,
+     "label": "9.0",
+     "releaseDate": "2017-09-27",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": false,
+     "eolFrom": "2027-03-31",
+     "isMaintained": true,
+     "latest": {
+      "name": "9.0.124",
+      "date": "2026-11-09",
+      "link": "https://tomcat.apache.org/tomcat-9.0-doc/changelog.html"
+     },
+     "custom": {
+      "minJavaVersion": "8"
+     }
+    },
+    {
+     "name": "8.5",
+     "codename": null,
+     "label": "8.5",
+     "releaseDate": "2016-03-17",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2024-03-31",
+     "isMaintained": false,
+     "latest": {
+      "name": "8.5.100",
+      "date": "2024-03-19",
+      "link": "https://tomcat.apache.org/tomcat-8.5-doc/changelog.html"
+     },
+     "custom": {
+      "minJavaVersion": "7"
+     }
+    },
+    {
+     "name": "5",
+     "codename": null,
+     "label": "5",
+     "releaseDate": "2003-09-06",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEol": true,
+     "eolFrom": "2012-09-30",
+     "isMaintained": false,
+     "latest": {
+      "name": "5.5.36",
+      "date": "2012-10-10",
+      "link": "https://tomcat.apache.org/tomcat-5.5-doc/changelog.html"
+     },
+     "custom": {
+      "minJavaVersion": "1.4"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wordpress",
+   "aliases": [],
+   "label": "WordPress",
+   "category": "server-app",
+   "tags": [
+    "php-runtime",
+    "server-app"
+   ],
+   "versionCommand": "wp core version",
+   "identifiers": [
+    {
+     "type": "repology",
+     "id": "wordpress"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:docker/library/wordpress"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:docker/bitnami/wordpress"
+    },
+    {
+     "type": "purl",
+     "id": "pkg:docker/bitnami/wordpress-nginx"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:2.3:a:wordpress:wordpress"
+    },
+    {
+     "type": "cpe",
+     "id": "cpe:/a:wordpress:wordpress"
+    }
+   ],
+   "labels": {
+    "eoas": "Active Support",
+    "discontinued": null,
+    "eol": "Security Support",
+    "eoes": null
+   },
+   "links": {
+    "icon": "https://cdn.jsdelivr.net/npm/simple-icons/icons/wordpress.svg",
+    "html": "https://endoflife.date/wordpress",
+    "releasePolicy": "https://codex.wordpress.org/Supported_Versions"
+   },
+   "releases": [
+    {
+     "name": "7.1",
+     "codename": null,
+     "label": "7.1",
+     "releaseDate": "2026-08-19",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": false,
+     "eoasFrom": null,
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "7.1.4",
+      "date": "2026-10-28",
+      "link": "https://wordpress.org/documentation/wordpress-version/version-7-1-4/"
+     },
+     "custom": {
+      "supportedPHPVersions": "7.4 - 8.5"
+     }
+    },
+    {
+     "name": "7.0",
+     "codename": null,
+     "label": "7.0",
+     "releaseDate": "2026-05-20",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2026-08-19",
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "7.0.8",
+      "date": "2026-10-28",
+      "link": "https://wordpress.org/documentation/wordpress-version/version-7-0-8/"
+     },
+     "custom": {
+      "supportedPHPVersions": "7.4 - 8.5"
+     }
+    },
+    {
+     "name": "6.9",
+     "codename": null,
+     "label": "6.9",
+     "releaseDate": "2025-12-02",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2026-05-20",
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "6.9.11",
+      "date": "2026-10-28",
+      "link": "https://wordpress.org/documentation/wordpress-version/version-6-9-11/"
+     },
+     "custom": {
+      "supportedPHPVersions": "7.2.24 - 8.5"
+     }
+    },
+    {
+     "name": "6.8",
+     "codename": null,
+     "label": "6.8",
+     "releaseDate": "2025-04-15",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2025-12-02",
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "6.8.12",
+      "date": "2026-10-28",
+      "link": "https://wordpress.org/documentation/wordpress-version/version-6-8-12/"
+     },
+     "custom": {
+      "supportedPHPVersions": "7.2.24 - 8.4"
+     }
+    },
+    {
+     "name": "6.4",
+     "codename": null,
+     "label": "6.4",
+     "releaseDate": "2023-11-07",
+     "isLts": false,
+     "ltsFrom": null,
+     "isEoas": true,
+     "eoasFrom": "2024-04-02",
+     "isEol": false,
+     "eolFrom": null,
+     "isMaintained": true,
+     "latest": {
+      "name": "6.4.14",
+      "date": "2026-10-28",
+      "link": "https://wordpress.org/documentation/wordpress-version/version-6-4-14/"
+     },
+     "custom": {
+      "supportedPHPVersions": "7.0 - 8.3"
+     }
+    }
+   ]
+  }
+ ]
+}

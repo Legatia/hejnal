@@ -204,6 +204,8 @@ func TestLoadRejectsBadRules(t *testing.T) {
 		"missing name":     `{"rules": [{"id": "x", "category": "cms", "body": ["x"]}]}`,
 		"bad kev text":     `{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "kev": [{"vendor": "a", "product": "b", "text": "("}]}]}`,
 		"not a rules file": `[]`,
+		"bad eol name":     `{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "versions": [{"source": "body", "regex": "x/([0-9.]+)"}], "eol": "Not A Name"}]}`,
+		"eol, no versions": `{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "eol": "x"}]}`,
 	}
 	for name, doc := range cases {
 		if _, err := Load([]byte(doc)); err == nil {
@@ -454,6 +456,15 @@ func TestLoadRejectsBadServerChecks(t *testing.T) {
 		doc := `{"rules": [{"id": "x", "name": "X", "category": "cms", "body": ["x"], "server": ` + check + `}]}`
 		if _, err := Load([]byte(doc)); err == nil {
 			t.Errorf("%s: Load succeeded", name)
+		}
+	}
+}
+
+func TestEOLProducts(t *testing.T) {
+	e := engine(t)
+	for id, want := range map[string]string{"nginx": "nginx", "apache-httpd": "apache-http-server", "jira": "jira-software", "iis": "", "unknown": ""} {
+		if got := e.EOLProduct(id); got != want {
+			t.Errorf("%s: endoflife.date product %q, want %q", id, got, want)
 		}
 	}
 }

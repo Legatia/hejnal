@@ -18,8 +18,8 @@ import (
 	"github.com/Legatia/hejnal/match"
 )
 
-// feedServer stands in for CISA's feed and ENISA's EUVD API, serving the
-// real samples in testdata and counting requests.
+// feedServer stands in for CISA's feed, ENISA's EUVD API and endoflife.date,
+// serving the real samples in testdata and counting requests.
 type feedServer struct {
 	*httptest.Server
 	mu       sync.Mutex
@@ -37,6 +37,7 @@ func newFeedServer(t *testing.T) *feedServer {
 		return data
 	}
 	kevData, dump, record := read("kev_sample.json"), read("euvd_kev_sample.json"), read("euvd_record_EUVD-2026-72024.json")
+	dates := read("eol_sample.json")
 	fs := &feedServer{requests: map[string]int{}}
 	fs.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fs.mu.Lock()
@@ -50,6 +51,8 @@ func newFeedServer(t *testing.T) *feedServer {
 		switch {
 		case r.URL.Path == "/kev.json":
 			w.Write(kevData)
+		case r.URL.Path == "/eol":
+			w.Write(dates)
 		case fail:
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		case r.URL.Path == "/api/kev/dump":
@@ -91,6 +94,7 @@ func (fs *feedServer) config(dir string, logs *[]string) Config {
 		KEVURL:        fs.URL + "/kev.json",
 		EUVDURL:       fs.URL + "/api/kev/dump",
 		EUVDRecordURL: fs.URL + "/api/enisaid",
+		EOLURL:        fs.URL + "/eol",
 		NoEPSS:        true,
 		NoCT:          true,
 		NoNVD:         true,

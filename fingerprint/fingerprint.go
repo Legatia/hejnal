@@ -51,6 +51,9 @@ type Rule struct {
 	// Server tells a running application from a copy of its pages on a
 	// plain file server, for products whose flaws need the application.
 	Server *ServerCheck `json:"server,omitempty"`
+	// EOL is the product's ID on endoflife.date, such as "nginx", used to
+	// tell when the release a version belongs to stops getting fixes.
+	EOL string `json:"eol,omitempty"`
 }
 
 // ServerCheck is a second request for the same page, with headers a
@@ -132,11 +135,13 @@ type compiled struct {
 }
 
 // headerNameRE and headerValueRE limit a server check's headers to plain
-// ones, and queryNameRE its query parameter.
+// ones, and queryNameRE its query parameter. eolRE is the form of an
+// endoflife.date product ID.
 var (
 	headerNameRE  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,63}$`)
 	headerValueRE = regexp.MustCompile(`^[ -~]{0,200}$`)
 	queryNameRE   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{0,31}$`)
+	eolRE         = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 )
 
 var cpeNameRE = regexp.MustCompile(`^[a-z0-9_.\-]+:[a-z0-9_.\-]+$`)
@@ -215,6 +220,9 @@ func ci(p string) (*regexp.Regexp, error) { return regexp.Compile("(?i)" + p) }
 func compile(r Rule) (*compiled, error) {
 	if r.ID == "" || r.Name == "" || r.Category == "" {
 		return nil, fmt.Errorf("id, name and category are required")
+	}
+	if r.EOL != "" && (!eolRE.MatchString(r.EOL) || len(r.Versions) == 0) {
+		return nil, fmt.Errorf("eol %q: use an endoflife.date product ID, on a rule that reads versions", r.EOL)
 	}
 	c := &compiled{Rule: r}
 	var err error
@@ -538,6 +546,14 @@ func (e *Engine) CPEs(id string) []string {
 		return c.CPE
 	}
 	return nil
+}
+
+// EOLProduct returns rule id's product ID on endoflife.date, or "".
+func (e *Engine) EOLProduct(id string) string {
+	if c, ok := e.byID[id]; ok {
+		return c.EOL
+	}
+	return ""
 }
 
 // Edition returns the NVD software edition of version for rule id, or ""
