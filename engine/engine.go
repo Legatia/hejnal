@@ -174,17 +174,7 @@ func (e *Engine) Rules() *fingerprint.Engine { return e.rules }
 // adds it to the record of the services seen, keeping what changed until
 // people are told.
 func (e *Engine) Discover(ctx context.Context, s *scope.Scope) (*inventory.Inventory, error) {
-	opts := discover.Options{
-		Scope:       s,
-		Engine:      e.rules,
-		Resolver:    e.cfg.Resolver,
-		Concurrency: e.cfg.Concurrency,
-		Timeout:     e.cfg.Timeout,
-		UserAgent:   version.UserAgent(),
-		Checks:      e.cfg.Checks,
-		Now:         e.cfg.Now,
-		Logf:        e.cfg.Logf,
-	}
+	opts := e.discoverOptions(s)
 	if !e.cfg.NoCT && len(s.Domains) > 0 {
 		opts.CT = &discover.CrtSh{Client: e.cfg.HTTPClient, BaseURL: e.cfg.CTURL, UserAgent: version.UserAgent()}
 	}
@@ -201,6 +191,21 @@ func (e *Engine) Discover(ctx context.Context, s *scope.Scope) (*inventory.Inven
 		return nil, err
 	}
 	return inv, nil
+}
+
+// discoverOptions are the settings every discovery of this engine shares.
+func (e *Engine) discoverOptions(s *scope.Scope) discover.Options {
+	return discover.Options{
+		Scope:       s,
+		Engine:      e.rules,
+		Resolver:    e.cfg.Resolver,
+		Concurrency: e.cfg.Concurrency,
+		Timeout:     e.cfg.Timeout,
+		UserAgent:   version.UserAgent(),
+		Checks:      e.cfg.Checks,
+		Now:         e.cfg.Now,
+		Logf:        e.cfg.Logf,
+	}
 }
 
 // recordSystems adds an inventory to the record of the services seen, and
@@ -570,24 +575,40 @@ func (e *Engine) Match(ctx context.Context, inv *inventory.Inventory) (*state.Sn
 // findings. The hosted service uses it to re-match every organisation as
 // soon as the catalog changes, without scanning again.
 func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat *kev.Catalog) (*state.Snapshot, error) {
+	snap, err := e.snapshot(ctx, inv, cat, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.store.SaveFindings(snap); err != nil {
+		return nil, err
+	}
+	return snap, nil
+}
+
+// snapshot matches an inventory against a catalog and marks what people
+// accepted. With saved set, the leaked secrets and code scans the state
+// directory holds are part of it. It saves nothing itself.
+func (e *Engine) snapshot(ctx context.Context, inv *inventory.Inventory, cat *kev.Catalog, saved bool) (*state.Snapshot, error) {
 	now := e.cfg.Now()
 	candidates := match.Run(inv, cat, e.rules, match.Options{Now: now})
 	scores := e.epssScores(ctx, match.CVEs(candidates))
 	records := e.nvdRecords(ctx, candidates)
 	dates := e.endOfSupport(ctx, inv)
 	fs := match.Run(inv, cat, e.rules, match.Options{Now: now, EPSS: scores, NVD: records, EOL: dates})
-	leaked, err := e.leakFindings(now)
-	if err != nil {
-		return nil, err
-	}
-	code, err := e.codeFindings(ctx, cat, now)
-	if err != nil {
-		return nil, err
-	}
-	leaked = append(leaked, code...)
-	if len(leaked) > 0 {
-		fs = append(fs, leaked...)
-		match.Sort(fs)
+	if saved {
+		leaked, err := e.leakFindings(now)
+		if err != nil {
+			return nil, err
+		}
+		code, err := e.codeFindings(ctx, cat, now)
+		if err != nil {
+			return nil, err
+		}
+		leaked = append(leaked, code...)
+		if len(leaked) > 0 {
+			fs = append(fs, leaked...)
+			match.Sort(fs)
+		}
 	}
 	snap := &state.Snapshot{
 		Organization: inv.Organization,
@@ -606,11 +627,8 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 			snap.EPSSDate = s.Date
 		}
 	}
-	// The saved findings say which ones people accepted, and until when.
+	// The findings say which ones people accepted, and until when.
 	if err := e.store.MarkAccepted(snap, now); err != nil {
-		return nil, err
-	}
-	if err := e.store.SaveFindings(snap); err != nil {
 		return nil, err
 	}
 	return snap, nil

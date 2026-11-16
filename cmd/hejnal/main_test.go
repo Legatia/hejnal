@@ -92,6 +92,7 @@ func (h *harness) run(args ...string) (code int, stdout, stderr string) {
 	a := newApp(&out, &errOut)
 	a.now = func() time.Time { return testNow }
 	a.githubPause = 0
+	a.livePause = 10 * time.Millisecond
 	code = a.run(context.Background(), args)
 	return code, out.String(), errOut.String()
 }

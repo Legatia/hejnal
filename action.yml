@@ -39,6 +39,18 @@ inputs:
   upload-token:
     description: The organisation's upload token for Hejnal Cloud; pass it from a secret.
     default: ""
+  url:
+    description: Addresses of the deployed system to check once it is live, such as https://app.example.com, one per line. Each must be in the scope file. Needs a Hejnal release after 0.7.1.
+    default: ""
+  scope:
+    description: Scope file that lists the systems Hejnal may check; used with url.
+    default: scope.json
+  wait:
+    description: With url, keep trying for this long, such as 2m, until the deployed system answers.
+    default: 2m
+  code-scan:
+    description: Set to "false" to skip the code scan, in a job that only checks a deployed system.
+    default: "true"
   version:
     description: Hejnal release to use, such as 0.7.1 (default the version of this action's tag).
     default: ""
@@ -85,6 +97,7 @@ runs:
 
     - name: Scan
       id: scan
+      if: inputs.code-scan != 'false'
       shell: bash
       env:
         SCAN_PATH: ${{ inputs.path }}
@@ -117,4 +130,28 @@ runs:
         code=$?
         echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
         echo "sbom=$SBOM" >> "$GITHUB_OUTPUT"
+        exit $code
+
+    - name: Check the live system
+      if: inputs.url != ''
+      shell: bash
+      env:
+        URLS: ${{ inputs.url }}
+        SCOPE: ${{ inputs.scope }}
+        WAIT: ${{ inputs.wait }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -uo pipefail
+        args=(live -scope "$SCOPE" -fail-on "$FAIL_ON" -state "$RUNNER_TEMP/hejnal-state")
+        if [ -n "$WAIT" ]; then args+=(-wait "$WAIT"); fi
+        args+=(--)
+        while IFS= read -r url; do
+          if [[ "$url" =~ [^[:space:]] ]]; then args+=("$url"); fi
+        done <<< "$URLS"
+        out="$RUNNER_TEMP/hejnal-live.txt"
+        hejnal "${args[@]}" | tee "$out"
+        code=${PIPESTATUS[0]}
+        if [ -s "$out" ]; then
+          { echo "### Hejnal live check"; echo; echo '```'; cat "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        fi
         exit $code

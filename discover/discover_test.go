@@ -668,3 +668,133 @@ func TestDefaultRequests(t *testing.T) {
 		t.Errorf("requests = %q", seen)
 	}
 }
+
+type countingCT struct{ calls atomic.Int32 }
+
+func (c *countingCT) Subdomains(context.Context, string) ([]string, error) {
+	c.calls.Add(1)
+	return []string{"logged.example.test"}, nil
+}
+
+func TestOnlyLooksAtTheNamedSystem(t *testing.T) {
+	wp := wordPress(t)
+	var hits atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer other.Close()
+	wpPort, otherPort := portOf(t, wp.URL), portOf(t, other.URL)
+
+	s := testScope(t, []string{"example.test"}, []string{"127.0.0.1"}, []int{wpPort, otherPort}, nil)
+	ct := &countingCT{}
+	inv, err := Run(context.Background(), Options{
+		Scope:    s,
+		Engine:   engine(t),
+		Resolver: fakeResolver{"example.test": {"127.0.0.1"}, "www.example.test": {"127.0.0.1"}, "logged.example.test": {"127.0.0.1"}},
+		CT:       ct,
+		Names:    []string{"www.example.test"},
+		WebPorts: []int{wpPort, otherPort},
+		Timeout:  3 * time.Second,
+		Only:     []Target{{Host: "127.0.0.1", Ports: []int{wpPort}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inv.Assets) != 1 || inv.Assets[0].Host != "127.0.0.1" || inv.Assets[0].Source != SourceNamed {
+		t.Fatalf("assets = %+v, want the named host alone", inv.Assets)
+	}
+	svcs := inv.Assets[0].Services
+	if len(svcs) != 1 || svcs[0].Port != wpPort || !slices.Contains(techIDs(svcs[0]), "wordpress") {
+		t.Errorf("services = %+v, want WordPress on the named port alone", svcs)
+	}
+	if hits.Load() != 0 {
+		t.Error("contacted a port of the host that was not named")
+	}
+	if ct.calls.Load() != 0 {
+		t.Error("read certificate transparency logs for a run of named systems")
+	}
+	if len(inv.Mail) != 0 {
+		t.Errorf("mail = %+v, want none for a run of named systems", inv.Mail)
+	}
+}
+
+func TestOnlyKeepsToTheScope(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer srv.Close()
+	port := portOf(t, srv.URL)
+	wp := wordPress(t)
+
+	// The host is listed with one port; the other server's port is not the
+	// scope's, and elsewhere.test is no part of it.
+	s := testScope(t, []string{"example.test"}, []string{"127.0.0.1"}, []int{portOf(t, wp.URL)}, []string{"skip.example.test"})
+	inv, err := Run(context.Background(), Options{
+		Scope:    s,
+		Engine:   engine(t),
+		Resolver: fakeResolver{"elsewhere.test": {"127.0.0.1"}, "skip.example.test": {"127.0.0.1"}, "internal.example.test": {"10.1.2.3"}},
+		WebPorts: []int{port},
+		Timeout:  2 * time.Second,
+		Only: []Target{
+			{Host: "127.0.0.1", Ports: []int{port}},
+			{Host: "elsewhere.test", Ports: []int{port}},
+			{Host: "skip.example.test", Ports: []int{port}},
+			{Host: "internal.example.test", Ports: []int{port}},
+			{Host: "gone.example.test", Ports: []int{port}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits.Load() != 0 {
+		t.Fatal("naming a system let a run reach outside the scope")
+	}
+	assets := assetMap(inv)
+	if _, ok := assets["elsewhere.test"]; ok {
+		t.Error("a host outside the scope is in the inventory")
+	}
+	if _, ok := assets["skip.example.test"]; ok {
+		t.Error("an excluded host is in the inventory")
+	}
+	if a := assets["127.0.0.1"]; len(a.Services) != 0 {
+		t.Errorf("127.0.0.1 services = %+v, want none: the port is not in the scope", a.Services)
+	}
+	if a := assets["internal.example.test"]; len(a.Services) != 0 || len(a.Errors) == 0 || !strings.Contains(a.Errors[0], "private") {
+		t.Errorf("internal.example.test = %+v, want it recorded as not contacted", a)
+	}
+	if a, ok := assets["gone.example.test"]; !ok || len(a.Errors) == 0 {
+		t.Errorf("gone.example.test = %+v, want the failed lookup of a named system recorded", a)
+	}
+}
+
+func TestOnlyFollowsRedirectsNotCertificates(t *testing.T) {
+	app := wordPress(t)
+	appPort := portOf(t, app.URL)
+	front := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://app.example.test:"+strconv.Itoa(appPort)+"/", http.StatusMovedPermanently)
+	}))
+	front.TLS = &tls.Config{Certificates: []tls.Certificate{testCert(t, []string{"front.example.test", "side.example.test"}, testNow.Add(90*24*time.Hour))}}
+	front.StartTLS()
+	defer front.Close()
+	frontPort := portOf(t, front.URL)
+
+	s := testScope(t, []string{"example.test"}, []string{"127.0.0.1"}, []int{frontPort, appPort}, nil)
+	inv, err := Run(context.Background(), Options{
+		Scope:    s,
+		Engine:   engine(t),
+		Resolver: fakeResolver{"front.example.test": {"127.0.0.1"}, "app.example.test": {"127.0.0.1"}, "side.example.test": {"127.0.0.1"}},
+		WebPorts: []int{appPort},
+		Timeout:  3 * time.Second,
+		Only:     []Target{{Host: "127.0.0.1", Ports: []int{frontPort}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets := assetMap(inv)
+	if _, ok := assets["side.example.test"]; ok {
+		t.Error("looked at a name known only from the named system's certificate")
+	}
+	if a := assets["app.example.test"]; a.Source != SourceRedirect || len(a.Services) != 1 || !slices.Contains(techIDs(a.Services[0]), "wordpress") {
+		t.Errorf("app.example.test = %+v, want the system the named one redirects to", a)
+	}
+	if len(assets) != 2 {
+		t.Errorf("assets = %v, want the named system and the one it redirects to", assets)
+	}
+}
