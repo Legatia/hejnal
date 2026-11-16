@@ -26,6 +26,9 @@ inputs:
   sarif:
     description: Where to write the SARIF file.
     default: hejnal.sarif
+  sbom:
+    description: Also write the packages found to this file as a software bill of materials (CycloneDX 1.6 JSON). Needs a Hejnal release after 0.7.1.
+    default: ""
   project:
     description: Name for the project in reports and on Hejnal Cloud (default the directory's name).
     default: ""
@@ -43,6 +46,9 @@ outputs:
   sarif:
     description: Path of the SARIF file.
     value: ${{ steps.scan.outputs.sarif }}
+  sbom:
+    description: Path of the bill of materials, when the sbom input names one.
+    value: ${{ steps.scan.outputs.sbom }}
 
 runs:
   using: composite
@@ -86,6 +92,7 @@ runs:
         FAIL_ON: ${{ inputs.fail-on }}
         HISTORY: ${{ inputs.history }}
         SARIF: ${{ inputs.sarif }}
+        SBOM: ${{ inputs.sbom }}
         PROJECT: ${{ inputs.project }}
         UPLOAD_URL: ${{ inputs.upload-url }}
         UPLOAD_TOKEN: ${{ inputs.upload-token }}
@@ -100,6 +107,7 @@ runs:
         done <<< "$EXCLUDE"
         if [ "$HISTORY" = "true" ]; then args+=(-history); fi
         if [ -n "$PROJECT" ]; then args+=(-project "$PROJECT"); fi
+        if [ -n "$SBOM" ]; then args+=(-sbom "$SBOM"); fi
         if [ -n "$UPLOAD_URL" ]; then
           args+=(-upload "$UPLOAD_URL")
           export HEJNAL_UPLOAD_TOKEN="$UPLOAD_TOKEN"
@@ -107,4 +115,5 @@ runs:
         hejnal "${args[@]}" -- "$SCAN_PATH"
         code=$?
         echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
+        echo "sbom=$SBOM" >> "$GITHUB_OUTPUT"
         exit $code
