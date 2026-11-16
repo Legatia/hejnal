@@ -866,6 +866,8 @@ type summary struct {
 	// AcceptedItems counts the items people accepted with `hejnal accept`.
 	// They are not open.
 	AcceptedItems int `json:"acceptedItems"`
+	// Systems are the services new, gone or updated since the last report.
+	Systems inventory.Changes `json:"systems"`
 }
 
 // summarize describes the latest findings and what changed since the last
@@ -890,6 +892,7 @@ func summarize(snap *state.Snapshot, ch engine.Changes) (string, summary) {
 		New:          items(added),
 		Resolved:     items(resolved),
 		RuledOut:     len(snap.Findings) - len(active),
+		Systems:      ch.Systems,
 	}
 	sum.AcceptedItems = len(accepted)
 	for _, g := range open {
@@ -930,6 +933,9 @@ func summarize(snap *state.Snapshot, ch engine.Changes) (string, summary) {
 	}
 	if len(accepted) > 0 {
 		fmt.Fprintf(&b, "Accepted with `hejnal accept` after a check, and not counted as open: %s.\n", plural(len(accepted), "item"))
+	}
+	for _, l := range report.SystemLines(ch.Systems, "en") {
+		b.WriteString(l + "\n")
 	}
 	if len(open) > 0 {
 		b.WriteString("Call hejnal_fix_list for what to do about each item.\n")
