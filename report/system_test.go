@@ -2,6 +2,7 @@ package report
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -240,5 +241,93 @@ func TestEvidenceListsSystems(t *testing.T) {
 	}
 	if len(rec.Systems) != 2 || rec.Systems[0].Counts.Found != 3 || rec.Systems[1].Gone == nil || rec.Systems[0].Events != nil {
 		t.Errorf("systems in the record %+v", rec.Systems)
+	}
+}
+
+// aiRecords is a lab host with Ollama and Open WebUI, a notebook host whose
+// Jupyter went away, and a shop with no AI tool.
+func aiRecords() []inventory.Record {
+	first, last, gone := sysDay("2026-11-02"), sysDay("2026-11-28"), sysDay("2026-11-20")
+	ai := func(id, name, version string) inventory.Product {
+		return inventory.Product{ID: id, Name: name, Version: version, Category: inventory.CategoryAI}
+	}
+	nginx := inventory.Product{ID: "nginx", Name: "nginx", Version: "1.30.6", Category: "server"}
+	return []inventory.Record{
+		{Host: "lab.example.com", Port: 443, Source: "ct", Products: []inventory.Product{nginx, ai("open-webui", "Open WebUI", "0.6.34")}, FirstSeen: first, LastSeen: last},
+		{Host: "lab.example.com", Port: 11434, Source: "ct", Products: []inventory.Product{ai("ollama", "Ollama", "0.12.6")}, FirstSeen: first, LastSeen: last},
+		{Host: "lab.example.com", Port: 8080, Source: "ct", Products: []inventory.Product{ai("open-webui", "Open WebUI", "0.6.34")}, FirstSeen: first, LastSeen: last},
+		{Host: "notes.example.com", Port: 443, Source: "ct", Products: []inventory.Product{nginx}, FirstSeen: first, LastSeen: last},
+		{Host: "notes.example.com", Port: 8888, Source: "ct", Products: []inventory.Product{ai("jupyter", "Jupyter", "")}, FirstSeen: first, LastSeen: sysDay("2026-11-10"),
+			Missed: 2, Gone: &gone},
+		{Host: "shop.example.com", Port: 443, Source: "domain", Products: []inventory.Product{nginx}, FirstSeen: first, LastSeen: last},
+	}
+}
+
+func TestSystemsNameAITools(t *testing.T) {
+	systems := Systems(aiRecords(), nil, "en")
+	tools := map[string][]string{}
+	for _, s := range systems {
+		tools[s.Host] = s.AITools
+	}
+	// In the order of the ports, once each; a tool on a port that went away
+	// is not running any more.
+	if got := tools["lab.example.com"]; !slices.Equal(got, []string{"Open WebUI", "Ollama"}) {
+		t.Errorf("lab: %v", got)
+	}
+	if len(tools["notes.example.com"]) != 0 || len(tools["shop.example.com"]) != 0 {
+		t.Errorf("AI tools named where none runs: %v", tools)
+	}
+
+	var b strings.Builder
+	if err := SystemList(&b, systems, meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	if want := "**Systems: 3 · answering: 3 · gone: 0**\n\n**AI tools:** lab.example.com (Open WebUI, Ollama)\n\n| System |"; !strings.Contains(b.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, b.String())
+	}
+	b.Reset()
+	if err := SystemList(&b, Systems(aiRecords(), nil, "pl"), meta("pl")); err != nil {
+		t.Fatal(err)
+	}
+	if want := "**Narzędzia AI:** lab.example.com (Open WebUI, Ollama)\n"; !strings.Contains(b.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, b.String())
+	}
+
+	s, ok := SystemHistory("lab.example.com", aiRecords(), nil, "en")
+	if !ok {
+		t.Fatal("no history")
+	}
+	b.Reset()
+	if err := SystemReport(&b, s, meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	if want := "- **Status:** answering\n- **AI tools:** Open WebUI, Ollama\n- **Items:**"; !strings.Contains(b.String(), want) {
+		t.Errorf("missing %q in:\n%s", want, b.String())
+	}
+
+	// A list without AI tools has no such line, as before.
+	b.Reset()
+	if err := SystemList(&b, Systems(systemRecords(), systemRuns(), "en"), meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "AI tools") {
+		t.Errorf("AI tools named in a list without any:\n%s", b.String())
+	}
+}
+
+func TestSystemListCapsAISystems(t *testing.T) {
+	var recs []inventory.Record
+	for i := range maxAIListed + 3 {
+		recs = append(recs, inventory.Record{Host: fmt.Sprintf("gpu%02d.example.com", i), Port: 11434, Source: "ct",
+			Products:  []inventory.Product{{ID: "ollama", Name: "Ollama", Category: inventory.CategoryAI}},
+			FirstSeen: sysDay("2026-11-02"), LastSeen: sysDay("2026-11-28")})
+	}
+	var b strings.Builder
+	if err := SystemList(&b, Systems(recs, nil, "en"), meta("en")); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "gpu09.example.com (Ollama) · more: 3\n") || strings.Contains(out, "gpu10.example.com (Ollama)") {
+		t.Errorf("list not capped:\n%s", out)
 	}
 }

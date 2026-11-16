@@ -65,7 +65,15 @@ type Product struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Version string `json:"version,omitempty"`
+	// Category is the kind of product, as its rule names it: "ai" for an AI
+	// tool. Records written before Hejnal kept it have none until the
+	// service answers in another run.
+	Category string `json:"category,omitempty"`
 }
+
+// CategoryAI is the category of AI tools: model servers, chat interfaces,
+// notebooks and the like.
+const CategoryAI = "ai"
 
 // Changes are what one or more runs changed among the services Hejnal sees.
 type Changes struct {
@@ -224,7 +232,7 @@ func products(ts []Technology) []Product {
 	var out []Product
 	for _, t := range ts {
 		if !slices.ContainsFunc(out, func(p Product) bool { return p.ID == t.ID }) {
-			out = append(out, Product{ID: t.ID, Name: t.Name, Version: t.Version})
+			out = append(out, Product{ID: t.ID, Name: t.Name, Version: t.Version, Category: t.Category})
 		}
 	}
 	return out

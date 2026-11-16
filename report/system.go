@@ -31,7 +31,11 @@ type System struct {
 	// service still answers.
 	Gone     *time.Time      `json:"gone,omitempty"`
 	Services []SystemService `json:"services"`
-	Counts   SystemCounts    `json:"items"`
+	// AITools names the AI tools on the services that still answer: model
+	// servers, chat interfaces, notebooks. It is empty for a system that
+	// runs none Hejnal recognises.
+	AITools []string     `json:"aiTools,omitempty"`
+	Counts  SystemCounts `json:"items"`
 	// Items and Events are filled in for the history of one system, and
 	// left out of a list of systems.
 	Items  []SystemItem  `json:"itemList,omitempty"`
@@ -167,6 +171,16 @@ func buildSystems(records []inventory.Record, exps []Exposure, tr translator, on
 	for i := range out {
 		s := &out[i]
 		slices.SortFunc(s.Services, func(a, b SystemService) int { return cmp.Compare(a.Port, b.Port) })
+		for _, sv := range s.Services {
+			if sv.Gone != nil {
+				continue
+			}
+			for _, p := range sv.Products {
+				if p.Category == inventory.CategoryAI && !slices.Contains(s.AITools, p.Name) {
+					s.AITools = append(s.AITools, p.Name)
+				}
+			}
+		}
 		// The system is gone once every service is: since the last of them.
 		for _, sv := range s.Services {
 			if sv.Gone == nil {
@@ -303,6 +317,9 @@ func SystemReport(w io.Writer, s System, m Meta) error {
 		fmt.Fprintf(&b, "- **%s:** %s\n", tr("hist.source"), src)
 	}
 	fmt.Fprintf(&b, "- **%s:** %s\n", tr("ev.status"), systemStatus(tr, s))
+	if len(s.AITools) > 0 {
+		fmt.Fprintf(&b, "- **%s:** %s\n", tr("cat.ai"), mdEscape(strings.Join(s.AITools, ", ")))
+	}
 	fmt.Fprintf(&b, "- **%s:** %s\n\n", tr("hist.items"), tr("hist.counts", s.Counts.Found, s.Counts.Fixed, s.Counts.Open, s.Counts.Accepted))
 
 	fmt.Fprintf(&b, "## %s\n\n", tr("ov.services"))
@@ -341,6 +358,31 @@ func SystemReport(w io.Writer, s System, m Meta) error {
 	return err
 }
 
+// maxAIListed is how many systems the list of systems names as running AI
+// tools, above its table.
+const maxAIListed = 10
+
+// aiSystems names the systems that run AI tools, with the tools of each.
+// It is empty when none does.
+func aiSystems(tr translator, systems []System) string {
+	var parts []string
+	more := 0
+	for _, s := range systems {
+		if len(s.AITools) == 0 {
+			continue
+		}
+		if len(parts) == maxAIListed {
+			more++
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", s.Host, strings.Join(s.AITools, ", ")))
+	}
+	if more > 0 {
+		parts = append(parts, tr("hist.list.more", more))
+	}
+	return strings.Join(parts, " · ")
+}
+
 // SystemList writes the systems on record in Markdown.
 func SystemList(w io.Writer, systems []System, m Meta) error {
 	tr := newTranslator(m.Lang)
@@ -359,6 +401,9 @@ func SystemList(w io.Writer, systems []System, m Meta) error {
 		fmt.Fprintf(&b, "%s\n", tr("hist.list.none"))
 		_, err := io.WriteString(w, b.String())
 		return err
+	}
+	if ai := aiSystems(tr, systems); ai != "" {
+		fmt.Fprintf(&b, "**%s:** %s\n\n", tr("cat.ai"), mdEscape(ai))
 	}
 	fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s |\n|---|---|---|---|---|---|---|\n", tr("hist.system"), tr("hist.ports"),
 		tr("hist.products"), tr("hist.first"), tr("hist.last"), tr("hist.open"), tr("ev.status"))

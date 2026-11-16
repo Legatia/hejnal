@@ -235,3 +235,39 @@ func TestRecordEventsAreCapped(t *testing.T) {
 		t.Errorf("%d events, from %q to %q", len(evs), evs[0].To, evs[len(evs)-1].To)
 	}
 }
+
+func TestRecordKeepsCategory(t *testing.T) {
+	lab := func(version string) *Inventory {
+		return &Inventory{Assets: []Asset{{Host: "lab.example.com", Source: "ct", IPs: []string{"192.0.2.20"}, Services: []Service{
+			{Port: 11434, Technologies: []Technology{{ID: "ollama", Name: "Ollama", Version: version, Category: CategoryAI, Admin: true}}},
+			{Port: 443, Technologies: []Technology{{ID: "nginx", Name: "nginx", Category: "server"}}},
+		}}}}
+	}
+	recs, _ := Update(nil, lab("0.12.6"), at(0), everywhere)
+	// A run in which the version is hidden keeps the version and the category.
+	recs, _ = Update(recs, lab(""), at(1), everywhere)
+	got := map[int]Product{}
+	for _, r := range recs {
+		got[r.Port] = r.Products[0]
+	}
+	if want := (Product{ID: "ollama", Name: "Ollama", Version: "0.12.6", Category: CategoryAI}); got[11434] != want {
+		t.Errorf("record %+v, want %+v", got[11434], want)
+	}
+	if got[443].Category != "server" {
+		t.Errorf("record %+v", got[443])
+	}
+
+	// A record written before categories were kept gets one once the
+	// service answers again.
+	old := []Record{{Host: "lab.example.com", Port: 11434, Source: "ct", Products: []Product{{ID: "ollama", Name: "Ollama", Version: "0.12.6"}},
+		FirstSeen: at(0), LastSeen: at(0)}}
+	recs, ch := Update(old, lab("0.12.6"), at(1), everywhere)
+	for _, r := range recs {
+		if r.Port == 11434 && r.Products[0].Category != CategoryAI {
+			t.Errorf("an older record stayed without a category: %+v", r.Products[0])
+		}
+	}
+	if len(ch.Updated) != 0 {
+		t.Errorf("a category alone was reported as an update: %+v", ch.Updated)
+	}
+}

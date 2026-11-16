@@ -182,3 +182,72 @@ func TestChecksReadNextVersionFromScripts(t *testing.T) {
 		}
 	}
 }
+
+// TestChecksReadVersionsOfAITools asks the AI tools that hide their version
+// on the front page for the one address where each names it without a
+// sign-in.
+func TestChecksReadVersionsOfAITools(t *testing.T) {
+	for _, c := range []struct {
+		id, root, path, answer, want string
+	}{
+		{"ollama", "Ollama is running", "/api/version", `{"version":"0.12.6"}`, "0.12.6"},
+		// A build from source names no release.
+		{"ollama", "Ollama is running", "/api/version", `{"version":"0.0.0"}`, ""},
+		{"open-webui", `<html><head><title>Open WebUI</title></head></html>`, "/api/version", `{"version":"0.6.34","deployment_id":""}`, "0.6.34"},
+		{"flowise", `<html><head><title>Flowise - Build AI Agents, Visually</title></head></html>`, "/api/v1/version", `{"version":"3.0.8"}`, "3.0.8"},
+		{"comfyui", `<html><head><title>ComfyUI</title></head><body class="litegraph grid"></body></html>`, "/system_stats",
+			`{"system": {"os": "posix", "comfyui_version": "0.3.68", "python_version": "3.12.7"}, "devices": []}`, "0.3.68"},
+		// A pre-release cannot be placed in a range of versions.
+		{"open-webui", `<html><head><title>Open WebUI</title></head></html>`, "/api/version", `{"version":"0.7.0-dev"}`, ""},
+	} {
+		var mu sync.Mutex
+		var paths []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			paths = append(paths, r.URL.Path)
+			mu.Unlock()
+			switch r.URL.Path {
+			case "/":
+				io.WriteString(w, c.root)
+			case c.path:
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, c.answer)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		s := testScope(t, nil, []string{"127.0.0.1"}, []int{portOf(t, srv.URL)}, nil)
+		inv, err := Run(context.Background(), Options{Scope: s, Engine: engine(t), Timeout: 2 * time.Second, Checks: true})
+		srv.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var tool *inventory.Technology
+		for _, tech := range onlyService(t, inv).Technologies {
+			if tech.ID == c.id {
+				tool = &tech
+			}
+		}
+		if tool == nil {
+			t.Fatalf("%s not recognised: %+v", c.id, onlyService(t, inv).Technologies)
+		}
+		if tool.Category != inventory.CategoryAI {
+			t.Errorf("%s: category %q", c.id, tool.Category)
+		}
+		if tool.Version != c.want {
+			t.Errorf("%s answering %s: version %q, want %q", c.id, c.answer, tool.Version, c.want)
+		}
+		if (c.want != "") != strings.Contains(tool.Evidence, "version from "+c.path) {
+			t.Errorf("%s: evidence %q", c.id, tool.Evidence)
+		}
+		mu.Lock()
+		asked := slices.Contains(paths, c.path)
+		mu.Unlock()
+		if !asked {
+			t.Errorf("%s: %s was not requested", c.id, c.path)
+		}
+		if !ReadsVersion(c.id) {
+			t.Errorf("ReadsVersion(%q) is false", c.id)
+		}
+	}
+}

@@ -49,7 +49,9 @@ the city of an attack.
    Cisco, Juniper, SonicWall and Check Point gateways; MikroTik, DrayTek,
    TP-Link and D-Link routers; Hikvision and Dahua cameras; Exchange, Zimbra
    and Exim; SAP, Oracle E-Business Suite, VMware ESXi and Veeam; WordPress,
-   Drupal and PHP; GitLab, Jenkins, Confluence and more. `hejnal rules` lists
+   Drupal and PHP; GitLab, Jenkins, Confluence and more. It also recognises
+   the AI tools teams set up themselves: Ollama, Open WebUI, Flowise,
+   Jupyter, Gradio, ComfyUI, Dify, Langflow and MLflow. `hejnal rules` lists
    them all.
 3. **Matches it against what is exploited now.** It compares what it found
    with the [CISA Known Exploited Vulnerabilities
@@ -182,8 +184,9 @@ prints this every time it runs.
   unless you pass `-no-checks`, Hejnal sends a few more ordinary `GET`
   requests per web service to fixed, well-known paths:
   `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
-  version page (such as WordPress's `/feed/` or Grafana's `/api/health`) for
-  recognised products that hide their version, and up to eight scripts the
+  version page (such as WordPress's `/feed/`, Grafana's `/api/health` or
+  Ollama's `/api/version`) for recognised products that hide their version,
+  and up to eight scripts the
   front page itself loads from the same site, which also give the version
   of Next.js. It never follows redirects for these. An exposed `.env` file is counted, never stored; a secret in a
   script is stored only as its start and length.
@@ -351,7 +354,18 @@ dropped without a word.
 
 `hejnal systems` lists every system on record: its ports and products, the
 first and the last day it answered, its open items and whether it still
-answers. `hejnal systems shop.example.com` prints the history of one, from
+answers. Above the table it names the systems that run AI tools, such as a
+model server or a notebook:
+
+```
+**AI tools:** lab.example.com (Open WebUI, Ollama)
+```
+
+The JSON output, the API and the MCP server carry the same as `aiTools` on
+each system. A system recorded by an earlier release of Hejnal is named once
+it answers in another run.
+
+`hejnal systems shop.example.com` prints the history of one, from
 its first answer to the day it went away:
 
 ```
@@ -987,7 +1001,9 @@ wykorzystują, i mówi, co naprawić najpierw.
   rejestrów certyfikatów (certificate transparency).
 - **Rozpoznaje** ponad 250 produktów, m.in. bramy VPN i firewalle (Fortinet,
   Ivanti, Citrix, Palo Alto, Cisco), pocztę (Exchange, Zimbra, Roundcube),
-  WordPress, PHP, GitLab i Jenkins. Robi to jednym zwykłym zapytaniem
+  WordPress, PHP, GitLab i Jenkins, a także narzędzia AI, które zespół może
+  uruchomić sam: Ollama, Open WebUI, Flowise, Jupyter, Gradio, ComfyUI i
+  Dify. Robi to jednym zwykłym zapytaniem
   `GET /` na usługę; strona na Next.js App Router dostaje jeszcze jedno, z
   nagłówkiem `RSC: 1`.
 - **Porównuje** je z katalogiem CISA KEV i z listą wykorzystywanych podatności
@@ -1020,7 +1036,8 @@ wykorzystują, i mówi, co naprawić najpierw.
 - **Prowadzi historię każdego systemu:** `hejnal systems` wypisuje systemy z
   rejestru, a `hejnal systems shop.example.com -lang pl` historię jednego:
   pierwszą odpowiedź, kolejne wersje, wykryte i naprawione pozycje oraz
-  dzień, w którym zniknął. Raport dowodowy zawiera tabelę tych systemów.
+  dzień, w którym zniknął. Lista wskazuje systemy, na których działają
+  narzędzia AI. Raport dowodowy zawiera tabelę tych systemów.
 - **Sprawdza system zaraz po wdrożeniu:** `hejnal live -wait 2m
   https://app.twoja-domena.pl` sprawdza jeden adres z pliku zakresu, bez
   czekania na codzienne uruchomienie: to, co odpowiada, certyfikat, stałe
