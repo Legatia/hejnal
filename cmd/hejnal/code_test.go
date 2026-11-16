@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -183,6 +184,64 @@ func TestCodeScan(t *testing.T) {
 		t.Errorf("SARIF results = %v", byRule)
 	}
 
+	// A bill of materials beside the results: every package once, clean
+	// ones too, with the image's.
+	bomFile := filepath.Join(dir, "shop.cdx.json")
+	code, out, errOut = run(proj, "-image", img, "-format", "json", "-fail-on", "none", "-sbom", bomFile)
+	if code != exitOK || !strings.Contains(errOut, "Wrote the bill of materials to "+bomFile+": 5 components.") {
+		t.Fatalf("-sbom: exit %d\n%s", code, errOut)
+	}
+	if strings.Contains(out, "react") {
+		t.Errorf("the results list clean packages:\n%s", out)
+	}
+	var bom struct {
+		BOMFormat, SpecVersion, SerialNumber string
+		Metadata                             struct {
+			Timestamp string
+			Component struct{ Name string }
+		}
+		Components []struct {
+			Name, Version, PURL, Scope string
+			Evidence                   struct {
+				Occurrences []struct{ Location string }
+			}
+		}
+	}
+	data, err := os.ReadFile(bomFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &bom); err != nil {
+		t.Fatalf("%v\n%s", err, data)
+	}
+	if bom.BOMFormat != "CycloneDX" || bom.SpecVersion != "1.6" || !strings.HasPrefix(bom.SerialNumber, "urn:uuid:") ||
+		bom.Metadata.Timestamp != "2026-11-04T12:00:00Z" || bom.Metadata.Component.Name != "shop" {
+		t.Errorf("bill of materials: %s", data)
+	}
+	var listed []string
+	for _, c := range bom.Components {
+		at := ""
+		if len(c.Evidence.Occurrences) == 1 {
+			at = c.Evidence.Occurrences[0].Location
+		}
+		listed = append(listed, strings.TrimSpace(c.PURL+" "+c.Scope)+" at "+at)
+	}
+	if want := []string{
+		"pkg:deb/debian/libssl3@3.0.9-1?distro=debian-12&upstream=openssl at acme/api:1.0:/var/lib/dpkg/status",
+		"pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1 at gradle.lockfile",
+		"pkg:npm/evil-pkg@1.0.0 excluded at package-lock.json",
+		"pkg:npm/lodash@4.17.20 at package-lock.json",
+		"pkg:npm/react@18.2.0 at package-lock.json",
+	}; !slices.Equal(listed, want) {
+		t.Errorf("components:\n%s\nwant:\n%s", strings.Join(listed, "\n"), strings.Join(want, "\n"))
+	}
+	if code, _, errOut := run(proj, "-no-deps", "-sbom", bomFile); code != exitError || !strings.Contains(errOut, "-no-deps") {
+		t.Errorf("-sbom with -no-deps: %d %s", code, errOut)
+	}
+	if code, _, errOut := run(proj, "-fail-on", "none", "-sbom", filepath.Join(dir, "missing", "shop.cdx.json")); code != exitError || !strings.Contains(errOut, "missing") {
+		t.Errorf("-sbom in a directory that does not exist: %d %s", code, errOut)
+	}
+
 	// Save for later runs, and upload the results.
 	code, _, errOut = run(proj, "-save", "-format", "json", "-fail-on", "none", "-project", "Shop Web", "-upload", cloud.URL)
 	if code != exitError || !strings.Contains(errOut, "HEJNAL_UPLOAD_TOKEN") {
@@ -193,10 +252,16 @@ func TestCodeScan(t *testing.T) {
 	if code != exitOK || !strings.Contains(errOut, "Saved to") {
 		t.Fatalf("save and upload: %d\n%s", code, errOut)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "state", "code", "Shop-Web.json")); err != nil {
+	saved, err := os.ReadFile(filepath.Join(dir, "state", "code", "Shop-Web.json"))
+	if err != nil {
 		t.Errorf("not saved: %v", err)
 	}
+	// What is saved and uploaded holds the findings, not the whole list
+	// of packages.
 	mu.Lock()
+	if bytes.Contains(saved, []byte("react")) || bytes.Contains(uploaded, []byte("react")) {
+		t.Errorf("clean packages saved or uploaded:\n%s\n%s", saved, uploaded)
+	}
 	if auth != "Bearer hjup_test" || !bytes.Contains(uploaded, []byte(`"project": "Shop Web"`)) && !bytes.Contains(uploaded, []byte(`"project":"Shop Web"`)) || bytes.Contains(uploaded, []byte("4eC39HqLyjWDarjtT1zdp7dc")) {
 		t.Errorf("upload: %q %s", auth, uploaded)
 	}

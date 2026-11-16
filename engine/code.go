@@ -170,7 +170,7 @@ func (e *Engine) ScanCode(ctx context.Context, req CodeRequest) (*state.CodeScan
 	if len(req.Images) > 0 {
 		scan.Parts = append(scan.Parts, PartImages)
 	}
-	scan.Packages = len(pkgs)
+	scan.Packages, scan.Components = len(pkgs), pkgs
 	if len(pkgs) > 0 {
 		dfs, err := e.dependencyFindings(ctx, req.Project, pkgs, now)
 		if err != nil {

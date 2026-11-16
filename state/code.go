@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Legatia/hejnal/deps"
 	"github.com/Legatia/hejnal/match"
 )
 
@@ -21,10 +22,14 @@ type CodeScan struct {
 	Project   string    `json:"project"`
 	// Packages and Files count what was checked: packages in lockfiles and
 	// images, and infrastructure files with something to check.
-	Packages int      `json:"packages"`
-	Images   []string `json:"images,omitempty"`
-	Parts    []string `json:"parts"`
-	Notes    []string `json:"notes,omitempty"`
+	Packages int `json:"packages"`
+	// Components are those packages, each where it was found, for a bill
+	// of materials. They are not saved or uploaded: later runs and Hejnal
+	// Cloud work from the findings.
+	Components []deps.Package `json:"-"`
+	Images     []string       `json:"images,omitempty"`
+	Parts      []string       `json:"parts"`
+	Notes      []string       `json:"notes,omitempty"`
 	// Findings never hold a secret, only its redacted form and fingerprint.
 	Findings []match.Finding `json:"findings"`
 }

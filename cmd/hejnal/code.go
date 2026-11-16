@@ -18,6 +18,7 @@ import (
 	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/match"
 	"github.com/Legatia/hejnal/report"
+	"github.com/Legatia/hejnal/sbom"
 	"github.com/Legatia/hejnal/state"
 	"github.com/Legatia/hejnal/version"
 )
@@ -84,6 +85,7 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	format := fs.String("format", "text", "output: text, json or sarif")
 	out := fs.String("out", "", "write the output to this file instead of standard output")
 	all := fs.Bool("all", false, "with -format text, also list the low items one by one")
+	bom := fs.String("sbom", "", "also write the packages found to this `file` as a software bill of materials (CycloneDX 1.6 JSON)")
 	var exclude listFlag
 	fs.Var(&exclude, "exclude", excludeHelp)
 	history := fs.Bool("history", false, "also scan every commit in the Git history for secrets")
@@ -112,6 +114,9 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	}
 	if *format != "text" && *format != "json" && *format != "sarif" {
 		return exitError, fmt.Errorf("unknown format %q: use text, json or sarif", *format)
+	}
+	if *bom != "" && *noDeps && len(dirs) > 0 {
+		return exitError, errors.New("-sbom lists the dependencies -no-deps leaves out: use one or the other")
 	}
 	for _, d := range dirs {
 		if st, err := os.Stat(d); err != nil {
@@ -210,6 +215,13 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	for _, n := range scan.Notes {
 		fmt.Fprintln(a.stderr, "Note:", n)
 	}
+	if *bom != "" {
+		n, err := writeSBOM(*bom, scan)
+		if err != nil {
+			return exitError, err
+		}
+		fmt.Fprintf(a.stderr, "Wrote the bill of materials to %s: %s.\n", *bom, count(n, "component", "components"))
+	}
 	if *save {
 		if err := store.SaveCodeScan(scan); err != nil {
 			return exitError, err
@@ -226,6 +238,21 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 		return exitFindings, nil
 	}
 	return exitOK, nil
+}
+
+// writeSBOM writes the scan's packages to a file as CycloneDX, and returns
+// how many components the file lists.
+func writeSBOM(file string, scan *state.CodeScan) (n int, err error) {
+	f, err := os.Create(file)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
+	return sbom.CycloneDX(f, scan.Components, sbom.Options{Project: scan.Project, Time: scan.ScannedAt, ToolVersion: version.Version})
 }
 
 func (a *app) printCodeScan(w io.Writer, scan *state.CodeScan, lang string, all bool) error {

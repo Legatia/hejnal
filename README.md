@@ -584,6 +584,7 @@ everything else waits quietly.
 hejnal code scan .                                   # the current repository
 hejnal code scan -exclude testdata -exclude docs/examples .   # without test fixtures and samples
 hejnal code scan -image app.tar -format sarif -out hejnal.sarif .
+hejnal code scan -sbom shop.cdx.json .               # and a bill of materials
 docker save acme/api:1.4 -o api.tar && hejnal code scan -image api.tar
 ```
 
@@ -629,6 +630,18 @@ each day: a dependency flaw that joins CISA's list tomorrow becomes urgent
 tomorrow. `-upload <address>` sends the results, never the code, to Hejnal
 Cloud with the token in `HEJNAL_UPLOAD_TOKEN`.
 
+**Bill of materials.** `-sbom shop.cdx.json` also writes the packages found
+as a software bill of materials (SBOM) in [CycloneDX](https://cyclonedx.org)
+1.6 JSON, which tools such as Dependency-Track import. It lists every
+package once, whether an advisory covers it or not, with its version, its
+[package URL](https://github.com/package-url/purl-spec) and the files that
+name it; the packages of images given with `-image` are in the same list.
+Packages only development or tests use have the scope `excluded`. The list
+holds what lockfiles and package databases record, so it has no dependency
+graph, licences or hashes. It has no advisories either: those change daily,
+and the fix list and SARIF carry them. Kept with each release, the file
+records what the release shipped with.
+
 ### In GitHub Actions
 
 ```yaml
@@ -657,7 +670,9 @@ jobs:
 ```
 
 The action downloads the release for the runner from GitHub, checks it
-against the release's checksums, and runs it on the runner.
+against the release's checksums, and runs it on the runner. In releases
+after 0.7.1, `sbom: hejnal.cdx.json` also writes the bill of materials; the
+`sbom` output is its path, for a step such as `actions/upload-artifact`.
 
 **Limits.** Matching is by exact version, as the lockfile records it;
 Hejnal does not check whether your code calls the flawed function, and says
@@ -925,7 +940,8 @@ wykorzystują, i mówi, co naprawić najpierw.
   certyfikatów i końcem akceptacji.
 - **Sprawdza kod w CI:** `hejnal code scan` porównuje zależności, obrazy
   kontenerów, kod infrastruktury i sekrety z tym, co atakujący wykorzystują,
-  i zapisuje wynik także jako SARIF dla GitHub code scanning.
+  i zapisuje wynik także jako SARIF dla GitHub code scanning. Z `-sbom`
+  zapisuje też listę pakietów jako SBOM w formacie CycloneDX 1.6.
 - **Szuka wycieków:** sekretów w kodzie źródłowym (klucze API, tokeny, klucze
   prywatne) i kont z Twoich domen w znanych wyciekach danych (Have I Been
   Pwned).
