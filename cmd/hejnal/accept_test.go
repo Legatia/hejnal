@@ -26,6 +26,7 @@ func (h *harness) runAtTime(at time.Time, args ...string) (code int, stdout, std
 	var out, errOut bytes.Buffer
 	a := newApp(&out, &errOut)
 	a.now = func() time.Time { return at }
+	a.githubPause = 0
 	code = a.run(context.Background(), args)
 	return code, out.String(), errOut.String()
 }

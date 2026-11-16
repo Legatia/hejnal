@@ -76,7 +76,9 @@ the city of an attack.
 5. **Tells you what to do.** It writes a fix list in English or Polish and
    sends new findings to Slack, Microsoft Teams or email. Each month it can
    report what was found, what was fixed and how long fixes took. If a system
-   was compromised, it can draft a NIS2 early warning.
+   was compromised, it can draft a NIS2 early warning. `hejnal issues` keeps
+   a GitHub issue for every item, assigned to the system's owner and closed
+   when a later run no longer finds the item.
 
 It also flags expired or expiring TLS certificates and admin interfaces it can
 reach, such as Jenkins, phpMyAdmin or a vCenter login. From what each front
@@ -291,7 +293,11 @@ A scope file looks like this ([example](examples/scope.example.json)):
   "hosts": ["vpn.example.com"],
   "cidrs": ["203.0.113.0/29"],
   "exclude": ["legacy.example.com"],
-  "ports": [80, 443, 8080, 8443]
+  "ports": [80, 443, 8080, 8443],
+  "owners": [
+    {"name": "Web team", "github": "anna-nowak", "systems": ["shop.example.com"]},
+    {"name": "Network", "systems": ["vpn.example.com", "203.0.113.0/29"]}
+  ]
 }
 ```
 
@@ -304,6 +310,7 @@ A scope file looks like this ([example](examples/scope.example.json)):
 | `cidrs` | IP ranges, at most 1,024 addresses in total, checked on all configured ports. |
 | `exclude` | Hostnames (with their subdomains), addresses or ranges never to contact. |
 | `ports` | Ports for `hosts` and `cidrs`. Default: 80, 443, 8080, 8443. |
+| `owners` | Optional. Who looks after which systems: a `name`, a `github` login or both, and the `systems` as hostnames (each with its subdomains), addresses or ranges. Where two entries fit a system, the closer one wins. [`hejnal issues`](#issues-on-github) names the owner on each issue and assigns it to the login. |
 
 Unknown fields are rejected, so a misspelt key cannot silently change the
 scope.
@@ -399,6 +406,71 @@ Alerts and the exit status leave them out, and the fix list moves them to an
 acceptance lasts 90 days, or until the date you give with `-until`, at most a
 year. Then the item is open again and reported as new.
 
+### Issues on GitHub
+
+`hejnal issues` keeps one GitHub issue for every open item on the fix list,
+so the work lands where your team already tracks it. Run it after
+`hejnal run`: it reads the saved run and contacts only GitHub.
+
+```sh
+export HEJNAL_GITHUB_TOKEN=...                # a token that may read and write issues
+hejnal issues -repo your-org/infra -dry-run   # print what would change
+hejnal issues -repo your-org/infra
+```
+
+```
+opened #41 · 3f9a1c0d · WordPress on shop.example.com:443 · Web team
+closed #38 · ebc52a7e · PHP on shop.example.com:443 · no longer found
+Issues in your-org/infra: 1 opened, 1 closed, 0 reopened, 6 open already.
+```
+
+Each issue has the item's priority, its owner from the scope file, a rough
+effort, what to do and the command that shows the problem without Hejnal.
+From then on the issue follows the runs:
+
+- An item found for the first time gets an issue, assigned to the owner's
+  GitHub login.
+- When a later run no longer finds the item, its issue is closed as
+  completed, with a comment that names the run.
+- When the item is found again, the same issue is reopened.
+- When you accept the item with `hejnal accept`, its issue is closed as not
+  planned, with the reason and who accepted it. It is reopened if the
+  acceptance ends and the item is still found.
+- An issue you close yourself stays closed until the next run has checked
+  the fix, and is reopened if that run still finds the item. One you close
+  as not planned stays closed; record that decision with `hejnal accept`, so
+  the reports show it too.
+
+Hejnal writes an issue's text once and never overwrites it, so your edits
+and comments stay. It finds its issues by their label: `hejnal`, or the one
+you give with `-label`. Give each scope its own label when several share a
+repository. `-min-severity high` opens issues for high and critical items
+only, and `-max-new` (50 by default) limits how many are opened in one go;
+the rest follow next time. When a run reached no services at all, no issue
+is closed.
+
+The issues say which of your systems have open items, so Hejnal refuses a
+public repository unless you pass `-public`. The token comes from
+`HEJNAL_GITHUB_TOKEN`, or from `GITHUB_TOKEN` as GitHub Actions sets it,
+never from a flag. In a workflow, the repository is the one the workflow
+runs in:
+
+```yaml
+permissions:
+  contents: read
+  issues: write
+steps:
+  - uses: actions/checkout@v7
+  # install hejnal, then:
+  - run: hejnal run -scope scope.json
+  - run: hejnal issues
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+```
+
+On GitHub Enterprise Server, set `GITHUB_API_URL` to its API address;
+Actions does that itself.
+
 To include leaked secrets and breached accounts, see
 [below](#leaked-secrets-and-breached-accounts).
 
@@ -414,6 +486,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal report fixlist\|overview\|evidence\|nis2\|monthly` | Prints a report from the saved runs. |
 | `hejnal systems [host]` | Lists the systems seen, or prints the history of one: versions, items found and fixed, and when it went away. |
 | `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
+| `hejnal issues` | Keeps a GitHub issue for every item to fix: opens, closes and reopens issues as the runs find and stop finding items. |
 | `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
 | `hejnal code scan` | Checks dependencies, secrets, infrastructure code and container images, for CI. |
 | `hejnal serve` | Serves the results over a REST API. |
@@ -792,6 +865,7 @@ about. Treat a clean report as "nothing obvious", not "nothing at all".
 - RPM-based container images
 - OSV version ranges for open-source products NVD has not analysed yet
 - Detection-only confirmation checks for high-impact flaws
+- Fix items as Jira issues, beside GitHub
 - Tests on Windows
 
 Hosted, managed and partner (MSP) editions are a separate commercial product
@@ -873,6 +947,14 @@ wykorzystują, i mówi, co naprawić najpierw.
   Powiadomienia i kod wyjścia pomijają go wtedy przez 90 dni albo do daty z
   opcji `-until`, najwyżej przez rok. Nowa podatność w tym samym punkcie i tak
   się pokaże.
+- **Prowadzi zgłoszenia na GitHubie:** `hejnal issues -repo twoja-org/infra
+  -lang pl` otwiera zgłoszenie dla każdego punktu listy poprawek, z
+  priorytetem, szacowanym nakładem pracy i poleceniem do samodzielnego
+  sprawdzenia, i przypisuje je właścicielowi systemu z pola `owners` w pliku
+  zakresu. Zamyka zgłoszenie, gdy kolejne sprawdzenie nie znajduje już
+  punktu albo gdy punkt zaakceptowano, i otwiera je ponownie, gdy punkt
+  wraca. Token pochodzi ze zmiennej `HEJNAL_GITHUB_TOKEN` lub `GITHUB_TOKEN`.
+  Publicznego repozytorium Hejnal nie użyje bez opcji `-public`.
 
 [Przykładowa lista poprawek](examples/fix-list.pl.md).
 
@@ -886,6 +968,7 @@ hejnal run -checks -lang pl
 hejnal report fixlist -lang pl
 hejnal report monthly -lang pl
 hejnal accept -item 3f9a1c0d -reason "Wersja 6.8.3 ma poprawkę" -by "Anna Nowak"
+hejnal issues -repo twoja-org/infra -lang pl
 hejnal leaks scan -history ~/kod/serwis
 hejnal code scan -exclude testdata .
 ```
