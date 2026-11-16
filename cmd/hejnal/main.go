@@ -26,6 +26,7 @@ import (
 	"github.com/Legatia/hejnal/eol"
 	"github.com/Legatia/hejnal/epss"
 	"github.com/Legatia/hejnal/euvd"
+	"github.com/Legatia/hejnal/github"
 	"github.com/Legatia/hejnal/kev"
 	"github.com/Legatia/hejnal/nvd"
 	"github.com/Legatia/hejnal/osv"
@@ -56,6 +57,8 @@ Usage:
                                                 overview, evidence, nis2 or monthly
   hejnal systems   [host] [flags]               list the systems seen, or the history of one: versions,
                                                 items found and fixed, and when it went away
+  hejnal issues    [-repo owner/name] [flags]   keep a GitHub issue for every item to fix: open, close
+                                                and reopen issues as the runs find and stop finding items
   hejnal accept    -item <id> -reason "..."     record that you checked an item and accept it
   hejnal accept    -list | -remove <id>         list accepted items, or remove an acceptance
   hejnal leaks     scan|breaches [flags]        find secrets in code and breached accounts
@@ -99,6 +102,8 @@ type app struct {
 	ctURL          string
 	nvdURL         string
 	hibpURL        string // empty uses Have I Been Pwned's API
+	// githubPause is the wait between two changes to GitHub issues.
+	githubPause time.Duration
 
 	logMu sync.Mutex
 }
@@ -118,6 +123,7 @@ func newApp(stdout, stderr io.Writer) *app {
 		osvURL:        osv.DefaultAPI,
 		ctURL:         discover.CrtShURL,
 		nvdURL:        nvd.DefaultAPI,
+		githubPause:   github.DefaultPause,
 	}
 }
 
@@ -144,6 +150,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		err = a.cmdReport(rest)
 	case "systems", "system":
 		err = a.cmdSystems(rest)
+	case "issues":
+		err = a.cmdIssues(ctx, rest)
 	case "accept":
 		err = a.cmdAccept(rest)
 	case "code":

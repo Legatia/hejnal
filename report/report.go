@@ -131,13 +131,16 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 	return err
 }
 
-// writeGroup writes one item to fix. earlier is the acceptance of the item's
-// other findings, when part of it was accepted.
+// writeGroup writes one item to fix. n is its number in the list, or 0 to
+// leave the heading out. earlier is the acceptance of the item's other
+// findings, when part of it was accepted.
 func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier *match.Acceptance) {
 	where := hostPort(g.Host, g.Port)
 	// head writes the item's title and ID, and what was accepted of it.
 	head := func(title string) {
-		fmt.Fprintf(b, "### %d. %s · %s\n\n", n, title, mdCode(g.ID()))
+		if n > 0 {
+			fmt.Fprintf(b, "### %d. %s · %s\n\n", n, title, mdCode(g.ID()))
+		}
 		writeAcceptanceNotes(b, tr, g, earlier)
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.effort"), effortText(tr, Effort(g)))
 	}

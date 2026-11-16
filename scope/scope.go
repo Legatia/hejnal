@@ -52,6 +52,9 @@ type Scope struct {
 	Exclude []string `json:"exclude,omitempty"`
 	// Ports probed on explicit hosts and ranges. Defaults to DefaultPorts.
 	Ports []int `json:"ports,omitempty"`
+	// Owners say who looks after which systems. They are optional and only
+	// used to say whom an item to fix belongs to.
+	Owners []Owner `json:"owners,omitempty"`
 
 	prefixes        []netip.Prefix
 	hostIPs         []netip.Addr
@@ -194,6 +197,7 @@ func (s *Scope) Validate(now time.Time) error {
 	}
 	slices.Sort(s.Ports)
 	s.Ports = slices.Compact(s.Ports)
+	s.validateOwners(add)
 
 	return errors.Join(errs...)
 }

@@ -91,6 +91,7 @@ func (h *harness) run(args ...string) (code int, stdout, stderr string) {
 	var out, errOut bytes.Buffer
 	a := newApp(&out, &errOut)
 	a.now = func() time.Time { return testNow }
+	a.githubPause = 0
 	code = a.run(context.Background(), args)
 	return code, out.String(), errOut.String()
 }
