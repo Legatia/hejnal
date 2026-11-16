@@ -1,8 +1,7 @@
 name: Hejnal code scan
 description: >-
   Check dependencies, secrets, infrastructure code and container images for
-  what attackers exploit. Only package names and versions leave the runner;
-  results go to GitHub code scanning as SARIF and, if you want, to Hejnal Cloud.
+  what attackers exploit. Results in SARIF.
 author: Legatia Solutions
 branding:
   icon: shield
