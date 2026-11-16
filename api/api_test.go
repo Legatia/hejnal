@@ -10,6 +10,7 @@ import (
 
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/report"
 	"github.com/Legatia/hejnal/scope"
 	"github.com/Legatia/hejnal/state"
 	"github.com/Legatia/hejnal/version"
@@ -530,5 +531,65 @@ func TestUnreadableStateIsAServerError(t *testing.T) {
 	}
 	if log := logs.String(); !strings.Contains(log, "findings.json") || !strings.Contains(log, "inventory.json") || !strings.Contains(log, "reported.json") {
 		t.Errorf("the unreadable files were not logged:\n%s", log)
+	}
+}
+
+func TestSystems(t *testing.T) {
+	dir := t.TempDir()
+	store := writeState(t, dir)
+	srv, logs := newAPI(t, Config{Store: store})
+	// Before a run recorded anything, the list is empty.
+	status, _, body := do(t, srv, http.MethodGet, "/v1/systems", testToken, nil)
+	if got := decode[systemsResponse](t, body); status != http.StatusOK || got.Systems == nil || len(got.Systems) != 0 {
+		t.Fatalf("empty record: %d %s", status, body)
+	}
+	first := testNow.AddDate(0, 0, -20)
+	gone := testNow.AddDate(0, 0, -2)
+	err := store.SaveSystems([]inventory.Record{
+		{Host: "shop.example.com", Port: 443, Source: "domain", Products: []inventory.Product{{ID: "wordpress", Name: "WordPress", Version: "6.8.1"}},
+			FirstSeen: first, LastSeen: testNow, Events: []inventory.Event{
+				{At: testNow.AddDate(0, 0, -5), Kind: inventory.EventVersion, Product: "WordPress", From: "6.7.2", To: "6.8.1"}}},
+		{Host: "old.example.com", Port: 8080, Source: "ct", FirstSeen: first, LastSeen: testNow.AddDate(0, 0, -6), Missed: 2, Gone: &gone,
+			Events: []inventory.Event{{At: gone, Kind: inventory.EventGone}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, hdr, body := do(t, srv, http.MethodGet, "/v1/systems", testToken, nil)
+	got := decode[systemsResponse](t, body)
+	if status != http.StatusOK || len(got.Systems) != 2 || got.Systems[0].Host != "old.example.com" || got.Systems[0].Gone == nil ||
+		got.Systems[1].Counts.Open == 0 || got.Systems[1].Events != nil {
+		t.Errorf("systems: %d %s", status, body)
+	}
+	checkCommonHeaders(t, hdr)
+
+	status, _, body = do(t, srv, http.MethodGet, "/v1/systems/Shop.Example.com.", testToken, nil)
+	sys := decode[report.System](t, body)
+	if status != http.StatusOK || sys.Host != "shop.example.com" || len(sys.Items) == 0 || len(sys.Events) < 3 {
+		t.Fatalf("one system: %d %s", status, body)
+	}
+	if !slices.ContainsFunc(sys.Events, func(e report.SystemEvent) bool {
+		return e.Kind == report.SystemVersion && e.From == "6.7.2" && e.To == "6.8.1"
+	}) {
+		t.Errorf("no version change in %s", body)
+	}
+	status, _, body = do(t, srv, http.MethodGet, "/v1/systems/unknown.example.com", testToken, nil)
+	if msg := errorText(t, body); status != http.StatusNotFound || !strings.Contains(msg, "GET /v1/systems") {
+		t.Errorf("unknown system: %d %q", status, msg)
+	}
+	for _, path := range []string{"/v1/systems?host=x", "/v1/systems/shop.example.com?lang=de"} {
+		if status, _, _ := do(t, srv, http.MethodGet, path, testToken, nil); status != http.StatusBadRequest {
+			t.Errorf("%s: %d", path, status)
+		}
+	}
+	if status, _, _ := do(t, srv, http.MethodGet, "/v1/systems", "", nil); status != http.StatusUnauthorized {
+		t.Errorf("without a token: %d", status)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "systems.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	status, _, body = do(t, srv, http.MethodGet, "/v1/systems", testToken, nil)
+	if msg := errorText(t, body); status != http.StatusInternalServerError || strings.Contains(msg, dir) || !strings.Contains(logs.String(), "systems.json") {
+		t.Errorf("unreadable record: %d %q", status, msg)
 	}
 }

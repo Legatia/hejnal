@@ -24,6 +24,40 @@ type Record struct {
 	// Gone is when it was taken as gone: after Missing runs in a row
 	// without an answer.
 	Gone *time.Time `json:"gone,omitempty"`
+	// Events are what happened to it since it was first seen, oldest
+	// first: the latest maxEvents.
+	Events []Event `json:"events,omitempty"`
+}
+
+// Event is one dated change in the record of a service.
+type Event struct {
+	At time.Time `json:"at"`
+	// Kind is EventVersion, EventGone or EventBack.
+	Kind string `json:"kind"`
+	// Product, From and To describe a product that showed another version.
+	Product string `json:"product,omitempty"`
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+}
+
+// Kinds of events.
+const (
+	EventVersion = "version" // a product showed another version
+	EventGone    = "gone"    // the service stopped answering
+	EventBack    = "back"    // it answered again after it was gone
+)
+
+// maxEvents is how many events a record keeps.
+const maxEvents = 100
+
+// log adds an event to the record, without touching the events of the
+// record it was copied from.
+func (r *Record) log(e Event) {
+	evs := append(slices.Clip(r.Events), e)
+	if len(evs) > maxEvents {
+		evs = slices.Clone(evs[len(evs)-maxEvents:])
+	}
+	r.Events = evs
 }
 
 // Product is a product recognised on a service, and the version it showed.
@@ -136,8 +170,14 @@ func Update(records []Record, inv *Inventory, now time.Time, inScope func(host s
 		known[p] = true
 		if cur, ok := answered[p]; ok {
 			back := r.Gone != nil
-			if !back {
-				ch.Updated = append(ch.Updated, updates(r, cur.products, now)...)
+			changed := updates(r, cur.products, now)
+			if back {
+				r.log(Event{At: now, Kind: EventBack})
+			} else {
+				ch.Updated = append(ch.Updated, changed...)
+			}
+			for _, u := range changed {
+				r.log(Event{At: now, Kind: EventVersion, Product: u.Product, From: u.From, To: u.To})
 			}
 			r.Products = keepVersions(r.Products, cur.products)
 			r.LastSeen, r.Missed, r.Gone = now, 0, nil
@@ -150,6 +190,7 @@ func Update(records []Record, inv *Inventory, now time.Time, inScope func(host s
 			if r.Missed >= Missing {
 				at := now
 				r.Gone = &at
+				r.log(Event{At: now, Kind: EventGone})
 				ch.Gone = append(ch.Gone, Gone{Record: r, Resolves: resolves[r.Host]})
 			}
 		}

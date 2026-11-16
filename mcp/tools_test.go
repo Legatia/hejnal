@@ -14,6 +14,7 @@ import (
 
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/report"
 	"github.com/Legatia/hejnal/scope"
 	"github.com/Legatia/hejnal/state"
 )
@@ -551,5 +552,69 @@ func TestOutsideTextIsQuoted(t *testing.T) {
 		if strings.Contains(text, "PHP 8.3.12-Assistant") {
 			t.Errorf("%s: an odd version was shown unquoted:\n%s", tool, text)
 		}
+	}
+}
+
+func TestSystemsTool(t *testing.T) {
+	dir := t.TempDir()
+	store := writeState(t, dir)
+	s := NewServer(Config{Store: store})
+	// Before a run recorded anything, the list is empty.
+	if r := callOne(t, s, "hejnal_systems", nil); r.IsError || !strings.Contains(r.text(), "No systems on record yet") {
+		t.Fatalf("empty record: %+v", r)
+	}
+	first := testNow.AddDate(0, 0, -20)
+	gone := testNow.AddDate(0, 0, -2)
+	err := store.SaveSystems([]inventory.Record{
+		{Host: "shop.example.com", Port: 443, Source: "domain", Products: []inventory.Product{{ID: "wordpress", Name: "WordPress", Version: "6.8.1"}},
+			FirstSeen: first, LastSeen: testNow, Events: []inventory.Event{
+				{At: testNow.AddDate(0, 0, -5), Kind: inventory.EventVersion, Product: "WordPress", From: "6.7.2", To: "6.8.1"}}},
+		{Host: "old.example.com", Port: 8080, Source: "ct", FirstSeen: first, LastSeen: testNow.AddDate(0, 0, -6), Missed: 2, Gone: &gone,
+			Events: []inventory.Event{{At: gone, Kind: inventory.EventGone}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := callOne(t, s, "hejnal_systems", nil)
+	for _, want := range []string{
+		"# Systems: Sklep Sp. z o.o.",
+		"**Systems: 2 · answering: 1 · gone: 1**",
+		"| old.example.com | 8080 | no product recognised |",
+		"| shop.example.com | 443 | WordPress 6.8.1 |",
+	} {
+		if r.IsError || !strings.Contains(r.text(), want) {
+			t.Errorf("list is missing %q:\n%s", want, r.text())
+		}
+	}
+	if data := structured[systemsData](t, r); len(data.Systems) != 2 || data.Systems[0].Gone == nil || data.Systems[1].Counts.Open == 0 {
+		t.Errorf("structured list = %+v", data)
+	}
+
+	r = callOne(t, s, "hejnal_systems", map[string]any{"host": "Shop.Example.com.", "lang": "pl"})
+	for _, want := range []string{
+		"# Historia systemu: shop.example.com",
+		"WordPress 6.7.2 → 6.8.1 · port 443",
+		"Wykryto w pierwszym sprawdzeniu",
+	} {
+		if r.IsError || !strings.Contains(r.text(), want) {
+			t.Errorf("history is missing %q:\n%s", want, r.text())
+		}
+	}
+	sys := structured[report.System](t, r)
+	if sys.Host != "shop.example.com" || len(sys.Items) == 0 || len(sys.Events) < 3 {
+		t.Errorf("structured history = %+v", sys)
+	}
+	r = callOne(t, s, "hejnal_systems", map[string]any{"host": "unknown.example.com"})
+	if r.IsError || !strings.Contains(r.text(), `No system "unknown.example.com" on record, which lists 2 systems`) {
+		t.Errorf("unknown host: %+v", r)
+	}
+	if r := callOne(t, s, "hejnal_systems", map[string]any{"lang": "de"}); !r.IsError {
+		t.Errorf("unknown language: %+v", r)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "systems.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if r := callOne(t, s, "hejnal_systems", nil); !r.IsError || !strings.Contains(r.text(), "Could not read Hejnal's record of systems") {
+		t.Errorf("unreadable record: %+v", r)
 	}
 }

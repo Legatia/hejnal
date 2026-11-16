@@ -54,6 +54,8 @@ Usage:
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    <report> [flags]             print a report from the saved runs: fixlist,
                                                 overview, evidence, nis2 or monthly
+  hejnal systems   [host] [flags]               list the systems seen, or the history of one: versions,
+                                                items found and fixed, and when it went away
   hejnal accept    -item <id> -reason "..."     record that you checked an item and accept it
   hejnal accept    -list | -remove <id>         list accepted items, or remove an acceptance
   hejnal leaks     scan|breaches [flags]        find secrets in code and breached accounts
@@ -140,6 +142,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		err = a.cmdMatch(ctx, rest)
 	case "report":
 		err = a.cmdReport(rest)
+	case "systems", "system":
+		err = a.cmdSystems(rest)
 	case "accept":
 		err = a.cmdAccept(rest)
 	case "code":

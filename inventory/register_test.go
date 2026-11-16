@@ -176,3 +176,62 @@ func TestChangesTrim(t *testing.T) {
 		t.Errorf("gone %+v, updated %+v", c.Gone, c.Updated)
 	}
 }
+
+func eventKinds(r Record) []string {
+	var out []string
+	for _, e := range r.Events {
+		out = append(out, e.Kind)
+	}
+	return out
+}
+
+func TestRecordKeepsEvents(t *testing.T) {
+	old := Asset{Host: "old.example.com", Source: "ct", IPs: []string{"192.0.2.12"}, Services: []Service{
+		{Port: 443, Technologies: []Technology{{ID: "grafana", Name: "Grafana", Version: "10.2.3"}}},
+	}}
+	recs, _ := Update(nil, shopInventory("1.24.0", old), at(0), everywhere)
+	if len(recs[0].Events) != 0 {
+		t.Fatalf("the first run logged %+v", recs[0].Events)
+	}
+	// nginx is upgraded on both ports of the shop.
+	before := recs
+	recs, _ = Update(recs, shopInventory("1.30.6", old), at(1), everywhere)
+	shop := recs[2]
+	if len(shop.Events) != 1 || shop.Events[0] != (Event{At: at(1), Kind: EventVersion, Product: "nginx", From: "1.24.0", To: "1.30.6"}) {
+		t.Fatalf("version event %+v", shop.Events)
+	}
+	if len(before[2].Events) != 0 {
+		t.Errorf("the records passed in were changed: %+v", before[2].Events)
+	}
+	// The old host goes away, and comes back with another version: the
+	// version is not reported as an update, but the record keeps it.
+	recs, _ = Update(recs, shopInventory("1.30.6"), at(2), everywhere)
+	recs, _ = Update(recs, shopInventory("1.30.6"), at(3), everywhere)
+	old.Services[0].Technologies[0].Version = "11.1.0"
+	recs, ch := Update(recs, shopInventory("1.30.6", old), at(9), everywhere)
+	if len(ch.Updated) != 0 {
+		t.Errorf("a service that came back reported updates: %+v", ch.Updated)
+	}
+	got := recs[0]
+	if kinds := eventKinds(got); !slices.Equal(kinds, []string{EventGone, EventBack, EventVersion}) {
+		t.Fatalf("events %v", kinds)
+	}
+	if !got.Events[0].At.Equal(at(3)) || !got.Events[1].At.Equal(at(9)) || got.Events[2].To != "11.1.0" {
+		t.Errorf("events %+v", got.Events)
+	}
+	// What the changes carry is the record with its events.
+	if len(ch.New) != 1 || len(ch.New[0].Events) != 3 {
+		t.Errorf("back %+v", ch.New)
+	}
+}
+
+func TestRecordEventsAreCapped(t *testing.T) {
+	recs, _ := Update(nil, shopInventory("1.0.0"), at(0), everywhere)
+	for i := 1; i <= maxEvents+20; i++ {
+		recs, _ = Update(recs, shopInventory("1.0."+strconv.Itoa(i)), at(i), everywhere)
+	}
+	evs := recs[0].Events
+	if len(evs) != maxEvents || evs[0].To != "1.0.21" || evs[len(evs)-1].To != "1.0."+strconv.Itoa(maxEvents+20) {
+		t.Errorf("%d events, from %q to %q", len(evs), evs[0].To, evs[len(evs)-1].To)
+	}
+}

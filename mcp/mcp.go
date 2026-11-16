@@ -499,7 +499,7 @@ func (s *Server) initialize(params json.RawMessage) (any, *rpcError) {
 
 func (s *Server) instructions() string {
 	text := "Hejnal checks an organisation's internet-facing systems, within an authorised scope, for software with flaws that attackers are exploiting now (CISA's Known Exploited Vulnerabilities catalog), and for certificate problems, exposed admin interfaces and files, secrets in source code and accounts in data breaches. " +
-		"Start with hejnal_summary. hejnal_fix_list gives the prioritised fix list in Markdown, hejnal_findings and hejnal_inventory give details, and hejnal_nis2_draft drafts a NIS2 early warning for use after an incident. "
+		"Start with hejnal_summary. hejnal_fix_list gives the prioritised fix list in Markdown, hejnal_findings and hejnal_inventory give details, hejnal_systems gives the history of each system (versions, items found and fixed, when it went away), and hejnal_nis2_draft drafts a NIS2 early warning for use after an incident. "
 	if s.allowRuns {
 		text += "hejnal_run checks the systems again; it contacts them over the network and can take minutes. "
 	}

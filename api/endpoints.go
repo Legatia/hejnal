@@ -284,6 +284,69 @@ func (h *handler) changes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type systemsResponse struct {
+	Systems []report.System `json:"systems"`
+}
+
+// systems serves GET /v1/systems: every system on record, with its services
+// and the number of items found on it in the saved runs.
+func (h *handler) systems(w http.ResponseWriter, r *http.Request) {
+	if _, err := params(r); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	records, history, ok := h.loadSystems(w)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, systemsResponse{Systems: nonNil(report.Systems(records, history, "en"))})
+}
+
+// system serves GET /v1/systems/{host}: the history of one system. The
+// titles of its items are in the language given by the lang parameter.
+func (h *handler) system(w http.ResponseWriter, r *http.Request) {
+	q, err := params(r, "lang")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	lang := strings.ToLower(strings.TrimSpace(q.Get("lang")))
+	if lang == "" {
+		lang = "en"
+	}
+	if !report.ValidLang(lang) {
+		writeError(w, http.StatusBadRequest, "lang must be en or pl")
+		return
+	}
+	records, history, ok := h.loadSystems(w)
+	if !ok {
+		return
+	}
+	sys, found := report.SystemHistory(normalizeHost(r.PathValue("host")), records, history, lang)
+	if !found {
+		writeError(w, http.StatusNotFound, "no such system on record; GET /v1/systems lists the ones seen")
+		return
+	}
+	writeJSON(w, http.StatusOK, sys)
+}
+
+// loadSystems reads the record of services and the saved runs.
+func (h *handler) loadSystems(w http.ResponseWriter) ([]inventory.Record, []*state.Snapshot, bool) {
+	records, err := h.store.LoadSystems()
+	if err != nil {
+		h.logf("api: reading the record of systems: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not read the record of systems; see the server log")
+		return nil, nil, false
+	}
+	history, err := h.store.History()
+	if err != nil {
+		h.logf("api: reading the saved runs: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not read the saved runs; see the server log")
+		return nil, nil, false
+	}
+	return records, history, true
+}
+
 // report serves a Markdown report of the latest findings in the language
 // given by the lang parameter, English by default.
 func (h *handler) report(write func(io.Writer, []match.Finding, report.Meta) error) http.HandlerFunc {
