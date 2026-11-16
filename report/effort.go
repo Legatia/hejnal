@@ -20,6 +20,12 @@ func Effort(g match.Group) int {
 			return 240
 		}
 		return 120
+	case match.KindEOL:
+		switch g.Category {
+		case "edge", "remote-access", "network", "camera":
+			return 240
+		}
+		return 120
 	case match.KindAdminExposed:
 		return 30
 	case match.KindTLSExpired, match.KindTLSExpiring, match.KindTakeover:

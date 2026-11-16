@@ -120,6 +120,34 @@ func proofOf(tr translator, g match.Group) Proof {
 		p.SeeIt, p.Command = seeHTTP(tr, g.URL, g.Evidence)
 	case match.KindAdminExposed:
 		p.SeeIt, p.Command = seeHTTP(tr, g.URL, g.Evidence)
+	case match.KindEOL:
+		at := g.URL
+		if at == "" {
+			at = hostPort(g.Host, g.Port)
+		}
+		if g.Evidence != "" {
+			step(true, "proof.answered", at, g.Technology, plain(g.Evidence))
+		} else {
+			step(true, "proof.answered.bare", at, g.Technology)
+		}
+		step(true, "proof.version", g.Version)
+		switch {
+		case f.SupportEnds == "":
+			step(true, "proof.eol.nodate", g.Technology, f.Release)
+		case f.SupportEnded:
+			step(true, "proof.eol.ended", g.Technology, f.Release, f.SupportEnds)
+		default:
+			step(true, "proof.eol.ends", g.Technology, f.Release, f.SupportEnds)
+		}
+		link := ""
+		if len(f.Links) > 0 {
+			link = f.Links[0]
+		}
+		if _, p.Command = seeHTTP(tr, g.URL, g.Evidence); p.Command != "" {
+			p.SeeIt = tr("proof.see.eol", link)
+		} else {
+			p.SeeIt = tr("proof.see.eol.bare", link)
+		}
 	case match.KindExposedFile:
 		switch f.TechID {
 		case "foreign-host":

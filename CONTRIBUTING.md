@@ -51,7 +51,8 @@ any redirects inside the scope:
   "versions": [{"source": "header:Server", "regex": "ExampleGW/([0-9.]+)"}],
   "packaged": [{"source": "header:Server", "regex": "\\((Debian|Ubuntu)\\)"}],
   "kev": [{"vendor": "^Example Corp$", "product": "Secure Gateway"}],
-  "cpe": ["examplecorp:secure_gateway"]
+  "cpe": ["examplecorp:secure_gateway"],
+  "eol": "example-gateway"
 }
 ```
 
@@ -76,6 +77,13 @@ any redirects inside the scope:
   Hejnal compares a version it sees with NVD's affected version ranges. List
   every name NVD has used for the product, such as `f5:nginx` and
   `nginx:nginx`.
+- `eol` is the product's ID on [endoflife.date](https://endoflife.date), the
+  last part of its page address (`nginx` for endoflife.date/nginx). With it,
+  Hejnal tells when the release a version belongs to stops getting fixes.
+  The rule must read versions, and their form must start with the release
+  names endoflife.date uses: `1.24.0` belongs to release `1.24`. Products
+  whose versions do not, such as Exchange's build numbers against releases
+  named `2019`, are left without it.
 - `editions` tells apart software editions that NVD lists separately, by the
   form of the version. Jenkins, for example, maps `2.426.3` to its `lts`
   edition and `2.441` to its weekly one (`-`).

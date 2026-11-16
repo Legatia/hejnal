@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Legatia/hejnal/eol"
 	"github.com/Legatia/hejnal/epss"
 	"github.com/Legatia/hejnal/fingerprint"
 	"github.com/Legatia/hejnal/inventory"
@@ -36,6 +37,7 @@ const (
 	KindBreach       Kind = "breach"        // accounts on a domain in a known data breach
 	KindDependency   Kind = "dependency"    // a package version with an advisory, found by `hejnal code scan`
 	KindMisconfig    Kind = "misconfig"     // infrastructure code that opens a way in, found by `hejnal code scan`
+	KindEOL          Kind = "eol"           // a release past its end of support, or whose support ends soon
 )
 
 // exposureScores rates exposed files: environment files usually hold
@@ -232,6 +234,15 @@ type Finding struct {
 	// AcceptanceExpired is set when the acceptance that covered the finding
 	// has expired, so the finding is open again.
 	AcceptanceExpired *Acceptance `json:"acceptanceExpired,omitempty"`
+	// Release, SupportEnds and SupportEnded describe a release's end of
+	// support, from endoflife.date: the release line the version belongs
+	// to, the day its support ends or ended (empty when no date is known),
+	// and whether that day has come. UpgradeTo lists versions to move to:
+	// the latest of the closest newer supported release, and of the newest.
+	Release      string   `json:"release,omitempty"`
+	SupportEnds  string   `json:"supportEnds,omitempty"`
+	SupportEnded bool     `json:"supportEnded,omitempty"`
+	UpgradeTo    []string `json:"upgradeTo,omitempty"`
 }
 
 // Options tune matching.
@@ -244,6 +255,11 @@ type Options struct {
 	// NVD holds affected-version data by CVE, used when a product's
 	// version is known.
 	NVD map[string]*nvd.Record
+	// EOL holds endoflife.date's support dates, used when a product's
+	// version is known. EOLWindow flags releases whose support ends within
+	// it. Default 90 days.
+	EOL       *eol.Catalog
+	EOLWindow time.Duration
 }
 
 // Run produces findings for an inventory, sorted most urgent first. cat may be
@@ -254,6 +270,9 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 	}
 	if opts.ExpiryWindow <= 0 {
 		opts.ExpiryWindow = 21 * 24 * time.Hour
+	}
+	if opts.EOLWindow <= 0 {
+		opts.EOLWindow = 90 * 24 * time.Hour
 	}
 	out := []Finding{}
 	seen := map[string]bool{}
@@ -393,6 +412,9 @@ func Run(inv *inventory.Inventory, cat *kev.Catalog, eng *fingerprint.Engine, op
 					f.Severity = SeverityFor(f.Score)
 					emit(f)
 				}
+				if f, ok := endOfSupport(base, t, eng, opts); ok {
+					emit(f)
+				}
 			}
 		}
 	}
@@ -464,6 +486,59 @@ func Score(v kev.Vulnerability, category string, epssScore float64, now time.Tim
 	}
 	score += int(math.Round(probability(epssScore) * 10))
 	return max(0, min(100, score))
+}
+
+// endOfSupport flags a release past its end of support, and one whose
+// support ends within the window. Linux distribution packages are left
+// out, because a distribution keeps fixing its own release of a product
+// after the upstream project stops, and so are copies of pages on a file
+// server, where the product does not run.
+func endOfSupport(base Finding, t inventory.Technology, eng *fingerprint.Engine, opts Options) (Finding, bool) {
+	if opts.EOL == nil || eng == nil || t.Version == "" || t.Packaged || t.Static {
+		return Finding{}, false
+	}
+	product := eng.EOLProduct(t.ID)
+	p, ok := opts.EOL.Product(product)
+	if !ok {
+		return Finding{}, false
+	}
+	r, ok := p.Release(t.Version)
+	if !ok {
+		return Finding{}, false
+	}
+	ended := r.EndedAt(opts.Now)
+	if end, ok := r.Ends(); !ended && (!ok || end.Sub(opts.Now) > opts.EOLWindow) {
+		return Finding{}, false
+	}
+	f := base
+	f.Kind = KindEOL
+	// One item per release and service, from support ending soon until the
+	// upgrade, even if two rules recognise the same product.
+	f.Key = fmt.Sprintf("%s|%s|%d|%s|%s", f.Kind, f.Host, f.Port, product, r.Name)
+	f.Release = r.Name
+	f.SupportEnds = r.EOL
+	f.SupportEnded = ended
+	f.UpgradeTo = p.Upgrades(r, opts.Now, opts.EOLWindow)
+	f.Links = []string{p.Link()}
+	f.Score = eolScore(t.Category, ended)
+	f.Severity = SeverityFor(f.Score)
+	f.Confidence = ConfidenceObserved
+	return f, true
+}
+
+// eolScore rates a release by its end of support. Past it, flaws found in
+// the release are not fixed any more, which matters most on the gateways
+// and devices attackers scan for first. Before it, the upgrade is work to
+// plan.
+func eolScore(category string, ended bool) int {
+	if !ended {
+		return 30
+	}
+	switch category {
+	case "edge", "remote-access", "network", "camera":
+		return 65
+	}
+	return 55
 }
 
 // ruledOutScore caps the score of flaws the version check rules out.

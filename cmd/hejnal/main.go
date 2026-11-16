@@ -23,6 +23,7 @@ import (
 
 	"github.com/Legatia/hejnal/discover"
 	"github.com/Legatia/hejnal/engine"
+	"github.com/Legatia/hejnal/eol"
 	"github.com/Legatia/hejnal/epss"
 	"github.com/Legatia/hejnal/euvd"
 	"github.com/Legatia/hejnal/kev"
@@ -49,7 +50,7 @@ Usage:
   hejnal init      [-domain d -by "who"]        write the scope file: what Hejnal may check
   hejnal run       [-scope scope.json] [flags]  discover, match and report in one go
   hejnal discover  [-scope scope.json] [flags]  find hosts and identify their software
-  hejnal feeds     [flags]                      download the CISA and ENISA lists of exploited flaws
+  hejnal feeds     [flags]                      download the lists of exploited flaws and end-of-support dates
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    <report> [flags]             print a report from the saved runs: fixlist,
                                                 overview, evidence, nis2 or monthly
@@ -91,6 +92,7 @@ type app struct {
 	euvdURL        string
 	euvdRecordURL  string
 	epssURL        string
+	eolURL         string
 	osvURL         string
 	ctURL          string
 	nvdURL         string
@@ -110,6 +112,7 @@ func newApp(stdout, stderr io.Writer) *app {
 		euvdURL:       euvd.DefaultURL,
 		euvdRecordURL: euvd.DefaultRecordURL,
 		epssURL:       epss.DefaultAPI,
+		eolURL:        eol.DefaultURL,
 		osvURL:        osv.DefaultAPI,
 		ctURL:         discover.CrtShURL,
 		nvdURL:        nvd.DefaultAPI,
@@ -177,6 +180,7 @@ type options struct {
 	kevFile     string
 	euvdFile    string
 	noEUVD      bool
+	noEOL       bool
 	offline     bool
 	noEPSS      bool
 	noNVD       bool
@@ -208,6 +212,7 @@ func (o *options) feedFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&o.offline, "offline", false, "do not download feeds; use the cached copies")
 	fs.BoolVar(&o.noEPSS, "no-epss", false, "do not use EPSS exploit-probability scores")
 	fs.BoolVar(&o.noNVD, "no-nvd", false, "do not compare versions with NVD's affected ranges")
+	fs.BoolVar(&o.noEOL, "no-eol", false, "do not check versions against endoflife.date's end-of-support dates")
 }
 
 func (o *options) scanFlags(fs *flag.FlagSet) {
@@ -243,6 +248,8 @@ func (a *app) engine(o *options) (*engine.Engine, error) {
 		EUVDRecordURL: a.euvdRecordURL,
 		EUVDFile:      o.euvdFile,
 		NoEUVD:        o.noEUVD,
+		EOLURL:        a.eolURL,
+		NoEOL:         o.noEOL,
 		EPSSURL:       a.epssURL,
 		OSVURL:        a.osvURL,
 		CTURL:         a.ctURL,

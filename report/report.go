@@ -25,6 +25,8 @@ type Meta struct {
 	KEVVersion   string
 	EUVDDate     string
 	EPSSDate     string
+	// EOLDate is the day endoflife.date generated the support dates used.
+	EOLDate string
 	// KEVFlaws is how many known exploited flaws were checked.
 	KEVFlaws     int
 	Assets       int
@@ -51,6 +53,9 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 		}
 		if m.EPSSDate != "" {
 			b.WriteString(tr("fix.feeds.epss", m.EPSSDate))
+		}
+		if m.EOLDate != "" {
+			b.WriteString(tr("fix.feeds.eol", m.EOLDate))
 		}
 		b.WriteString(".\n\n")
 	}
@@ -111,6 +116,7 @@ func FixList(w io.Writer, fs []match.Finding, m Meta) error {
 			writeGroup(&b, tr, n, g, earlier[g.Key])
 		}
 	}
+	writeComingUp(&b, tr, groups, accepted, m.GeneratedAt)
 	if len(fixed) > 0 {
 		fmt.Fprintf(&b, "## %s\n\n%s\n\n", tr("fix.ruledout.title"), tr("fix.ruledout.intro"))
 		for _, g := range fixed {
@@ -192,6 +198,18 @@ func writeGroup(b *strings.Builder, tr translator, n int, g match.Group, earlier
 		head(tr(prefix+".title", where))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), tr(prefix+".why", mdCode(f.Subject), date))
 		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), tr("tls.todo"))
+		proofLines(b, tr, g)
+		b.WriteString("\n")
+	case match.KindEOL:
+		f := g.Findings[0]
+		title, why, todo := eolText(tr, f, where, true)
+		head(title)
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.why"), why)
+		fmt.Fprintf(b, "- **%s:** %s\n", tr("label.todo"), todo)
+		writeSeen(b, tr, g, true)
+		if links := groupLinks(g.Findings); len(links) > 0 {
+			fmt.Fprintf(b, "- **%s:** %s\n", tr("label.source"), strings.Join(links, " · "))
+		}
 		proofLines(b, tr, g)
 		b.WriteString("\n")
 	case match.KindExposedFile:
@@ -532,6 +550,9 @@ func itemTitle(tr translator, g match.Group) string {
 		return tr("tlsx.title", where)
 	case match.KindTLSExpiring:
 		return tr("tlss.title", where)
+	case match.KindEOL:
+		title, _, _ := eolText(tr, g.Findings[0], where, false)
+		return title
 	case match.KindAdminExposed:
 		return tr("admin.title", g.Technology, where)
 	case match.KindExposedFile:

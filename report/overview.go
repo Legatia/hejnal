@@ -281,6 +281,9 @@ func itemText(tr translator, g match.Group) (why, todo string) {
 			date = f.Expires.UTC().Format("2006-01-02")
 		}
 		return tr(prefix+".why", f.Subject, date), tr("tls.todo")
+	case match.KindEOL:
+		_, why, todo := eolText(tr, f, "", false)
+		return why, todo
 	case match.KindExposedFile:
 		return tr("file.why." + f.TechID), tr("file.todo." + f.TechID)
 	case match.KindTakeover, match.KindEmail:

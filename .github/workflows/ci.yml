@@ -43,7 +43,7 @@ jobs:
           set -e
           for target in \
             "fingerprint FuzzIdentify" "fingerprint FuzzBanner" \
-            "kev FuzzParse" "euvd FuzzParse" "euvd FuzzParseRecord" \
+            "kev FuzzParse" "euvd FuzzParse" "euvd FuzzParseRecord" "eol FuzzParse" \
             "nvd FuzzParseAndCheck" "nvd FuzzParseVersion" \
             "scope FuzzParse" "leaks FuzzScanReader" \
             "deps FuzzParse" "iac FuzzHCL" "iac FuzzYAML"; do

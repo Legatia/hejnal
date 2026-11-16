@@ -47,6 +47,9 @@ type Snapshot struct {
 	// used, if any.
 	EUVDDate string `json:"euvdDate,omitempty"`
 	EPSSDate string `json:"epssDate,omitempty"`
+	// EOLDate is the day endoflife.date generated the end-of-support dates
+	// used, if any.
+	EOLDate string `json:"eolDate,omitempty"`
 	// KEVFlaws is how many known exploited flaws the run checked, from CISA's
 	// and ENISA's lists together.
 	KEVFlaws int `json:"kevFlaws,omitempty"`

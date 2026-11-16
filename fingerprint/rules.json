@@ -7,6 +7,7 @@
       "versions": [{"source": "header:X-Powered-By", "regex": "PHP/([0-9]+(?:\\.[0-9]+){1,2})"}],
       "packaged": [{"source": "header:X-Powered-By", "regex": "ubuntu|[+~]deb|\\.el[0-9]|\\.fc[0-9]"}],
       "cpe": ["php:php"],
+      "eol": "php",
       "kev": [{"vendor": "^PHP( Group)?$", "product": "^(PHP|FastCGI Process Manager.*)$"}]
     },
     {
@@ -20,6 +21,7 @@
       "versions": [{"source": "header:Server", "regex": "nginx/([0-9]+(?:\\.[0-9]+)+)"}],
       "packaged": [{"source": "header:Server", "regex": "\\((Debian|Ubuntu|Raspbian|Red Hat|CentOS|Rocky|AlmaLinux|Fedora|Amazon|SUSE|Oracle)"}],
       "cpe": ["f5:nginx", "nginx:nginx"],
+      "eol": "nginx",
       "kev": [{"vendor": "^(F5|NGINX)$", "product": "nginx"}]
     },
     {
@@ -28,6 +30,7 @@
       "versions": [{"source": "header:Server", "regex": "Apache/([0-9]+(?:\\.[0-9]+)+)"}],
       "packaged": [{"source": "header:Server", "regex": "\\((Debian|Ubuntu|Raspbian|Red Hat|CentOS|Rocky|AlmaLinux|Fedora|Amazon|SUSE|Oracle)"}],
       "cpe": ["apache:http_server"],
+      "eol": "apache-http-server",
       "kev": [{"vendor": "^Apache$", "product": "^(HTTP Server|Apache)$"}]
     },
     {
@@ -47,6 +50,7 @@
       "versions": [{"source": "title", "regex": "Apache Tomcat/([0-9]+(?:\\.[0-9]+)+)"}, {"source": "body", "regex": "<h3>Apache Tomcat/([0-9]+(?:\\.[0-9]+)+)"}],
       "packaged": [{"source": "title", "regex": "\\((Debian|Ubuntu)\\)"}, {"source": "body", "regex": "Apache Tomcat/[0-9.]+ \\((Debian|Ubuntu)\\)"}],
       "cpe": ["apache:tomcat"],
+      "eol": "tomcat",
       "kev": [{"vendor": "^Apache$", "product": "^Tomcat$"}]
     },
     {
@@ -74,6 +78,7 @@
       "body": ["/wp-includes/"],
       "versions": [{"source": "generator", "regex": "WordPress ([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["wordpress:wordpress"],
+      "eol": "wordpress",
       "kev": [{"vendor": "^WordPress$", "product": "^(WordPress )?Core$"}]
     },
     {
@@ -82,6 +87,7 @@
       "generator": "^Drupal",
       "body": ["Drupal\\.settings", "data-drupal-selector"],
       "versions": [{"source": "header:X-Generator", "regex": "Drupal ([0-9]+)"}, {"source": "generator", "regex": "Drupal ([0-9]+)"}],
+      "eol": "drupal",
       "kev": [{"vendor": "^Drupal$", "product": "^(Drupal )?Core$"}]
     },
     {
@@ -140,6 +146,7 @@
       "title": "\\[Jenkins\\]$",
       "versions": [{"source": "header:X-Jenkins", "regex": "([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["jenkins:jenkins"],
+      "eol": "jenkins",
       "editions": [{"edition": "lts", "regex": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, {"edition": "-", "regex": "^[0-9]+\\.[0-9]+$"}],
       "kev": [{"vendor": "^Jenkins$", "product": ".*"}]
     },
@@ -149,6 +156,7 @@
       "body": ["window\\.grafanaBootData"],
       "versions": [{"source": "body", "regex": "\"buildInfo\":\\{[^}]*\"version\":\"([0-9]+(?:\\.[0-9]+)+)\""}],
       "cpe": ["grafana:grafana"],
+      "eol": "grafana",
       "kev": [{"vendor": "^Grafana Labs$", "product": "^Grafana$"}]
     },
     {
@@ -157,6 +165,7 @@
       "body": ["kbn-injected-metadata"],
       "versions": [{"source": "header:kbn-version", "regex": "([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["elastic:kibana"],
+      "eol": "kibana",
       "kev": [{"vendor": "^Elastic$", "product": "^Kibana$"}]
     },
     {
@@ -180,6 +189,7 @@
       "body": ["com-atlassian-confluence", "ajs-confluence-base-url"],
       "versions": [{"source": "body", "regex": "name=\"ajs-version-number\" content=\"([0-9]+(?:\\.[0-9]+)+)\""}],
       "cpe": ["atlassian:confluence_data_center", "atlassian:confluence_server", "atlassian:confluence"],
+      "eol": "confluence",
       "kev": [
         {"vendor": "^Atlassian$", "product": "Confluence"},
         {"vendor": "^Atlassian$", "product": "^Multiple Products$", "text": "Confluence"}
@@ -190,6 +200,7 @@
       "body": ["name=\"ajs-application-name\" content=\"JIRA\"", "jira\\.webresources"],
       "versions": [{"source": "body", "regex": "name=\"ajs-version-number\" content=\"([0-9]+(?:\\.[0-9]+)+)\""}],
       "cpe": ["atlassian:jira_data_center", "atlassian:jira_server", "atlassian:jira", "atlassian:jira_software_data_center", "atlassian:jira_software_server"],
+      "eol": "jira-software",
       "kev": [
         {"vendor": "^Atlassian$", "product": "Jira"},
         {"vendor": "^Atlassian$", "product": "^Multiple Products$", "text": "Jira"}
@@ -937,6 +948,7 @@
       "versions": [{"source": "banner", "regex": "ESMTP Exim ([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
       "packaged": [{"source": "banner", "regex": "ESMTP Exim"}],
       "cpe": ["exim:exim"],
+      "eol": "exim",
       "kev": [{"vendor": "^Exim$", "product": "^(Exim|Exim Internet Mailer|Mail Transfer Agent \\(MTA\\))$"}]
     },
     {
@@ -960,6 +972,7 @@
       "versions": [{"source": "banner", "regex": "ProFTPD ([0-9]+\\.[0-9]+\\.[0-9]+) Server"}],
       "packaged": [{"source": "banner", "regex": "\\((Debian|Ubuntu|Raspbian|Red Hat|CentOS|Rocky|AlmaLinux|Fedora|SUSE|Amazon)\\)"}],
       "cpe": ["proftpd:proftpd"],
+      "eol": "proftpd",
       "kev": [{"vendor": "^ProFTPD$", "product": "^ProFTPD$"}]
     },
     {
@@ -999,6 +1012,7 @@
       "body": ["(href|src|action)=[\"']/geoserver/web/"],
       "versions": [{"source": "body", "regex": "<span>GeoServer ([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
       "cpe": ["geoserver:geoserver"],
+      "eol": "geoserver",
       "kev": [{"vendor": "^OSGeo$", "product": "^(GeoServer|JAI-EXT)$"}]
     },
     {
@@ -1064,6 +1078,7 @@
       "body": ["<h1>RouterOS v?[0-9]+\\.[0-9]", "<div class=\"top\">mikrotik routeros [0-9.]+ configuration page</div>", "<title>\\s*RouterOS\\s*</title>[\\s\\S]*?<img[^>]+src=\"[^\"]*mikrotik_logo\\.svg\""],
       "versions": [{"source": "body", "regex": "<h1>RouterOS v?([0-9]+(?:\\.[0-9]+)+)"}, {"source": "body", "regex": "mikrotik routeros ([0-9]+(?:\\.[0-9]+)+) configuration page"}, {"source": "body", "regex": "<b>MikroTik RouterOS ([0-9]+(?:\\.[0-9]+)+)</b>"}],
       "cpe": ["mikrotik:routeros"],
+      "eol": "routeros",
       "kev": [{"vendor": "^MikroTik$", "product": "^RouterOS$"}]
     },
     {
@@ -1073,6 +1088,7 @@
       "banners": ["^220[ -].*\\bFTP server \\(MikroTik [0-9]", "^SSH-2\\.0-ROSSSH"],
       "versions": [{"source": "banner", "regex": "FTP server \\(MikroTik ([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)"}],
       "cpe": ["mikrotik:routeros"],
+      "eol": "routeros",
       "kev": [{"vendor": "^MikroTik$", "product": "^RouterOS$"}]
     },
     {
@@ -1346,6 +1362,7 @@
       "body": ["^\\s*\\{\\s*\"couchdb\"\\s*:\\s*\"Welcome\""],
       "versions": [{"source": "header:Server", "regex": "^CouchDB/([0-9]+(?:\\.[0-9]+)+)"}, {"source": "body", "regex": "^\\s*\\{\\s*\"couchdb\"\\s*:\\s*\"Welcome\"\\s*,\\s*\"version\"\\s*:\\s*\"([0-9]+(?:\\.[0-9]+)+)\""}],
       "cpe": ["apache:couchdb"],
+      "eol": "apache-couchdb",
       "kev": [{"vendor": "^Apache$", "product": "^CouchDB$"}]
     },
     {
@@ -1384,6 +1401,7 @@
       "body": ["<html ng-app=\"solrAdminApp\""],
       "versions": [{"source": "body", "regex": "href=\"img/favicon\\.ico\\?_=([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["apache:solr"],
+      "eol": "solr",
       "kev": [{"vendor": "^Apache$", "product": "^Solr$"}]
     },
     {
@@ -1391,6 +1409,7 @@
       "body": ["<img[^>]+src=\"[^\"]*/static/spark-logo-77x50px-hd\\.png\"", "<img class=\"spark-logo\" src=\"[^\"]*/static/spark-logo\\.svg\""],
       "versions": [{"source": "body", "regex": "<span class=\"version[^\"]*\"[^>]*>\\s*([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["apache:spark"],
+      "eol": "apache-spark",
       "kev": [{"vendor": "^Apache$", "product": "^Spark$"}]
     },
     {
@@ -1406,6 +1425,7 @@
       "body": ["^\\s*\\{\\s*\"error_msg\"\\s*:\\s*\"404 Route Not Found\"\\s*\\}"],
       "versions": [{"source": "header:Server", "regex": "^APISIX/([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["apache:apisix"],
+      "eol": "apache-apisix",
       "kev": [{"vendor": "^Apache$", "product": "^APISIX$"}]
     },
     {
@@ -1443,6 +1463,7 @@
       "title": "^JFrog(?: Artifactory)?$",
       "versions": [{"source": "header:X-JFrog-Version", "regex": "^Artifactory/([0-9]+(?:\\.[0-9]+)+)"}, {"source": "header:Server", "regex": "^Artifactory/([0-9]+(?:\\.[0-9]+)+)"}],
       "cpe": ["jfrog:artifactory"],
+      "eol": "artifactory",
       "kev": [{"vendor": "^JFrog$", "product": "^Artifactory$"}]
     },
     {
@@ -1451,6 +1472,7 @@
       "body": ["<(?:link|script|img)[^>]+(?:href|src)=\"[^\"]*/static/rapture/"],
       "versions": [{"source": "header:Server", "regex": "^Nexus/([0-9]+\\.[0-9]+\\.[0-9]+)-[0-9]+"}, {"source": "body", "regex": "/static/rapture/[^\\s<>]*[?&](?:amp;)?_v=([0-9]+\\.[0-9]+\\.[0-9]+)-[0-9]+"}],
       "cpe": ["sonatype:nexus", "sonatype:nexus_repository_manager"],
+      "eol": "nexus",
       "kev": [{"vendor": "^Sonatype$", "product": "^Nexus Repository(?: Manager)?$"}]
     },
     {
@@ -1493,6 +1515,7 @@
       "body": ["^\\s*\\{[\\s\\S]*\"tagline\"\\s*:\\s*\"You Know, for Search\"", "^\\s*\\{\\s*\"error\"\\s*:\\s*\\{[\\s\\S]*missing authentication credentials for REST request \\[/\\]"],
       "versions": [{"source": "body", "regex": "^\\s*\\{[\\s\\S]*\"version\"\\s*:\\s*\\{\\s*\"number\"\\s*:\\s*\"([0-9]+(?:\\.[0-9]+)+)\""}],
       "cpe": ["elastic:elasticsearch"],
+      "eol": "elasticsearch",
       "kev": [{"vendor": "^Elastic$", "product": "^Elasticsearch$"}]
     },
     {
@@ -1507,6 +1530,7 @@
       "body": ["<script type=\"application/json\" id=\"_metabaseBootstrap\">", "<script[^>]*>\\s*window\\.MetabaseBootstrap\\s*="],
       "versions": [{"source": "body", "regex": "\"version\"\\s*:\\s*\\{[^}]*\"tag\"\\s*:\\s*\"v([0-9]+(?:\\.[0-9]+)+)\""}],
       "cpe": ["metabase:metabase"],
+      "eol": "metabase",
       "kev": [{"vendor": "^Metabase$", "product": "^Metabase$"}]
     },
     {
@@ -1516,6 +1540,7 @@
       "body": ["<(?:script|link)[^>]+(?:src|href)=\"/[a-z]{2}-[a-z]{2}/static/@[0-9a-f]+(?:\\.[0-9]+)?/"],
       "versions": [{"source": "body", "regex": "\"VERSION_LABEL\"\\s*:\\s*\"([0-9]+(?:\\.[0-9]+)+)\""}, {"source": "body", "regex": "Splunk Inc\\. Splunk ([0-9]+(?:\\.[0-9]+)+) build"}],
       "cpe": ["splunk:splunk"],
+      "eol": "splunk",
       "kev": [{"vendor": "^Splunk$", "product": "^Enterprise$"}]
     },
     {

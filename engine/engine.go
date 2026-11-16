@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Legatia/hejnal/discover"
+	"github.com/Legatia/hejnal/eol"
 	"github.com/Legatia/hejnal/epss"
 	"github.com/Legatia/hejnal/euvd"
 	"github.com/Legatia/hejnal/fingerprint"
@@ -32,6 +33,9 @@ import (
 const (
 	// KEVMaxAge is how long a downloaded catalog is used before refreshing.
 	KEVMaxAge = 6 * time.Hour
+	// EOLMaxAge is how long downloaded end-of-support dates are used before
+	// refreshing; endoflife.date publishes them every day.
+	EOLMaxAge = 24 * time.Hour
 	// epssMaxAgeDays is how old, in days, a cached EPSS score may be.
 	epssMaxAgeDays = 2
 	// euvdRecordMaxAge is how long a downloaded EUVD record is used before
@@ -66,6 +70,10 @@ type Config struct {
 	// With KEVFile or EUVDFile set, Hejnal downloads nothing from ENISA and
 	// uses the saved copy of the list, if there is one.
 	EUVDFile string
+	// EOLURL is endoflife.date's API, for the days releases stop getting
+	// fixes; empty means endoflife.date. With KEVFile set, Hejnal downloads
+	// nothing from it either, and uses the saved copy, if there is one.
+	EOLURL string
 
 	// Offline never downloads feeds and uses cached copies only.
 	Offline bool
@@ -75,6 +83,8 @@ type Config struct {
 	NoNVD bool
 	// NoEUVD leaves out ENISA's list of exploited vulnerabilities.
 	NoEUVD bool
+	// NoEOL leaves out end-of-support dates.
+	NoEOL bool
 	// Checks turns on the opt-in checks for exposed files and versions.
 	Checks bool
 
@@ -116,6 +126,9 @@ func New(cfg Config) (*Engine, error) {
 	}
 	if cfg.EPSSURL == "" {
 		cfg.EPSSURL = epss.DefaultAPI
+	}
+	if cfg.EOLURL == "" {
+		cfg.EOLURL = eol.DefaultURL
 	}
 	if cfg.CTURL == "" {
 		cfg.CTURL = discover.CrtShURL
@@ -357,6 +370,67 @@ func (e *Engine) euvdRecords(ctx context.Context, entries []euvd.Entry) map[stri
 	return out
 }
 
+func (e *Engine) eolPath() string { return filepath.Join(e.cfg.CacheDir, "eol.json") }
+
+// RefreshEOL downloads endoflife.date's end-of-support dates into the cache.
+func (e *Engine) RefreshEOL(ctx context.Context) (*eol.Catalog, error) {
+	return eol.Fetch(ctx, e.cfg.HTTPClient, e.cfg.EOLURL, version.UserAgent(), e.eolPath())
+}
+
+// endOfSupport returns endoflife.date's end-of-support dates, when a product
+// in the inventory shows a version they can date: from the cache while it
+// is fresh, and otherwise downloaded; a failed download falls back to the
+// cached copy. Offline, or reading the catalog from a file, Hejnal uses the
+// cached copy only. The dates are optional: without them, Hejnal does not
+// check end of support.
+func (e *Engine) endOfSupport(ctx context.Context, inv *inventory.Inventory) *eol.Catalog {
+	if e.cfg.NoEOL || !e.datable(inv) {
+		return nil
+	}
+	path := e.eolPath()
+	cached := func() *eol.Catalog {
+		c, err := eol.Load(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			e.cfg.Logf("ignoring unreadable end-of-support dates: %v", err)
+		}
+		return c
+	}
+	if e.cfg.Offline || e.cfg.KEVFile != "" {
+		return cached()
+	}
+	if fi, err := os.Stat(path); err == nil && time.Since(fi.ModTime()) < EOLMaxAge {
+		if c := cached(); c != nil {
+			return c
+		}
+	}
+	c, err := e.RefreshEOL(ctx)
+	if err != nil {
+		if old := cached(); old != nil {
+			e.cfg.Logf("could not refresh end-of-support dates from endoflife.date (%v); using the copy of %s", err, old.Generated)
+			return old
+		}
+		e.cfg.Logf("could not download end-of-support dates from endoflife.date (%v); continuing without them", err)
+		return nil
+	}
+	e.cfg.Logf("downloaded end-of-support dates from endoflife.date (%d products)", c.Products())
+	return c
+}
+
+// datable reports whether a product in the inventory shows a version that
+// endoflife.date's dates apply to: an upstream build of a product it lists.
+func (e *Engine) datable(inv *inventory.Inventory) bool {
+	for _, a := range inv.Assets {
+		for _, s := range a.Services {
+			for _, t := range s.Technologies {
+				if t.Version != "" && !t.Packaged && e.rules.EOLProduct(t.ID) != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // epssScores returns EPSS scores for the CVEs, refreshing stale ones.
 func (e *Engine) epssScores(ctx context.Context, cves []string) map[string]epss.Score {
 	if e.cfg.NoEPSS || len(cves) == 0 {
@@ -477,7 +551,8 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 	candidates := match.Run(inv, cat, e.rules, match.Options{Now: now})
 	scores := e.epssScores(ctx, match.CVEs(candidates))
 	records := e.nvdRecords(ctx, candidates)
-	fs := match.Run(inv, cat, e.rules, match.Options{Now: now, EPSS: scores, NVD: records})
+	dates := e.endOfSupport(ctx, inv)
+	fs := match.Run(inv, cat, e.rules, match.Options{Now: now, EPSS: scores, NVD: records, EOL: dates})
 	leaked, err := e.leakFindings(now)
 	if err != nil {
 		return nil, err
@@ -498,6 +573,9 @@ func (e *Engine) MatchCatalog(ctx context.Context, inv *inventory.Inventory, cat
 		EUVDDate:     cat.EUVDDate,
 		KEVFlaws:     len(cat.Vulnerabilities),
 		Findings:     fs,
+	}
+	if dates != nil {
+		snap.EOLDate = dates.Generated
 	}
 	snap.Assets, snap.Services, snap.Technologies = inv.Counts()
 	for _, f := range fs {
@@ -608,6 +686,7 @@ func Meta(snap *state.Snapshot, lang string) report.Meta {
 		KEVVersion:   snap.KEVVersion,
 		EUVDDate:     snap.EUVDDate,
 		EPSSDate:     snap.EPSSDate,
+		EOLDate:      snap.EOLDate,
 		KEVFlaws:     snap.KEVFlaws,
 		Assets:       snap.Assets,
 		Services:     snap.Services,
