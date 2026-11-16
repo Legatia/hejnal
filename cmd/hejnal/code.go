@@ -95,6 +95,7 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	save := fs.Bool("save", false, "keep the result in the state directory, so the fix list and notifications of later runs include it")
 	upload := fs.String("upload", "", "send the results to this Hejnal Cloud address, with the token in HEJNAL_UPLOAD_TOKEN")
 	fs.StringVar(&o.failOn, "fail-on", "high", "exit with status 2 when an item reaches this severity: critical, high, medium, low or none")
+	item := fs.String("item", "", itemHelp)
 	o.langFlag(fs)
 	o.stateFlags(fs)
 	o.feedFlags(fs)
@@ -114,6 +115,20 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 	}
 	if *format != "text" && *format != "json" && *format != "sarif" {
 		return exitError, fmt.Errorf("unknown format %q: use text, json or sarif", *format)
+	}
+	if *item != "" {
+		if !engine.ValidItemID(*item) {
+			return exitError, fmt.Errorf("-item %q is not an item's ID: the fix list and each issue show it, such as 30c07628", *item)
+		}
+		// -item answers one question and writes nothing else.
+		for _, f := range []struct {
+			name string
+			set  bool
+		}{{"-save", *save}, {"-upload", *upload != ""}, {"-sbom", *bom != ""}, {"-out", *out != ""}} {
+			if f.set {
+				return exitError, fmt.Errorf("-item only says whether one item is still found: leave out %s", f.name)
+			}
+		}
 	}
 	if *bom != "" && *noDeps && len(dirs) > 0 {
 		return exitError, errors.New("-sbom lists the dependencies -no-deps leaves out: use one or the other")
@@ -169,9 +184,26 @@ func (a *app) cmdCodeScan(ctx context.Context, args []string) (int, error) {
 			return exitError, err
 		}
 	}
+	if *item != "" {
+		// The key is what gives a secret the ID the fix list shows. It is
+		// read, never made: this check saves nothing.
+		if req.FingerprintKey, err = store.SavedLeakKey(); err != nil {
+			return exitError, err
+		}
+	}
 	scan, err := e.ScanCode(ctx, req)
 	if err != nil {
 		return exitError, err
+	}
+	if *item != "" {
+		known, err := engine.Known(store)
+		if err != nil {
+			return exitError, err
+		}
+		for _, n := range scan.Notes {
+			fmt.Fprintln(a.stderr, "Note:", n)
+		}
+		return a.printRecheck(engine.RecheckCode(*item, scan, req, known, req.FingerprintKey != nil), o.lang)
 	}
 	// Items accepted with "hejnal accept" are shown as accepted and do not
 	// fail the build. What is saved or uploaded stays unmarked: "hejnal run"

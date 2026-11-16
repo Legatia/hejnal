@@ -30,7 +30,7 @@ func fakeOSV(t *testing.T) *httptest.Server {
 		"MAL-2025-7":          `{"id":"MAL-2025-7","summary":"Malicious code in evil-pkg (npm)","modified":"2025-01-01T00:00:00Z"}`,
 		"DSA-5532-1":          `{"id":"DSA-5532-1","aliases":["CVE-2023-5363"],"summary":"openssl security update","modified":"2024-01-01T00:00:00Z","affected":[{"package":{"ecosystem":"Debian:12","name":"openssl"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"3.0.11-1~deb12u2"}]}]}]}`,
 	}
-	hits := map[string]string{"npm/lodash/4.17.20": "GHSA-35jh-r3h4-6jhm", "Maven/org.apache.logging.log4j:log4j-core/2.14.1": "GHSA-jfh8-c2jp-5v3q",
+	hits := map[string]string{"npm/lodash/4.17.20": "GHSA-35jh-r3h4-6jhm", "npm/lodash/4.17.19": "GHSA-35jh-r3h4-6jhm", "Maven/org.apache.logging.log4j:log4j-core/2.14.1": "GHSA-jfh8-c2jp-5v3q",
 		"npm/evil-pkg/1.0.0": "MAL-2025-7", "Debian:12/openssl/3.0.9-1": "DSA-5532-1"}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/querybatch" {

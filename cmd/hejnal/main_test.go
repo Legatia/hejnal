@@ -33,12 +33,12 @@ type harness struct {
 	mu       sync.Mutex
 	messages []string
 	failHook bool   // the webhook answers 503 once
-	php      string // the PHP version the site shows; 8.3.12 when empty
+	php      string // the PHP version the site shows; 8.3.12 when empty, none when "-"
 	siteURL  string
 	hook     *httptest.Server
 }
 
-// setPHP changes the PHP version the site shows.
+// setPHP changes the PHP version the site shows; "-" stops it showing PHP.
 func (h *harness) setPHP(v string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -53,7 +53,9 @@ func newHarness(t *testing.T) *harness {
 		h.mu.Lock()
 		php := cmp.Or(h.php, "8.3.12")
 		h.mu.Unlock()
-		w.Header().Set("X-Powered-By", "PHP/"+php)
+		if php != "-" {
+			w.Header().Set("X-Powered-By", "PHP/"+php)
+		}
 		io.WriteString(w, `<html><head><title>Sklep</title><meta name="generator" content="WordPress 6.8.1"></head></html>`)
 	}))
 	t.Cleanup(site.Close)
