@@ -39,6 +39,7 @@ const (
 	SourceRedirect = "redirect" // an in-scope host a service redirected to
 	SourceRange    = "range"    // an address in an authorised IP range
 	SourceDNS      = "dns"      // a name from the DNS provider's records
+	SourceNamed    = "named"    // named for a check of that system alone
 )
 
 const (
@@ -104,8 +105,20 @@ type Options struct {
 	// trusted, since a server that is not the scope owner's has no reason to
 	// carry their names. An untied name is listed with a note saying so.
 	TiedOnly bool
-	Now      func() time.Time
-	Logf     func(format string, args ...any)
+	// Only, when set, limits the run to these systems. Nothing else in the
+	// scope is looked up or contacted, no certificate transparency logs or
+	// mail records are read, and of the names a system leads to, only one
+	// it redirects to is looked at. The scope's rules hold as in any run: a
+	// host, address or port outside it is not contacted.
+	Only []Target
+	Now  func() time.Time
+	Logf func(format string, args ...any)
+}
+
+// Target is one system to look at: a host and the ports to check on it.
+type Target struct {
+	Host  string
+	Ports []int
 }
 
 type target struct {
@@ -156,14 +169,20 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 			batch = append(batch, t)
 		}
 	}
-	for _, h := range s.Hosts {
-		add(h, SourceHost, s.Ports)
+	only := len(opts.Only) > 0
+	for _, t := range opts.Only {
+		add(t.Host, SourceNamed, t.Ports)
 	}
-	for _, d := range s.Domains {
-		add(d, SourceDomain, opts.WebPorts)
-		add("www."+d, SourceDomain, opts.WebPorts)
+	if !only {
+		for _, h := range s.Hosts {
+			add(h, SourceHost, s.Ports)
+		}
+		for _, d := range s.Domains {
+			add(d, SourceDomain, opts.WebPorts)
+			add("www."+d, SourceDomain, opts.WebPorts)
+		}
 	}
-	if opts.CT != nil {
+	if opts.CT != nil && !only {
 		for _, d := range s.Domains {
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -180,11 +199,13 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 			opts.Logf("certificate transparency: %d more names under %s", len(batch)-before, d)
 		}
 	}
-	for _, n := range opts.Names {
-		add(n, SourceDNS, opts.WebPorts)
-	}
-	for _, a := range s.Addresses() {
-		add(a.String(), SourceRange, s.Ports)
+	if !only {
+		for _, n := range opts.Names {
+			add(n, SourceDNS, opts.WebPorts)
+		}
+		for _, a := range s.Addresses() {
+			add(a.String(), SourceRange, s.Ports)
+		}
 	}
 
 	for round := 0; len(batch) > 0 && round < maxRounds; round++ {
@@ -202,6 +223,9 @@ func Run(ctx context.Context, opts Options) (*inventory.Inventory, error) {
 	}
 	r.markCopies()
 	inv := r.inventory()
+	if only {
+		return inv, nil
+	}
 	for _, d := range s.Domains {
 		if m, ok := r.mailAuth(ctx, d); ok {
 			inv.Mail = append(inv.Mail, m)
@@ -364,8 +388,9 @@ func (r *runner) resolve(ctx context.Context, t target) {
 	switch {
 	case len(res.all) == 0:
 		// Names from logs and certificates often point nowhere any more. Only
-		// report names the scope lists directly.
-		if !slices.Contains(r.s.Hosts, t.host) && !slices.Contains(r.s.Domains, t.host) {
+		// report names the scope lists directly, and a name the run was
+		// asked to look at.
+		if t.source != SourceNamed && !slices.Contains(r.s.Hosts, t.host) && !slices.Contains(r.s.Domains, t.host) {
 			return
 		}
 		a.Errors = append(a.Errors, dnsError(res.err))
@@ -539,6 +564,11 @@ func (r *runner) noteName(name, source string) {
 		return
 	}
 	if _, err := netip.ParseAddr(n); err == nil {
+		return
+	}
+	if len(r.opts.Only) > 0 && source != SourceRedirect {
+		// A run of named systems goes where they redirect, and to no other
+		// name their certificates list.
 		return
 	}
 	r.mu.Lock()

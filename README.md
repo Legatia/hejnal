@@ -178,8 +178,9 @@ prints this every time it runs.
   site it asks for the same page once more, with `RSC: 1` and a random
   `_rsc` value, to tell a running server from static files. On other ports
   it only reads what the service says first.
-- **Opt-in checks are fixed and few.** With `-checks`, Hejnal sends a few more
-  ordinary `GET` requests per web service to fixed, well-known paths:
+- **Opt-in checks are fixed and few.** With `-checks`, and in `hejnal live`
+  unless you pass `-no-checks`, Hejnal sends a few more ordinary `GET`
+  requests per web service to fixed, well-known paths:
   `/.git/HEAD`, `/.env` and `/server-status`. It also requests one public
   version page (such as WordPress's `/feed/` or Grafana's `/api/health`) for
   recognised products that hide their version, and up to eight scripts the
@@ -386,8 +387,8 @@ A free [NVD API key](https://nvd.nist.gov/developers/request-an-api-key) in
 
 Exit status: `0` when done, `1` on errors, `2` when new findings reach the
 severity given with `-fail-on`. `hejnal run` exits 2 only when you set
-`-fail-on`; `hejnal code scan` and `hejnal leaks scan` do so from high
-upwards unless you set another level.
+`-fail-on`; `hejnal live`, `hejnal code scan` and `hejnal leaks scan` do so
+from high upwards unless you set another level.
 
 Many findings ask a person to check something: "you run WordPress, which
 attackers are exploiting; make sure your version has the fix". Each item in
@@ -405,6 +406,41 @@ Alerts and the exit status leave them out, and the fix list moves them to an
 "Accepted" section at the end. A new flaw in the same item still shows. An
 acceptance lasts 90 days, or until the date you give with `-until`, at most a
 year. Then the item is open again and reported as new.
+
+### Right after a deploy
+
+`hejnal live` checks one system the moment it goes live, without waiting for
+the next daily run:
+
+```sh
+hejnal live -wait 2m https://app.your-domain.pl
+```
+
+It reads what answers at the address and its certificate, asks for the fixed
+paths `-checks` uses (`/.git/HEAD`, `/.env`, `/server-status` and the
+product's version page), and matches the products it recognises against the
+lists of exploited flaws and the end-of-support dates. It prints what it saw
+and the items to fix, and exits with status 2 when an item reaches `-fail-on`
+(`high` unless set), so a pipeline can stop or roll back.
+
+- **The scope file still decides.** The address has to be in the scope file.
+  A name under one of your domains is checked on ports 80 and 443; to check
+  another port, list the host under `hosts`.
+- **Only that system is contacted**: the address you name, and a host in the
+  scope it redirects to. Hejnal reads no certificate transparency logs and
+  no mail records for it, and leaves the rest of the scope alone.
+- **Nothing is saved** but the downloaded feeds. The record of the daily
+  runs, their alerts and each system's history stay as they are. Items you
+  accepted with `hejnal accept` are left out, as in a run.
+- **It can wait for the deploy.** With `-wait`, Hejnal asks for the front
+  page every five seconds until a website answers without a server error,
+  and only then sends the other requests. When nothing answers in that time,
+  or the answer is still a 5xx error, it exits with status 1.
+
+The check looks at the front page and the fixed paths, not at a path in the
+address you give. `-no-checks` keeps it to the front page. What only a full
+run can see stays with the daily run: names nobody listed, mail records, and
+a test copy recognised by having the same title as the live site.
 
 ### Issues on GitHub
 
@@ -481,6 +517,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal init` | Writes the scope file: ready to run with `-domain` and `-by`, otherwise an example to edit. |
 | `hejnal run` | Discovers, matches, writes the fix list and notifies. |
 | `hejnal discover` | Only finds hosts and identifies software; saves the inventory. |
+| `hejnal live <url>` | Checks one system that is live, such as right after a deploy; saves nothing. |
 | `hejnal feeds` | Downloads CISA's KEV catalog and ENISA's list into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
 | `hejnal report fixlist\|overview\|evidence\|nis2\|monthly` | Prints a report from the saved runs. |
@@ -673,6 +710,32 @@ The action downloads the release for the runner from GitHub, checks it
 against the release's checksums, and runs it on the runner. In releases
 after 0.7.1, `sbom: hejnal.cdx.json` also writes the bill of materials; the
 `sbom` output is its path, for a step such as `actions/upload-artifact`.
+
+In releases after 0.7.1, the action can also check the deployed system
+[right after a deploy](#right-after-a-deploy). Give it the address in `url`
+(one per line for several) in a job that runs once the deploy is done:
+
+```yaml
+  deploy:
+    needs: scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7        # for scope.json
+      # ... your deploy steps ...
+      - uses: Legatia/hejnal@<release>
+        with:
+          url: https://app.your-domain.pl
+          code-scan: "false"             # the code was scanned before the deploy
+          # scope: scope.json
+          # wait: 2m
+          # fail-on: high
+```
+
+The step waits up to `wait` for the system to answer, writes what it found
+to the job summary, and fails when an item reaches `fail-on` or nothing
+answers. The scope file has to be in the checkout and list the address. In a
+public repository the job log and summary are public, and they name what
+was found.
 
 **Limits.** Matching is by exact version, as the lockfile records it;
 Hejnal does not check whether your code calls the flawed function, and says
@@ -958,6 +1021,16 @@ wykorzystują, i mówi, co naprawić najpierw.
   rejestru, a `hejnal systems shop.example.com -lang pl` historię jednego:
   pierwszą odpowiedź, kolejne wersje, wykryte i naprawione pozycje oraz
   dzień, w którym zniknął. Raport dowodowy zawiera tabelę tych systemów.
+- **Sprawdza system zaraz po wdrożeniu:** `hejnal live -wait 2m
+  https://app.twoja-domena.pl` sprawdza jeden adres z pliku zakresu, bez
+  czekania na codzienne uruchomienie: to, co odpowiada, certyfikat, stałe
+  ścieżki z opcji `-checks` oraz podatności i koniec wsparcia rozpoznanych
+  produktów. Łączy się tylko z tym adresem i z hostem z zakresu, do którego
+  on przekierowuje. Niczego nie zapisuje poza pobranymi listami, więc
+  historia codziennych sprawdzeń zostaje bez zmian. Kończy się kodem 2, gdy
+  punkt osiąga poziom z opcji `-fail-on` (domyślnie `high`), a kodem 1, gdy
+  nic nie odpowiada albo odpowiedzią jest błąd 5xx. W GitHub Actions służy
+  do tego pole `url` akcji.
 - **Pamięta sprawdzone punkty:** każdy punkt listy ma identyfikator. Polecenie
   `hejnal accept` zapisuje, kto sprawdził punkt, dlaczego i do kiedy.
   Powiadomienia i kod wyjścia pomijają go wtedy przez 90 dni albo do daty z
@@ -983,6 +1056,7 @@ hejnal init -domain twoja-domena.pl -by "Imię i nazwisko, stanowisko"
 hejnal run -checks -lang pl
 hejnal report fixlist -lang pl
 hejnal report monthly -lang pl
+hejnal live -wait 2m -lang pl https://app.twoja-domena.pl
 hejnal accept -item 3f9a1c0d -reason "Wersja 6.8.3 ma poprawkę" -by "Anna Nowak"
 hejnal issues -repo twoja-org/infra -lang pl
 hejnal leaks scan -history ~/kod/serwis

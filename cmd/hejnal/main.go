@@ -51,6 +51,7 @@ Usage:
   hejnal init      [-domain d -by "who"]        write the scope file: what Hejnal may check
   hejnal run       [-scope scope.json] [flags]  discover, match and report in one go
   hejnal discover  [-scope scope.json] [flags]  find hosts and identify their software
+  hejnal live      <url>... [flags]             check one system that is live, such as right after a deploy
   hejnal feeds     [flags]                      download the lists of exploited flaws and end-of-support dates
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    <report> [flags]             print a report from the saved runs: fixlist,
@@ -71,8 +72,8 @@ Usage:
 Run "hejnal <command> -h" for the flags of a command.
 
 Exit status: 0 when done, 1 on errors, 2 when problems reach the -fail-on
-severity: new findings for "run" (off unless set), any item for "code scan"
-and "leaks scan" (high unless set).
+severity: new findings for "run" (off unless set), any item for "live",
+"code scan" and "leaks scan" (high unless set).
 
 Only check systems you own or have written permission to test.
 `
@@ -104,6 +105,9 @@ type app struct {
 	hibpURL        string // empty uses Have I Been Pwned's API
 	// githubPause is the wait between two changes to GitHub issues.
 	githubPause time.Duration
+	// livePause is the wait between two looks at a system that is not up
+	// yet.
+	livePause time.Duration
 
 	logMu sync.Mutex
 }
@@ -124,6 +128,7 @@ func newApp(stdout, stderr io.Writer) *app {
 		ctURL:         discover.CrtShURL,
 		nvdURL:        nvd.DefaultAPI,
 		githubPause:   github.DefaultPause,
+		livePause:     defaultLivePause,
 	}
 }
 
@@ -154,6 +159,8 @@ func (a *app) run(ctx context.Context, args []string) int {
 		err = a.cmdIssues(ctx, rest)
 	case "accept":
 		err = a.cmdAccept(rest)
+	case "live":
+		code, err = a.cmdLive(ctx, rest)
 	case "code":
 		code, err = a.cmdCode(ctx, rest)
 	case "leaks":
