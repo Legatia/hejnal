@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/report"
 	"github.com/Legatia/hejnal/scope"
 )
 
@@ -480,5 +481,79 @@ func TestChecksTip(t *testing.T) {
 	quiet := []match.Finding{kev("wordpress", "WordPress", "6.8.1"), ruledOut, accepted, {Kind: match.KindExposedFile, TechID: "wordpress"}}
 	if tip := checksTip(quiet); tip != "" {
 		t.Errorf("tip = %q, want none", tip)
+	}
+}
+
+func TestSystemsCommand(t *testing.T) {
+	h := newHarness(t)
+	// Before the first run there is nothing on record.
+	if code, out, errOut := h.run("systems", "-state", h.state); code != exitOK || !strings.Contains(out, "No systems on record yet") {
+		t.Fatalf("empty record exit %d:\n%s\n%s", code, out, errOut)
+	}
+	if code, _, errOut := h.run(h.runArgs()...); code != exitOK {
+		t.Fatalf("first run exit %d:\n%s", code, errOut)
+	}
+	h.setPHP("8.3.14")
+	if code, _, errOut := h.run(h.runArgs()...); code != exitOK {
+		t.Fatalf("second run exit %d:\n%s", code, errOut)
+	}
+	port := strings.TrimPrefix(h.siteURL, "http://127.0.0.1:")
+
+	code, out, errOut := h.run("systems", "-state", h.state)
+	if code != exitOK || !strings.Contains(out, "# Systems: Sklep Sp. z o.o.") || !strings.Contains(out, "**Systems: 1 · answering: 1 · gone: 0**") ||
+		!strings.Contains(out, "| 127.0.0.1 | "+port+" | ") || !strings.Contains(out, "PHP 8.3.14") {
+		t.Fatalf("list exit %d:\n%s\n%s", code, out, errOut)
+	}
+	// The host may come before or after the flags.
+	for _, args := range [][]string{
+		{"systems", "127.0.0.1", "-state", h.state},
+		{"system", "-state", h.state, "127.0.0.1"},
+	} {
+		code, out, errOut = h.run(args...)
+		for _, want := range []string{
+			"# System history: 127.0.0.1",
+			"- **Status:** answering",
+			"· First answer · port " + port,
+			"· PHP 8.3.12 → 8.3.14 · port " + port,
+		} {
+			if code != exitOK || !strings.Contains(out, want) {
+				t.Fatalf("%v exit %d, missing %q:\n%s\n%s", args, code, want, out, errOut)
+			}
+		}
+	}
+	if code, out, _ = h.run("systems", "127.0.0.1", "-state", h.state, "-lang", "pl"); code != exitOK || !strings.Contains(out, "# Historia systemu: 127.0.0.1") {
+		t.Errorf("polish exit %d:\n%s", code, out)
+	}
+	code, out, _ = h.run("systems", "127.0.0.1", "-state", h.state, "-format", "json")
+	var sys report.System
+	if err := json.Unmarshal([]byte(out), &sys); code != exitOK || err != nil || sys.Host != "127.0.0.1" || len(sys.Events) < 2 {
+		t.Errorf("json exit %d: %v\n%s", code, err, out)
+	}
+	code, out, _ = h.run("systems", "-state", h.state, "-format", "json")
+	var list struct {
+		Systems []report.System `json:"systems"`
+	}
+	if err := json.Unmarshal([]byte(out), &list); code != exitOK || err != nil || len(list.Systems) != 1 {
+		t.Errorf("json list exit %d: %v\n%s", code, err, out)
+	}
+	file := filepath.Join(h.dir, "history.md")
+	if code, out, _ = h.run("systems", "127.0.0.1", "-state", h.state, "-o", file); code != exitOK || out != "" {
+		t.Errorf("-o exit %d:\n%s", code, out)
+	}
+	if data, err := os.ReadFile(file); err != nil || !strings.Contains(string(data), "# System history: 127.0.0.1") {
+		t.Errorf("history file: %v\n%s", err, data)
+	}
+	if code, _, errOut = h.run("systems", "unknown.example.com", "-state", h.state); code != exitError || !strings.Contains(errOut, `no system "unknown.example.com" on record`) {
+		t.Errorf("unknown host exit %d:\n%s", code, errOut)
+	}
+	if code, _, errOut = h.run("systems", "127.0.0.1", "extra", "-state", h.state); code != exitError || !strings.Contains(errOut, "unexpected argument") {
+		t.Errorf("two hosts exit %d:\n%s", code, errOut)
+	}
+	if code, _, _ = h.run("systems", "-state", h.state, "-format", "xml"); code != exitError {
+		t.Errorf("-format xml exit %d", code)
+	}
+	// The evidence lists the system.
+	if code, out, errOut = h.run("report", "evidence", "-state", h.state); code != exitOK || !strings.Contains(out, "Systems on record") || !strings.Contains(out, `<td class="item-title">127.0.0.1</td>`) {
+		t.Errorf("evidence exit %d:\n%s", code, errOut)
 	}
 }

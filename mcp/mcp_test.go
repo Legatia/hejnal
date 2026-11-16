@@ -101,7 +101,7 @@ func TestToolsList(t *testing.T) {
 		}
 		return out, res.Tools
 	}
-	readOnly := []string{"hejnal_summary", "hejnal_fix_list", "hejnal_findings", "hejnal_inventory", "hejnal_nis2_draft"}
+	readOnly := []string{"hejnal_summary", "hejnal_fix_list", "hejnal_findings", "hejnal_inventory", "hejnal_systems", "hejnal_nis2_draft"}
 
 	got, tools := names(NewServer(Config{Store: state.Store{Dir: dir}}))
 	if !slices.Equal(got, readOnly) {
@@ -155,7 +155,7 @@ func TestToolsList(t *testing.T) {
 	if !slices.Equal(got, append(readOnly, "hejnal_run")) {
 		t.Fatalf("tools with runs allowed = %v", got)
 	}
-	a := tools[5]["annotations"].(map[string]any)
+	a := tools[len(tools)-1]["annotations"].(map[string]any)
 	if a["readOnlyHint"] != false || a["openWorldHint"] != true {
 		t.Errorf("hejnal_run annotations = %v", a)
 	}

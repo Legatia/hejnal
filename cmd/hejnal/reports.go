@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -92,7 +94,11 @@ func (a *app) cmdReport(args []string) error {
 		if herr != nil {
 			return herr
 		}
-		eo := report.EvidenceOptions{Since: from, By: *by}
+		systems, serr := store.LoadSystems()
+		if serr != nil {
+			return serr
+		}
+		eo := report.EvidenceOptions{Since: from, By: *by, Systems: systems}
 		switch *format {
 		case "html":
 			err = report.Evidence(&buf, history, m, eo)
@@ -120,6 +126,92 @@ func (a *app) cmdReport(args []string) error {
 		return err
 	}
 	return a.output(o.out, buf.Bytes())
+}
+
+// cmdSystems prints the systems on record, or the history of one of them.
+func (a *app) cmdSystems(args []string) error {
+	host := ""
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		host, args = args[0], args[1:]
+	}
+	o := &options{}
+	fs := a.flags("systems", "[host] [flags]",
+		"List the systems Hejnal has seen, or print the history of one: when it first\nanswered, the versions it showed, the items found on it and when they were\nfixed, and when it went away.")
+	o.stateFlags(fs)
+	o.langFlag(fs)
+	fs.StringVar(&o.out, "o", "", "write to this file instead of standard output")
+	format := fs.String("format", "md", "output format: md for Markdown, or json")
+	if host == "" {
+		// Allow flags before the host.
+		if err := fs.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return err
+			}
+			return errUsage
+		}
+		if fs.NArg() > 0 {
+			host, args = fs.Arg(0), fs.Args()[1:]
+		} else {
+			args = nil
+		}
+	}
+	if err := a.parse(fs, args); err != nil {
+		return err
+	}
+	if err := o.check(); err != nil {
+		return err
+	}
+	if *format != "md" && *format != "json" {
+		return fmt.Errorf("-format must be md or json")
+	}
+	store := state.Store{Dir: o.stateDir}
+	records, err := store.LoadSystems()
+	if err != nil {
+		return err
+	}
+	history, err := store.History()
+	if err != nil {
+		return err
+	}
+	// The history is as of the latest run, when there is one.
+	m := report.Meta{GeneratedAt: a.now(), Lang: o.lang}
+	switch snap, err := store.LoadFindings(); {
+	case err == nil:
+		m = engine.Meta(snap, o.lang)
+	case !errors.Is(err, state.ErrNoFindings):
+		return err
+	}
+	var buf bytes.Buffer
+	if host == "" {
+		systems := report.Systems(records, history, o.lang)
+		if *format == "json" {
+			err = writeIndented(&buf, struct {
+				Systems []report.System `json:"systems"`
+			}{append([]report.System{}, systems...)})
+		} else {
+			err = report.SystemList(&buf, systems, m)
+		}
+	} else {
+		sys, ok := report.SystemHistory(host, records, history, o.lang)
+		if !ok {
+			return fmt.Errorf("no system %q on record: `hejnal systems` lists the ones Hejnal has seen", report.CleanHost(host))
+		}
+		if *format == "json" {
+			err = writeIndented(&buf, sys)
+		} else {
+			err = report.SystemReport(&buf, sys, m)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return a.output(o.out, buf.Bytes())
+}
+
+func writeIndented(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
 }
 
 // output writes to standard output, or to a file readable only by its owner.

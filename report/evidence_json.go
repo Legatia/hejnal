@@ -38,7 +38,10 @@ type EvidenceRecord struct {
 		Topic     string `json:"topic"`
 		Support   string `json:"support"`
 	} `json:"controls"`
-	Fingerprint string `json:"fingerprint"`
+	// Systems are the systems on record that answered in the period, when
+	// the record of services was given.
+	Systems     []System `json:"systems,omitempty"`
+	Fingerprint string   `json:"fingerprint"`
 }
 
 // EvidenceItem is one item's exposure.
@@ -100,6 +103,7 @@ func EvidenceJSON(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOpti
 		}
 		rec.Runs.AverageDaysApart, rec.Runs.LongestGapDays = round1(rec.Runs.AverageDaysApart), round1(rec.Runs.LongestGapDays)
 		rec.Fingerprint = runsFingerprint(runs)
+		rec.Systems = periodSystems(o.Systems, exps, tr, first.GeneratedAt)
 		for _, e := range exps {
 			g := e.Group
 			it := EvidenceItem{ID: g.ID(), Kind: g.Kind, Title: itemTitle(tr, g), Host: g.Host, Port: g.Port,

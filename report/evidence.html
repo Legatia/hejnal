@@ -91,6 +91,21 @@ td.item-title { overflow-wrap: anywhere; }
   </div>
   {{end}}
 
+  {{if .Systems}}
+  <h3>{{.L.systems}}</h3>
+  <p class="note">{{.L.systemsintro}}</p>
+  <div class="wide">
+  <table>
+    <thead><tr><th>{{.L.system}}</th><th>{{.L.sysfirst}}</th><th>{{.L.last}}</th><th>{{.L.found}}</th><th>{{.L.sysfixed}}</th><th>{{.L.openitems}}</th><th>{{.L.sysaccepted}}</th><th>{{.L.status}}</th></tr></thead>
+    <tbody>
+    {{range .Systems}}<tr><td class="item-title">{{.Host}}</td><td class="num">{{.FirstSeen}}</td><td class="num">{{.LastSeen}}</td><td class="num">{{.Found}}</td><td class="num">{{.Fixed}}</td><td class="num">{{.Open}}</td><td class="num">{{.Accepted}}</td><td><span class="st {{.StatusClass}}">{{.Status}}</span></td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{if .MoreSystems}}<p class="small">{{.MoreSystems}}</p>{{end}}
+  {{end}}
+
   {{if .Accepted}}
   <h3>{{.L.accepted}}</h3>
   <p class="note">{{.L.acceptedintro}}</p>

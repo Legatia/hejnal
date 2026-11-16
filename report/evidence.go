@@ -12,6 +12,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
 	"github.com/Legatia/hejnal/state"
 )
@@ -30,6 +31,9 @@ type EvidenceOptions struct {
 	// Since leaves out runs before it; zero means all saved runs.
 	Since time.Time
 	By    string
+	// Systems is the record of the services seen. With it, the evidence
+	// lists each system with when it was seen and the items found on it.
+	Systems []inventory.Record
 }
 
 // Exposure is one item to fix across the runs: when Hejnal first and last
@@ -156,6 +160,12 @@ type evRow struct {
 	Title, Severity, SevLabel, Listed, FirstSeen, Fixed, Days, Status, StatusClass string
 }
 
+// evSystem is one system on record, in the evidence.
+type evSystem struct {
+	Host, FirstSeen, LastSeen, Status, StatusClass string
+	Found, Fixed, Open, Accepted                   int
+}
+
 type evMonth struct {
 	Month          string
 	Runs           int
@@ -176,6 +186,8 @@ type evidenceData struct {
 	MoreRows                   string
 	NoExploited                string
 	Months                     []evMonth
+	Systems                    []evSystem
+	MoreSystems                string
 	Accepted                   []evRow
 	Unreachable                string
 	Sources, Method, Limits    string
@@ -211,6 +223,9 @@ func Evidence(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOptions)
 			"acceptedintro": tr("ev.acceptedintro"), "method": tr("ov.method"), "fingerprint": tr("ev.fingerprint"),
 			"controls": tr("ev.controls"), "controlsintro": tr("ev.controlsintro"), "framework": tr("ev.framework"),
 			"control": tr("ev.control"), "how": tr("ev.how"),
+			"systems": tr("ev.systems"), "systemsintro": tr("ev.systemsintro"), "system": tr("hist.system"),
+			"sysfirst": tr("hist.first"), "last": tr("hist.last"), "found": tr("hist.found"), "sysfixed": tr("hist.fixed"),
+			"openitems": tr("hist.open"), "sysaccepted": tr("hist.accepted"),
 		},
 		Footer: tr("ov.footer"),
 	}
@@ -365,6 +380,19 @@ func Evidence(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOptions)
 		d.Accepted = append(d.Accepted, r)
 	}
 	d.Months = evidenceMonths(lang, runs, exps)
+	systems := periodSystems(o.Systems, exps, tr, first.GeneratedAt)
+	for i, s := range systems {
+		if i == evidenceRows {
+			d.MoreSystems = tr("ev.systemsmore", len(systems)-evidenceRows)
+			break
+		}
+		row := evSystem{Host: s.Host, FirstSeen: day(s.FirstSeen), LastSeen: day(s.LastSeen), Status: systemStatus(tr, s), StatusClass: "fixed",
+			Found: s.Counts.Found, Fixed: s.Counts.Fixed, Open: s.Counts.Open, Accepted: s.Counts.Accepted}
+		if s.Gone != nil {
+			row.StatusClass = "medium"
+		}
+		d.Systems = append(d.Systems, row)
+	}
 
 	if last.KEVVersion != "" {
 		d.Sources = tr("fix.feeds", last.KEVVersion)
@@ -376,6 +404,13 @@ func Evidence(w io.Writer, history []*state.Snapshot, m Meta, o EvidenceOptions)
 	d.Method, d.Limits = tr("ev.method"), tr("ev.limits")
 	d.Fingerprint = runsFingerprint(runs)
 	return evidenceTmpl.Execute(w, d)
+}
+
+// periodSystems lists the systems on record that answered since from, with
+// the items the period's runs found on them.
+func periodSystems(records []inventory.Record, exps []Exposure, tr translator, from time.Time) []System {
+	all := buildSystems(records, exps, tr, "")
+	return slices.DeleteFunc(all, func(s System) bool { return s.LastSeen.Before(from) })
 }
 
 func exposureRow(tr translator, lang string, e Exposure, now time.Time) evRow {

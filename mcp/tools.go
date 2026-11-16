@@ -138,6 +138,19 @@ func (s *Server) makeTools() []*tool {
 		Annotations: readOnly,
 		call:        s.inventoryTool,
 	}, {
+		Name:  "hejnal_systems",
+		Title: "Systems and their history",
+		Description: "The systems Hejnal has seen, from its record of every service that answered. Without host: each system with " +
+			"its ports, products, first and last day seen, open items and whether it still answers. With host: the history of that " +
+			"system, in Markdown and as structured data: the versions it showed over time, the items found on it and when they were " +
+			"fixed, and when it went away.",
+		InputSchema: objectSchema(map[string]any{
+			"host": map[string]any{"type": "string", "description": "The host name or IP address whose history to return. Leave out to list every system."},
+			"lang": lang,
+		}),
+		Annotations: readOnly,
+		call:        s.systemsTool,
+	}, {
 		Name:  "hejnal_nis2_draft",
 		Title: "NIS2 early-warning draft",
 		Description: "A draft NIS2 Article 23 early warning in Markdown, pre-filled with the systems and flaws from the " +
@@ -626,6 +639,62 @@ func product(name, version string) string {
 		return name + " " + version
 	}
 	return name + " " + strconv.Quote(clip(version))
+}
+
+type systemsArgs struct {
+	Host string `json:"host"`
+	Lang string `json:"lang"`
+}
+
+type systemsData struct {
+	Systems []report.System `json:"systems"`
+}
+
+func (s *Server) systemsTool(_ context.Context, raw json.RawMessage) toolResult {
+	a, err := decodeArgs[systemsArgs](raw)
+	if err != nil {
+		return failure(err.Error())
+	}
+	lang, err := s.langArg(a.Lang)
+	if err != nil {
+		return failure(err.Error())
+	}
+	if s.broken != nil {
+		return failure(s.broken.Error())
+	}
+	records, err := s.store.LoadSystems()
+	if err != nil {
+		s.logf("mcp: %v", err)
+		return failure("could not read Hejnal's record of systems: " + err.Error())
+	}
+	history, err := s.store.History()
+	if err != nil {
+		s.logf("mcp: %v", err)
+		return failure("could not read Hejnal's saved runs: " + err.Error())
+	}
+	// The history is as of the latest run, when there is one.
+	m := report.Meta{GeneratedAt: s.now(), Lang: lang}
+	if n := len(history); n > 0 {
+		m.Organization, m.GeneratedAt = history[n-1].Organization, history[n-1].GeneratedAt
+	}
+	var b strings.Builder
+	host := normalizeHost(a.Host)
+	if host == "" {
+		systems := report.Systems(records, history, lang)
+		if err := report.SystemList(&b, systems, m); err != nil {
+			return failure(err.Error())
+		}
+		return toolResult{Content: []content{{Type: "text", Text: b.String()}}, StructuredContent: systemsData{Systems: append([]report.System{}, systems...)}}
+	}
+	sys, ok := report.SystemHistory(host, records, history, lang)
+	if !ok {
+		return textResult(fmt.Sprintf("No system %q on record, which lists %s. Call hejnal_systems without host to see them all.",
+			a.Host, plural(len(report.Systems(records, nil, lang)), "system")))
+	}
+	if err := report.SystemReport(&b, sys, m); err != nil {
+		return failure(err.Error())
+	}
+	return toolResult{Content: []content{{Type: "text", Text: b.String()}}, StructuredContent: sys}
 }
 
 type inventoryArgs struct {

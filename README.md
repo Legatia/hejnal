@@ -341,6 +341,24 @@ Systems · new: 1 · gone: 1 · updated: 1
 The first run only records what answers. Hosts that leave the scope are
 dropped without a word.
 
+`hejnal systems` lists every system on record: its ports and products, the
+first and the last day it answered, its open items and whether it still
+answers. `hejnal systems shop.example.com` prints the history of one, from
+its first answer to the day it went away:
+
+```
+- 2026-10-20 · First answer · port 80, 443
+- 2026-10-20 · Found in the first check, so it was there before: PHP on shop.example.com:443 · high · `ebc52a7e`
+- 2026-11-10 · nginx 1.24.0 → 1.30.6 · port 80, 443
+- 2026-11-10 · PHP 8.3.12 → 8.3.14 · port 443
+- 2026-11-10 · Fixed: PHP on shop.example.com:443 · high · `ebc52a7e` · seen for 21.0 days
+```
+
+Above the timeline it lists the system's services and every item found on
+it, with the day it was found, the day a run found it fixed and its status.
+`-format json` writes the same as data. Items come from the saved runs, and
+version changes are on record from the first run with this version on.
+
 ```cron
 HEJNAL_WEBHOOK=https://hooks.slack.com/services/T000/B000/XXXX
 HEJNAL_NVD_API_KEY=your-free-nvd-key
@@ -394,6 +412,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal feeds` | Downloads CISA's KEV catalog and ENISA's list into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
 | `hejnal report fixlist\|overview\|evidence\|nis2\|monthly` | Prints a report from the saved runs. |
+| `hejnal systems [host]` | Lists the systems seen, or prints the history of one: versions, items found and fixed, and when it went away. |
 | `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
 | `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
 | `hejnal code scan` | Checks dependencies, secrets, infrastructure code and container images, for CI. |
@@ -416,7 +435,7 @@ change it):
 | `findings.json` | Findings from the last run. |
 | `reported.json` | The findings people were last told about, used to tell what is new. |
 | `accepted.json` | Items accepted with `hejnal accept`: which findings, why, by whom and until when. |
-| `systems.json` | Every service that answered: how its host was found, what runs there, when it was first and last seen, and when it went away. Gone ones are kept for 400 days. |
+| `systems.json` | Every service that answered: how its host was found, what runs there, when it was first and last seen, the versions it showed, and when it went away and came back. Gone ones are kept for 400 days. |
 | `system-changes.json` | New, gone and updated services people have not been told about yet. |
 | `history/` | Findings from earlier runs; the last 400 are kept, over a year of daily runs. |
 | `fixlist.md` | The fix list from the last `hejnal run`. |
@@ -592,6 +611,7 @@ curl -H "Authorization: Bearer $HEJNAL_API_TOKEN" http://127.0.0.1:8080/v1/group
 | `GET /v1/groups` | Items to fix and accepted items, as in the fix list. Filter: `min_severity`. |
 | `GET /v1/inventory` | Hosts, services and recognised products. |
 | `GET /v1/changes` | What is new and what was resolved since the last notification, and which services are new, gone or updated. |
+| `GET /v1/systems`, `GET /v1/systems/{host}` | The systems seen with the items found on each, and the history of one system. Parameter for one system: `lang`. |
 | `GET /v1/reports/fixlist`, `GET /v1/reports/nis2` | The reports as Markdown. Parameter: `lang`. |
 | `POST /v1/runs`, `GET /v1/runs/{id}` | Start a scan of the scope and follow it. Only with `-allow-runs`. |
 
@@ -614,7 +634,8 @@ assistant's MCP settings:
 ```
 
 The assistant can then ask for a summary, the fix list, findings filtered by
-severity, host or CVE, the inventory and a NIS2 draft. These tools only read.
+severity, host or CVE, the inventory, the history of a system and a NIS2
+draft. These tools only read.
 With `-allow-runs -scope scope.json`, it can also start a scan.
 
 ## Reports
@@ -651,6 +672,9 @@ found:
   (median and within 7 and 30 days), and whether accepted risks are
   documented.
 - **Month by month**, and the accepted risks with their reasons.
+- **Systems on record:** every system that answered in the period, when it
+  was first and last seen, whether it still answers, and how many items
+  were found on it and fixed.
 - **Controls it supports**, for auditors: SOC 2 CC7.1 and CC4.1, ISO/IEC
   27001:2022 A.8.8 and A.5.7, and NIS2 Article 21(2)(e), each with what in
   the report speaks to it. Whether a control is met stays the auditor's call.
@@ -658,8 +682,8 @@ found:
 
 `-format json` writes the same evidence as data (schema
 `https://github.com/Legatia/hejnal/evidence/v1`): the runs, every item's
-exposure with its CVEs and dates, the accepted risks and the controls, for
-compliance tools and audit workpapers.
+exposure with its CVEs and dates, the accepted risks, the systems on record
+and the controls, for compliance tools and audit workpapers.
 
 It is not an audit or a certification, and it says so. Times to fix are
 measured between runs, so they include the wait for the next run. An item
@@ -840,6 +864,10 @@ wykorzystują, i mówi, co naprawić najpierw.
   odpowiadają pierwszy raz (z tym, co na nich działa, i skąd Hejnal je zna),
   które nie odpowiadają od dwóch sprawdzeń (z podpowiedzią, by usunąć rekord
   DNS wycofanego systemu) i które produkty mają nową wersję.
+- **Prowadzi historię każdego systemu:** `hejnal systems` wypisuje systemy z
+  rejestru, a `hejnal systems shop.example.com -lang pl` historię jednego:
+  pierwszą odpowiedź, kolejne wersje, wykryte i naprawione pozycje oraz
+  dzień, w którym zniknął. Raport dowodowy zawiera tabelę tych systemów.
 - **Pamięta sprawdzone punkty:** każdy punkt listy ma identyfikator. Polecenie
   `hejnal accept` zapisuje, kto sprawdził punkt, dlaczego i do kiedy.
   Powiadomienia i kod wyjścia pomijają go wtedy przez 90 dni albo do daty z

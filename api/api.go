@@ -12,6 +12,8 @@
 //	GET  /v1/groups           items to fix and accepted items, as in the fix list; filter: min_severity
 //	GET  /v1/inventory        hosts, services and products found
 //	GET  /v1/changes          new and resolved since the last report
+//	GET  /v1/systems          the systems seen, with the items found on each
+//	GET  /v1/systems/{host}   the history of one system: versions, items found and fixed; lang=en or pl
 //	GET  /v1/reports/fixlist  the fix list in Markdown; lang=en or pl
 //	GET  /v1/reports/nis2     a NIS2 early-warning draft in Markdown; lang=en or pl
 //	POST /v1/runs             start a run in the background, when allowed
@@ -165,6 +167,8 @@ func (h *handler) routes() http.Handler {
 	h.route(mux, http.MethodGet, "/v1/groups", h.groups, true)
 	h.route(mux, http.MethodGet, "/v1/inventory", h.inventory, true)
 	h.route(mux, http.MethodGet, "/v1/changes", h.changes, true)
+	h.route(mux, http.MethodGet, "/v1/systems", h.systems, true)
+	h.route(mux, http.MethodGet, "/v1/systems/{host}", h.system, true)
 	h.route(mux, http.MethodGet, "/v1/reports/fixlist", h.report(report.FixList), true)
 	h.route(mux, http.MethodGet, "/v1/reports/nis2", h.report(report.NIS2), true)
 	h.route(mux, http.MethodPost, "/v1/runs", h.startRun, true)
