@@ -1608,6 +1608,48 @@
       "kev": [{"vendor": "^Marimo$", "product": "^Marimo$"}]
     },
     {
+      "id": "ollama", "name": "Ollama", "category": "ai", "admin": true,
+      "body": ["^Ollama is running\\s*$"],
+      "cpe": ["ollama:ollama"],
+      "kev": [{"vendor": "^Ollama$", "product": "^Ollama$"}]
+    },
+    {
+      "id": "open-webui", "name": "Open WebUI", "category": "ai", "admin": true,
+      "title": "^Open WebUI$",
+      "cpe": ["openwebui:open_webui"],
+      "kev": [{"vendor": "^Open ?WebUI$", "product": "^Open ?WebUI$"}]
+    },
+    {
+      "id": "flowise", "name": "Flowise", "category": "ai", "admin": true,
+      "title": "^Flowise - (?:Build AI Agents, Visually|Low-code LLM apps builder)$",
+      "cpe": ["flowiseai:flowise"],
+      "kev": [{"vendor": "^Flowise(?: ?AI)?$", "product": "^Flowise$"}]
+    },
+    {
+      "id": "jupyter", "name": "Jupyter", "category": "ai", "admin": true,
+      "body": ["function _remove_token_from_url\\(\\)", "<script id=\"jupyter-config-data\" type=\"application/json\">\\s*\\{[^<]*\"appName\":\\s*\"Jupyter"],
+      "kev": [{"vendor": "^(?:Project )?Jupyter$", "product": "^(?:Jupyter ?(?:Lab|Notebook|Server)|Notebook)$"}]
+    },
+    {
+      "id": "gradio", "name": "Gradio", "category": "ai",
+      "body": ["window\\.gradio_config\\s*=\\s*\\{"],
+      "versions": [{"source": "body", "regex": "window\\.gradio_config\\s*=\\s*\\{\"version\":\\s*\"([0-9]+(?:\\.[0-9]+)+)\""}],
+      "cpe": ["gradio_project:gradio"],
+      "kev": [{"vendor": "^Gradio$", "product": "^Gradio$"}]
+    },
+    {
+      "id": "comfyui", "name": "ComfyUI", "category": "ai", "admin": true,
+      "title": "^ComfyUI$",
+      "body": ["<body class=\"litegraph grid\">", "<div id=\"splash-loader\"[^>]*aria-label=\"Loading ComfyUI\""],
+      "cpe": ["comfy:comfyui"],
+      "kev": [{"vendor": "^Comfy(?:UI|[ -]Org)?$", "product": "^ComfyUI$"}]
+    },
+    {
+      "id": "dify", "name": "Dify", "category": "ai", "admin": true,
+      "body": ["<(?:html|body)\\b[^>]*\\sdata-api-prefix=\"[^>]*\\sdata-pub(?:l)?ic-api-prefix=\"", "<(?:html|body)\\b[^>]*\\sdata-pub(?:l)?ic-api-prefix=\"[^>]*\\sdata-api-prefix=\""],
+      "kev": [{"vendor": "^LangGenius$", "product": "^Dify$"}]
+    },
+    {
       "id": "kestra", "name": "Kestra", "category": "devops", "admin": true,
       "body": ["<script[^>]*>\\s*window\\.KESTRA_"],
       "kev": [{"vendor": "^Kestra$", "product": "^Kestra"}]

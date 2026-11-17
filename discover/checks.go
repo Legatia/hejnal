@@ -93,6 +93,14 @@ var versionChecks = map[string]versionCheck{
 	"drupal": {"/CHANGELOG.txt", regexp.MustCompile(`(?m)^Drupal ([0-9]+\.[0-9]+(?:\.[0-9]+)?), [0-9]{4}-[0-9]{2}-[0-9]{2}`)},
 	// Outlook on the web loads its scripts from a path with the build number.
 	"exchange-owa": {"/owa/auth/logon.aspx", regexp.MustCompile(`/owa/(?:auth/)?([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)/`)},
+	// Ollama, Open WebUI and Flowise name their version on an address that
+	// asks for no sign-in. A build of Ollama from source says 0.0.0, which
+	// is no release and is not read.
+	"ollama":     {"/api/version", regexp.MustCompile(`"version"\s*:\s*"(0\.[1-9][0-9]*(?:\.[0-9]+)+|[1-9][0-9]*(?:\.[0-9]+)+)"`)},
+	"open-webui": {"/api/version", regexp.MustCompile(`"version"\s*:\s*"([0-9]+(?:\.[0-9]+)+)"`)},
+	"flowise":    {"/api/v1/version", regexp.MustCompile(`"version"\s*:\s*"([0-9]+(?:\.[0-9]+)+)"`)},
+	// ComfyUI names its version among the facts about the machine it runs on.
+	"comfyui": {"/system_stats", regexp.MustCompile(`"comfyui_version"\s*:\s*"v?([0-9]+(?:\.[0-9]+)+)"`)},
 }
 
 // ReadsVersion reports whether the opt-in checks can read the version of
