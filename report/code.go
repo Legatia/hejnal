@@ -28,6 +28,15 @@ func depFixedIn(g match.Group) string {
 	return best
 }
 
+// FixedIn returns the version that fixes every advisory of a dependency
+// item, or "" when one has no fix or the item is not a dependency.
+func FixedIn(g match.Group) string {
+	if g.Kind != match.KindDependency {
+		return ""
+	}
+	return depFixedIn(g)
+}
+
 // depStatus sums up a dependency item: malicious, exploited, likely to be,
 // or none of these.
 func depStatus(g match.Group) (malicious bool, exploited []match.Finding, epss float64) {
@@ -239,4 +248,26 @@ func depProof(tr translator, g match.Group, step func(bool, string, ...any)) (ve
 		step(false, "proof.dep.dev")
 	}
 	return verdict, tr("proof.see.dep", "https://osv.dev/vulnerability/"+f.Advisory), depCommand(f)
+}
+
+// Places lists where an item was found, at most five places: files and
+// lines for an item in code, the address for one on a system.
+func Places(g match.Group) []string {
+	var out []string
+	for _, f := range g.Findings {
+		p := f.URL
+		if f.File != "" {
+			p = codePlace(f)
+		}
+		if p == "" || slices.Contains(out, p) {
+			continue
+		}
+		if out = append(out, p); len(out) == 5 {
+			break
+		}
+	}
+	if len(out) == 0 && g.URL != "" {
+		out = append(out, g.URL)
+	}
+	return out
 }

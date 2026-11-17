@@ -115,7 +115,8 @@ flaws that version does not have drop out. A run without `-checks` says when
 that would shorten the list.
 `hejnal leaks` finds secrets in your source code and accounts on your domains
 in known data breaches. A REST API and an MCP server make the results
-available to other tools and to AI assistants.
+available to other tools and to AI assistants, and let a coding assistant
+ask whether the item it fixed is still found.
 
 Every item says **how sure** Hejnal is and how you can **see it yourself**:
 what answered and what it said, the version it showed, whether NVD lists
@@ -442,6 +443,20 @@ address you give. `-no-checks` keeps it to the front page. What only a full
 run can see stays with the daily run: names nobody listed, mail records, and
 a test copy recognised by having the same title as the live site.
 
+**After a fix, ask about one item.** With `-item` and an item's ID, the
+command says only whether that item is still found:
+
+```sh
+hejnal live -item 3f9a1c0d https://shop.your-domain.pl
+```
+
+It exits with status 2 while the item is found, 0 once it is not, and 1 when
+this check cannot tell, such as for an item of another system or one only a
+full run finds (mail records, breached accounts). An item that changed
+without being fixed, such as a product updated to a version that still has
+an exploited flaw, counts as found, and the answer names its new ID.
+`hejnal code scan -item` does the same for an item in the code.
+
 ### Issues on GitHub
 
 `hejnal issues` keeps one GitHub issue for every open item on the fix list,
@@ -462,6 +477,14 @@ Issues in your-org/infra: 1 opened, 1 closed, 0 reopened, 6 open already.
 
 Each issue has the item's priority, its owner from the scope file, a rough
 effort, what to do and the command that shows the problem without Hejnal.
+It ends with a **Fix and check** block, written so that a person or a coding
+assistant handed the issue can act on it: for a dependency the package, the
+installed version, the version that fixes it and the files that pin it; for
+a system its address and the product; and the command that says whether the
+item is still found, `hejnal code scan -item` or `hejnal live -item`. A
+secret gets the file and line only, and mail records, breached accounts and
+names left pointing at a hosting service get no block: the next run checks
+those.
 From then on the issue follows the runs:
 
 - An item found for the first time gets an issue, assigned to the owner's
@@ -527,7 +550,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal leaks scan\|breaches` | Finds secrets in source code, and accounts in known data breaches. |
 | `hejnal code scan` | Checks dependencies, secrets, infrastructure code and container images, for CI. |
 | `hejnal serve` | Serves the results over a REST API. |
-| `hejnal mcp` | Serves the results to AI assistants over MCP. |
+| `hejnal mcp` | Serves the results to AI assistants over MCP; with `-code`, lets a coding assistant check its own fix. |
 | `hejnal rules` | Lists the products Hejnal recognises. |
 
 Run `hejnal <command> -h` for flags. Useful ones: `-lang en|pl`, `-checks`,
@@ -661,6 +684,9 @@ tools. `-fail-on high` (the default) makes the command exit 2 when an item
 reaches that severity, to stop a build. Items accepted with `hejnal accept`
 in the same state directory are shown as accepted and do not stop it.
 `-exclude` leaves directories out, as in `hejnal leaks scan`.
+`-item 3f9a1c0d` says only whether that one item is still found, with the
+exit statuses of [`hejnal live -item`](#right-after-a-deploy); run it with
+the `-project` name and the options of the scan that found the item.
 `-save` keeps the result in the
 state directory, so the daily fix list and alerts include it, scored again
 each day: a dependency flaw that joins CISA's list tomorrow becomes urgent
@@ -788,6 +814,45 @@ The assistant can then ask for a summary, the fix list, findings filtered by
 severity, host or CVE, the inventory, the history of a system and a NIS2
 draft. These tools only read.
 With `-allow-runs -scope scope.json`, it can also start a scan.
+
+### Fixing with a coding assistant
+
+A coding assistant can take an item, make the change and ask Hejnal whether
+the item is still found, so it stops when Hejnal no longer finds the item,
+not when it believes the fix worked. Name the source directory with `-code`:
+
+```json
+{
+  "mcpServers": {
+    "hejnal": {
+      "command": "hejnal",
+      "args": ["mcp", "-code", "/home/anna/src/shop", "-allow-runs", "-scope", "/srv/hejnal/scope.json"]
+    }
+  }
+}
+```
+
+| Tool | Offered with | What it does |
+|---|---|---|
+| `hejnal_code_scan` | `-code <directory>` | Checks the directory as it is now: dependencies, secrets and infrastructure code, without container images or the Git history. Each item comes with its ID, what to do, the files and lines, and for a dependency the version that fixes it. |
+| `hejnal_live_check` | `-allow-runs` | Looks at one system in the scope, as [`hejnal live`](#right-after-a-deploy) does: the front page, the certificate and the fixed paths. An address outside the scope is refused. `wait_seconds` gives a deploy up to five minutes to come up. |
+
+Both take `item`, the ID of one item, and then answer with one status:
+
+| Status | Meaning |
+|---|---|
+| `gone` | The item was found before, in a saved result or earlier in the session, and is not found now. Only this status means fixed. |
+| `found` | The item is still there. |
+| `moved` | Not fixed: the same problem now has another ID, such as after an update to a version that still has the flaw. The answer carries the new item. |
+| `not_found` | Hejnal has no record that the item was ever found here, so it cannot say it was fixed. |
+| `unknown` | This check cannot tell, and says why: the item belongs to another project or system, or to a kind this check does not cover. |
+
+Both checks save nothing but the downloaded feeds, so the fix list, the
+alerts and each system's history change only with the next `hejnal run` or
+`hejnal code scan -save`. As with `hejnal code scan`, package names and
+versions go to OSV and nothing else leaves the machine, so `-code` is
+refused together with `-offline`. `-project` and `-exclude` work as they do
+for `hejnal code scan`.
 
 ## Reports
 
@@ -1013,6 +1078,23 @@ wykorzystują, i mówi, co naprawić najpierw.
   projekt wczesnego ostrzeżenia NIS2 (zgłoszenie do właściwego CSIRT, zwykle
   przez system S46).
 - **Udostępnia wyniki** przez REST API i serwer MCP dla asystentów AI.
+- **Pozwala asystentowi programisty sprawdzić własną poprawkę:**
+  `hejnal mcp -code katalog` udostępnia narzędzie `hejnal_code_scan`
+  (zależności, sekrety i kod infrastruktury w tym katalogu), a opcja
+  `-allow-runs` narzędzie `hejnal_live_check` (jeden system z zakresu, jak
+  `hejnal live`, razem ze stałymi ścieżkami). Oba przyjmują identyfikator
+  punktu w polu `item` i odpowiadają jednym stanem: `gone` (punkt był
+  wykrywany i już nie jest; tylko ten stan oznacza naprawę), `found` (nadal
+  jest), `moved` (ten sam problem ma nowy identyfikator, na przykład po
+  aktualizacji do wersji, która nadal ma lukę), `not_found` (Hejnal nie ma
+  zapisu, że punkt był tu kiedykolwiek wykryty) albo `unknown` (to
+  sprawdzenie nie może tego stwierdzić i podaje powód). Sprawdzenia
+  niczego nie zapisują poza pobranymi listami. Do OSV trafiają tylko nazwy i
+  wersje pakietów, więc `-code` nie działa razem z `-offline`.
+- **Sprawdza jeden punkt po naprawie:** `hejnal live -item 3f9a1c0d
+  https://sklep.twoja-domena.pl` i `hejnal code scan -item 3f9a1c0d` mówią
+  tylko, czy ten punkt jest nadal wykrywany: kod 2, dopóki jest, kod 0, gdy
+  już nie jest, i kod 1, gdy to sprawdzenie nie może tego stwierdzić.
 - **Śledzi zmiany w systemach:** każde uruchomienie mówi, które usługi
   odpowiadają pierwszy raz (z tym, co na nich działa, i skąd Hejnal je zna),
   które nie odpowiadają od dwóch sprawdzeń (z podpowiedzią, by usunąć rekord
@@ -1040,7 +1122,10 @@ wykorzystują, i mówi, co naprawić najpierw.
   -lang pl` otwiera zgłoszenie dla każdego punktu listy poprawek, z
   priorytetem, szacowanym nakładem pracy i poleceniem do samodzielnego
   sprawdzenia, i przypisuje je właścicielowi systemu z pola `owners` w pliku
-  zakresu. Zamyka zgłoszenie, gdy kolejne sprawdzenie nie znajduje już
+  zakresu. Zgłoszenie kończy się blokiem „Naprawa i sprawdzenie”: pakiet,
+  zainstalowana i naprawiona wersja oraz pliki albo adres systemu i produkt,
+  a także polecenie, które mówi, czy punkt jest nadal wykrywany, tak by
+  mógł z niego skorzystać człowiek albo asystent programisty. Zamyka zgłoszenie, gdy kolejne sprawdzenie nie znajduje już
   punktu albo gdy punkt zaakceptowano, i otwiera je ponownie, gdy punkt
   wraca. Token pochodzi ze zmiennej `HEJNAL_GITHUB_TOKEN` lub `GITHUB_TOKEN`.
   Publicznego repozytorium Hejnal nie użyje bez opcji `-public`.

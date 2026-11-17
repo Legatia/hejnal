@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -89,5 +90,37 @@ func TestLookAndAssessSaveNothing(t *testing.T) {
 	inv, err = e.Look(ctx, s, nil, false)
 	if err != nil || len(inv.Assets) != 0 || hits.Load() != 0 {
 		t.Errorf("a look at no systems: %+v, %v, %d requests elsewhere", inv, err, hits.Load())
+	}
+}
+
+func TestParseLiveURL(t *testing.T) {
+	for _, tc := range []struct {
+		in, shown, host string
+		port            int
+		path            string
+	}{
+		{"https://app.example.com", "https://app.example.com", "app.example.com", 443, ""},
+		{"App.Example.com.", "https://app.example.com", "app.example.com", 443, ""},
+		{"http://app.example.com/", "http://app.example.com", "app.example.com", 80, ""},
+		{"app.example.com:8443/login", "https://app.example.com:8443", "app.example.com", 8443, "/login"},
+		{"https://app.example.com:443/", "https://app.example.com", "app.example.com", 443, ""},
+		{"http://[2001:db8::1]:8080", "http://[2001:db8::1]:8080", "2001:db8::1", 8080, ""},
+		{"https://[2001:db8::1]", "https://[2001:db8::1]", "2001:db8::1", 443, ""},
+	} {
+		got, err := ParseLiveURL(tc.in)
+		if err != nil {
+			t.Errorf("ParseLiveURL(%q): %v", tc.in, err)
+			continue
+		}
+		if got.Shown != tc.shown || got.Host != tc.host || got.Port != tc.port || got.Path != tc.path {
+			t.Errorf("ParseLiveURL(%q) = %+v, want %+v", tc.in, got, tc)
+		}
+	}
+	for _, in := range []string{"", "https://", "https://user:pw@app.example.com", "gopher://app.example.com", "https://app.example.com:0", "http://app example.com"} {
+		if got, err := ParseLiveURL(in); err == nil {
+			t.Errorf("ParseLiveURL(%q) = %+v, want an error", in, got)
+		} else if strings.Contains(err.Error(), "pw") {
+			t.Errorf("ParseLiveURL(%q) repeats the password: %v", in, err)
+		}
 	}
 }

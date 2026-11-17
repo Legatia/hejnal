@@ -232,35 +232,3 @@ func TestLiveWaitsForTheSystem(t *testing.T) {
 		t.Errorf("stdout:\n%s", out)
 	}
 }
-
-func TestParseLiveURL(t *testing.T) {
-	for _, tc := range []struct {
-		in, shown, host string
-		port            int
-		path            string
-	}{
-		{"https://app.example.com", "https://app.example.com", "app.example.com", 443, ""},
-		{"App.Example.com.", "https://app.example.com", "app.example.com", 443, ""},
-		{"http://app.example.com/", "http://app.example.com", "app.example.com", 80, ""},
-		{"app.example.com:8443/login", "https://app.example.com:8443", "app.example.com", 8443, "/login"},
-		{"https://app.example.com:443/", "https://app.example.com", "app.example.com", 443, ""},
-		{"http://[2001:db8::1]:8080", "http://[2001:db8::1]:8080", "2001:db8::1", 8080, ""},
-		{"https://[2001:db8::1]", "https://[2001:db8::1]", "2001:db8::1", 443, ""},
-	} {
-		got, err := parseLiveURL(tc.in)
-		if err != nil {
-			t.Errorf("parseLiveURL(%q): %v", tc.in, err)
-			continue
-		}
-		if got.shown != tc.shown || got.host != tc.host || got.port != tc.port || got.path != tc.path {
-			t.Errorf("parseLiveURL(%q) = %+v, want %+v", tc.in, got, tc)
-		}
-	}
-	for _, in := range []string{"", "https://", "https://user:pw@app.example.com", "gopher://app.example.com", "https://app.example.com:0", "http://app example.com"} {
-		if got, err := parseLiveURL(in); err == nil {
-			t.Errorf("parseLiveURL(%q) = %+v, want an error", in, got)
-		} else if strings.Contains(err.Error(), "pw") {
-			t.Errorf("parseLiveURL(%q) repeats the password: %v", in, err)
-		}
-	}
-}

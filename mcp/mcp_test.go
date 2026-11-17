@@ -152,7 +152,7 @@ func TestToolsList(t *testing.T) {
 		t.Errorf("the missing engine or scope was not logged:\n%s", l.String())
 	}
 	got, tools = names(NewServer(Config{Engine: e, Scope: sc, AllowRuns: true}))
-	if !slices.Equal(got, append(readOnly, "hejnal_run")) {
+	if !slices.Equal(got, append(readOnly, "hejnal_live_check", "hejnal_run")) {
 		t.Fatalf("tools with runs allowed = %v", got)
 	}
 	a := tools[len(tools)-1]["annotations"].(map[string]any)

@@ -5,151 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/Legatia/hejnal/discover"
+	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
 	"github.com/Legatia/hejnal/report"
-	"github.com/Legatia/hejnal/scope"
+	"github.com/Legatia/hejnal/state"
 )
-
-// defaultLivePause is the wait between two looks at a system that is not
-// up yet.
-const defaultLivePause = 5 * time.Second
-
-// liveTarget is one address named on the command line.
-type liveTarget struct {
-	// shown is the address without its path: scheme, host and port.
-	shown string
-	host  string
-	port  int
-	// path is the path the address named, when it is not the front page.
-	path string
-}
-
-// parseLiveURL reads an address such as "https://app.example.com" or
-// "app.example.com:8443"; one without a scheme is taken as HTTPS.
-func parseLiveURL(arg string) (liveTarget, error) {
-	raw := strings.TrimSpace(arg)
-	if !strings.Contains(raw, "://") {
-		raw = "https://" + raw
-	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Hostname() == "" {
-		// The argument is not repeated: an address that does not parse may
-		// hold a password.
-		return liveTarget{}, errors.New("an address to check is not one: give addresses such as https://app.example.com")
-	}
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-	if u.User != nil {
-		return liveTarget{}, fmt.Errorf("the address for %s holds a user name or password: leave them out", host)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return liveTarget{}, fmt.Errorf("%s://%s: only http and https addresses can be checked", u.Scheme, host)
-	}
-	t := liveTarget{host: host, port: 443}
-	if u.Scheme == "http" {
-		t.port = 80
-	}
-	t.shown = u.Scheme + "://" + bracketed(host)
-	if p := u.Port(); p != "" {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 1 || n > 65535 {
-			return liveTarget{}, fmt.Errorf("%s: %q is not a port", host, p)
-		}
-		if n != t.port {
-			t.shown = u.Scheme + "://" + net.JoinHostPort(host, p)
-		}
-		t.port = n
-	}
-	if u.Path != "" && u.Path != "/" {
-		t.path = u.Path
-	}
-	return t, nil
-}
-
-// bracketed writes an IPv6 address the way a URL holds it.
-func bracketed(host string) string {
-	if strings.Contains(host, ":") {
-		return "[" + host + "]"
-	}
-	return host
-}
-
-// liveScopeCheck reports why the scope does not allow checking a target,
-// by the rules a full run follows: the host must be in the scope, and the
-// port must be one the scope lists for it.
-func liveScopeCheck(s *scope.Scope, file string, t liveTarget) error {
-	if !s.HostInScope(t.host) {
-		return fmt.Errorf("%s is not in the scope file %s, or is excluded there: Hejnal only checks systems the scope lists", t.host, file)
-	}
-	if s.Explicit(t.host) {
-		if !slices.Contains(s.Ports, t.port) {
-			return fmt.Errorf("%s: port %d is not among the ports in the scope file %s (%s)", t.shown, t.port, file, joinInts(s.Ports))
-		}
-		return nil
-	}
-	if !slices.Contains(scope.WebPorts, t.port) {
-		return fmt.Errorf("%s: a name under a domain is checked on ports %s only; to check port %d, list %s under \"hosts\" in %s",
-			t.shown, joinInts(scope.WebPorts), t.port, t.host, file)
-	}
-	return nil
-}
-
-// liveService returns what answered for a target: the asset of its host and
-// the service on its port, either of which may be missing.
-func liveService(inv *inventory.Inventory, t liveTarget) (*inventory.Asset, *inventory.Service) {
-	for i := range inv.Assets {
-		a := &inv.Assets[i]
-		if a.Host != t.host {
-			continue
-		}
-		for j := range a.Services {
-			if a.Services[j].Port == t.port {
-				return a, &a.Services[j]
-			}
-		}
-		return a, nil
-	}
-	return nil, nil
-}
-
-// liveProblem says why a target cannot be checked yet, or "" when a website
-// answered there. final reports that waiting will not change it.
-func liveProblem(inv *inventory.Inventory, t liveTarget) (problem string, final bool) {
-	a, svc := liveService(inv, t)
-	switch {
-	case a == nil:
-		return "it could not be looked at", true
-	case svc == nil && len(a.Errors) > 0:
-		return a.Errors[0], strings.HasPrefix(a.Errors[0], "not contacted")
-	case svc == nil:
-		return fmt.Sprintf("nothing answered on port %d", t.port), false
-	case svc.Status == 0:
-		return fmt.Sprintf("port %d is open, but no website answered there", t.port), false
-	case svc.Status >= 500:
-		return fmt.Sprintf("it answered with status %d", svc.Status), false
-	}
-	return "", false
-}
-
-// liveProblems lists the targets that cannot be checked yet, one per line
-// of text.
-func liveProblems(inv *inventory.Inventory, targets []liveTarget) (lines []string, final bool) {
-	for _, t := range targets {
-		if p, f := liveProblem(inv, t); p != "" {
-			lines = append(lines, t.shown+": "+p)
-			final = final || f
-		}
-	}
-	return lines, final
-}
 
 func (a *app) cmdLive(ctx context.Context, args []string) (int, error) {
 	o := &options{}
@@ -165,6 +31,7 @@ func (a *app) cmdLive(ctx context.Context, args []string) (int, error) {
 	wait := fs.Duration("wait", 0, "keep trying for this long, such as 2m, until the system answers")
 	noChecks := fs.Bool("no-checks", false, "do not check fixed paths for exposed files (.git, .env, server-status) and product versions")
 	fs.StringVar(&o.failOn, "fail-on", "high", "exit with status 2 when an item reaches this severity: critical, high, medium, low or none")
+	item := fs.String("item", "", itemHelp)
 	o.langFlag(fs)
 	o.stateFlags(fs)
 	o.feedFlags(fs)
@@ -185,13 +52,16 @@ func (a *app) cmdLive(ctx context.Context, args []string) (int, error) {
 	if len(urls) == 0 {
 		return exitError, errors.New("name the address to check, such as https://app.example.com")
 	}
-	var targets []liveTarget
+	if *item != "" && !engine.ValidItemID(*item) {
+		return exitError, fmt.Errorf("-item %q is not an item's ID: the fix list and each issue show it, such as 30c07628", *item)
+	}
+	var targets []engine.LiveTarget
 	for _, raw := range urls {
-		t, err := parseLiveURL(raw)
+		t, err := engine.ParseLiveURL(raw)
 		if err != nil {
 			return exitError, err
 		}
-		if !slices.ContainsFunc(targets, func(o liveTarget) bool { return o.host == t.host && o.port == t.port }) {
+		if !slices.ContainsFunc(targets, func(o engine.LiveTarget) bool { return o.Host == t.Host && o.Port == t.Port }) {
 			targets = append(targets, t)
 		}
 	}
@@ -201,17 +71,10 @@ func (a *app) cmdLive(ctx context.Context, args []string) (int, error) {
 	}
 	// Refuse before anything is contacted, and say why: discovery would
 	// leave such a target out without a word.
-	var named []discover.Target
 	for _, t := range targets {
-		if err := liveScopeCheck(s, o.scope, t); err != nil {
+		if err := t.Allowed(s, o.scope); err != nil {
 			return exitError, err
 		}
-		i := slices.IndexFunc(named, func(n discover.Target) bool { return n.Host == t.host })
-		if i < 0 {
-			named = append(named, discover.Target{Host: t.host})
-			i = len(named) - 1
-		}
-		named[i].Ports = append(named[i].Ports, t.port)
 	}
 	e, err := a.engine(o)
 	if err != nil {
@@ -219,44 +82,23 @@ func (a *app) cmdLive(ctx context.Context, args []string) (int, error) {
 	}
 	a.printBanner(s)
 	for _, t := range targets {
-		fmt.Fprintf(a.stderr, "Checking only %s.\n", t.shown)
-		if t.path != "" {
-			fmt.Fprintf(a.stderr, "Note: the check looks at the front page of %s and at fixed paths, not at %s.\n", t.shown, t.path)
+		fmt.Fprintf(a.stderr, "Checking only %s.\n", t.Shown)
+		if t.Path != "" {
+			fmt.Fprintf(a.stderr, "Note: the check looks at the front page of %s and at fixed paths, not at %s.\n", t.Shown, t.Path)
 		}
 	}
-
-	// While the system is coming up, each try is one request for its front
-	// page. The fixed paths are asked for once, when it answers.
-	if *wait > 0 {
-		started, last := time.Now(), ""
-		for {
-			inv, err := e.Look(ctx, s, named, false)
-			if err != nil {
-				return exitError, err
-			}
-			problems, final := liveProblems(inv, targets)
-			if len(problems) == 0 || final {
-				break
-			}
-			if time.Since(started)+a.livePause > *wait {
-				break
-			}
-			if now := strings.Join(problems, "; "); now != last {
-				fmt.Fprintf(a.stderr, "Waiting: %s.\n", now)
-				last = now
-			}
-			select {
-			case <-ctx.Done():
-				return exitError, ctx.Err()
-			case <-time.After(a.livePause):
-			}
-		}
-	}
-	inv, err := e.Look(ctx, s, named, !*noChecks)
+	inv, problems, err := e.LookLive(ctx, s, targets, engine.LiveOptions{
+		Checks: !*noChecks,
+		Wait:   *wait,
+		Pause:  a.livePause,
+		Waiting: func(problems string) {
+			fmt.Fprintf(a.stderr, "Waiting: %s.\n", problems)
+		},
+	})
 	if err != nil {
 		return exitError, err
 	}
-	if problems, _ := liveProblems(inv, targets); len(problems) > 0 {
+	if len(problems) > 0 {
 		msg := "nothing to check: " + strings.Join(problems, "; ")
 		if *wait > 0 {
 			return exitError, fmt.Errorf("%s (waited %s)", msg, *wait)
@@ -267,6 +109,13 @@ func (a *app) cmdLive(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitError, err
 	}
+	if *item != "" {
+		known, err := engine.Known(state.Store{Dir: o.stateDir})
+		if err != nil {
+			return exitError, err
+		}
+		return a.printRecheck(engine.RecheckLive(*item, snap.Findings, known, targets, !*noChecks), o.lang)
+	}
 	open := match.Open(snap.Findings)
 	a.printLive(a.stdout, inv, targets, snap.Findings, o.lang)
 	if failOn != "" && match.AtLeast(open, failOn) {
@@ -276,12 +125,12 @@ func (a *app) cmdLive(ctx context.Context, args []string) (int, error) {
 }
 
 // printLive writes what answered at each address and the items to fix.
-func (a *app) printLive(w io.Writer, inv *inventory.Inventory, targets []liveTarget, fs []match.Finding, lang string) {
+func (a *app) printLive(w io.Writer, inv *inventory.Inventory, targets []engine.LiveTarget, fs []match.Finding, lang string) {
 	named := map[*inventory.Service]bool{}
 	for _, t := range targets {
-		if _, svc := liveService(inv, t); svc != nil {
+		if _, svc := engine.LiveService(inv, t); svc != nil {
 			named[svc] = true
-			fmt.Fprintf(w, "Checked %s\n", t.shown)
+			fmt.Fprintf(w, "Checked %s\n", t.Shown)
 			printLiveService(w, svc)
 		}
 	}
@@ -356,4 +205,41 @@ func printLiveService(w io.Writer, svc *inventory.Service) {
 		fmt.Fprintf(w, "  Certificate: valid until %s\n", svc.TLS.NotAfter.UTC().Format("2006-01-02"))
 	}
 	fmt.Fprintln(w)
+}
+
+// itemHelp describes -item for the commands that can say whether one item
+// is still found.
+const itemHelp = "say only whether the item with this `ID` is still found: exit status 2 while it is, 0 once it is not, 1 when this check cannot tell"
+
+// printRecheck says whether a fresh look still finds one item, and returns
+// the exit status that says the same.
+func (a *app) printRecheck(r engine.Recheck, lang string) (int, error) {
+	switch r.Status {
+	case engine.ItemFound:
+		fmt.Fprintf(a.stdout, "Item %s is still found: %s\n", r.ID, report.GroupTitle(*r.Group, lang))
+		if _, todo := report.ItemText(*r.Group, lang); todo != "" {
+			fmt.Fprintf(a.stdout, "  → %s\n", stripMarkdown(todo))
+		}
+		for _, p := range report.Places(*r.Group) {
+			fmt.Fprintf(a.stdout, "  at %s\n", p)
+		}
+		return exitFindings, nil
+	case engine.ItemMoved:
+		fmt.Fprintf(a.stdout, "Item %s is not fixed: it is now item %s, %s\n", r.ID, r.Now.ID(), report.GroupTitle(*r.Now, lang))
+		if _, todo := report.ItemText(*r.Now, lang); todo != "" {
+			fmt.Fprintf(a.stdout, "  → %s\n", stripMarkdown(todo))
+		}
+		for _, p := range report.Places(*r.Now) {
+			fmt.Fprintf(a.stdout, "  at %s\n", p)
+		}
+		return exitFindings, nil
+	case engine.ItemGone:
+		fmt.Fprintf(a.stdout, "Item %s is no longer found: %s\n", r.ID, report.GroupTitle(*r.Group, lang))
+		return exitOK, nil
+	case engine.ItemNotFound:
+		fmt.Fprintf(a.stdout, "Item %s is not found.\n", r.ID)
+		fmt.Fprintln(a.stderr, "Note: no saved result lists this ID, so Hejnal cannot tell that the item was ever found here. Check the ID, and that the project or address is the one the item names.")
+		return exitOK, nil
+	}
+	return exitError, fmt.Errorf("cannot tell whether item %s is still there: %s", r.ID, r.Why)
 }
