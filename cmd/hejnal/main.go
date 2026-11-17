@@ -128,7 +128,6 @@ func newApp(stdout, stderr io.Writer) *app {
 		ctURL:         discover.CrtShURL,
 		nvdURL:        nvd.DefaultAPI,
 		githubPause:   github.DefaultPause,
-		livePause:     defaultLivePause,
 	}
 }
 

@@ -159,6 +159,49 @@ func (s *Server) makeTools() []*tool {
 		Annotations: readOnly,
 		call:        s.nis2Tool,
 	}}
+	item := map[string]any{
+		"type":    "string",
+		"pattern": "^[0-9a-f]{8}$",
+		"description": "An item's ID, as the fix list and each issue show it, such as 30c07628. With it, the result says only whether that item is still found: " +
+			"status found, gone (fixed), moved (the same thing is now found under another ID, such as a package upgraded to a version that still has an advisory), " +
+			"not_found (nothing on record names the ID) or unknown (this check cannot tell, with the reason).",
+	}
+	if s.allowCode {
+		var dirs []string
+		for _, d := range s.code.Dirs {
+			dirs = append(dirs, strconv.Quote(d))
+		}
+		tools = append(tools, &tool{
+			Name:  "hejnal_code_scan",
+			Title: "Check the code",
+			Description: "Checks the source code in " + strings.Join(dirs, ", ") + " (project " + strconv.Quote(s.code.Project) + ") as it is now: " +
+				"dependencies with advisories, secrets and infrastructure settings that open a way in. Each item comes with its ID, what to do, " +
+				"the files and lines, and for a dependency the version that fixes it. After a fix, call it again with item set to the item's ID. " +
+				"Only package names and versions leave the machine, to OSV (osv.dev). It saves nothing but the feed cache, so the fix list stays as it is.",
+			InputSchema: objectSchema(map[string]any{"min_severity": minSeverity, "item": item}),
+			Annotations: map[string]any{"readOnlyHint": true, "openWorldHint": true},
+			call:        s.codeScanTool,
+		})
+	}
+	if s.allowRuns {
+		tools = append(tools, &tool{
+			Name:  "hejnal_live_check",
+			Title: "Check one system",
+			Description: "Looks at one system in the authorised scope right now, such as after a deploy or a fix: what answers at the address, " +
+				"its certificate, exposed admin pages and files, and flaws attackers exploit in the products it runs. " +
+				"It contacts only that address, and a host in the scope it redirects to: its front page and a fixed list of paths " +
+				"(such as /.git/HEAD, /.env and /server-status) that show exposed files and product versions. An address outside the scope is refused. " +
+				"After a fix, call it again with item set to the item's ID. It saves nothing but the feed cache, so the fix list changes only with the next run.",
+			InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"url"}, "properties": map[string]any{
+				"url": map[string]any{"type": "string", "description": "The address to check, such as https://app.example.com. It must be in the scope."},
+				"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": maxLiveWait, "default": 0,
+					"description": fmt.Sprintf("Keep trying for this many seconds until the system answers, for a deploy that is still coming up: 0 to %d.", maxLiveWait)},
+				"item": item,
+			}},
+			Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true},
+			call:        s.liveCheckTool,
+		})
+	}
 	if s.allowRuns {
 		tools = append(tools, &tool{
 			Name:  "hejnal_run",

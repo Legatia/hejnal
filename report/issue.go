@@ -2,6 +2,8 @@ package report
 
 import (
 	"fmt"
+	"net/url"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -52,6 +54,9 @@ func IssueFor(g match.Group, o IssueOptions) Issue {
 		writeGroup(&b, tr, 0, g, o.Earlier)
 	}
 	body := strings.TrimRight(b.String(), "\n")
+	if block := issueCheck(tr, g); block != "" {
+		body += "\n\n" + block
+	}
 	body += "\n\n---\n" + tr("issue.footer", issueDay(o.Run), g.ID()) + "\n"
 
 	title := ""
@@ -63,6 +68,108 @@ func IssueFor(g match.Group, o IssueOptions) Issue {
 		title = string([]rune(title)[:maxIssueTitle-1]) + "…"
 	}
 	return Issue{Item: g.ID(), Title: quietMentions(title), Body: quietMentions(body)}
+}
+
+// issueCheck writes what a person or a coding assistant needs to fix an
+// item and to tell that the fix worked: where the item is, the version
+// that fixes it, and the command that says whether Hejnal still finds it.
+// The lines keep one form, so a program can read them. It returns "" for
+// an item nothing here can be said about.
+func issueCheck(tr translator, g match.Group) string {
+	if len(g.Findings) == 0 {
+		return ""
+	}
+	f := g.Findings[0]
+	var lines []string
+	add := func(label, value string) {
+		if value != "" {
+			lines = append(lines, fmt.Sprintf("- **%s:** %s", tr(label), value))
+		}
+	}
+	var places []string
+	for _, p := range Places(g) {
+		places = append(places, mdCode(p))
+	}
+	check := ""
+	switch g.Kind {
+	case match.KindDependency:
+		pkg := mdCode(g.Technology)
+		if f.Ecosystem != "" {
+			pkg += " (" + mdEscape(f.Ecosystem) + ")"
+		}
+		add("issue.check.package", pkg)
+		add("issue.check.installed", mdCode(g.Version))
+		add("issue.check.fixedin", mdCode(depFixedIn(g)))
+		add("issue.check.where", strings.Join(places, ", "))
+		// A package found only in a container image needs the image, which
+		// the issue cannot name.
+		if slices.ContainsFunc(g.Findings, func(f match.Finding) bool { return f.File != "" && !strings.Contains(f.File, ":") }) {
+			check = codeCheckCommand(g)
+		}
+	case match.KindMisconfig:
+		add("issue.check.where", strings.Join(places, ", "))
+		check = codeCheckCommand(g)
+	case match.KindSecret:
+		add("issue.check.where", strings.Join(places, ", "))
+	case match.KindKEV, match.KindEOL, match.KindAdminExposed, match.KindExposedFile, match.KindTLSExpired, match.KindTLSExpiring:
+		addr := liveAddress(g)
+		add("issue.check.system", mdCode(addr))
+		if g.Technology != "" {
+			// A product's name comes from the scanned system: as plain
+			// text, a mention in it is made quiet.
+			add("issue.check.product", mdEscape(strings.TrimSpace(g.Technology+" "+g.Version)))
+		}
+		if addr != "" {
+			check = "hejnal live -item " + g.ID() + " " + addr
+		}
+	}
+	if check != "" {
+		lines = append(lines, fmt.Sprintf("- **%s:** %s", tr("issue.check.check"), mdCommand(check)))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	out := "**" + tr("issue.check.title") + "**\n\n" + strings.Join(lines, "\n")
+	switch {
+	case strings.HasPrefix(check, "hejnal code"):
+		out += "\n\n" + tr("issue.check.code")
+	case check != "":
+		out += "\n\n" + tr("issue.check.live")
+	}
+	return out
+}
+
+// codeCheckCommand returns the command that says whether a code scan still
+// finds an item, or "" when the project's name cannot go in a command.
+func codeCheckCommand(g match.Group) string {
+	if !safeArg.MatchString(g.Host) || strings.HasPrefix(g.Host, "-") {
+		return ""
+	}
+	return "hejnal code scan -project " + g.Host + " -item " + g.ID()
+}
+
+// liveAddress returns the address `hejnal live` takes for the system an
+// item is on: the scheme, host and port of where it was seen. It returns
+// "" when the item names no address that is safe to put in a command.
+func liveAddress(g match.Group) string {
+	raw := g.URL
+	if raw == "" {
+		for _, f := range g.Findings {
+			if f.URL != "" {
+				raw = f.URL
+				break
+			}
+		}
+	}
+	page, ok := safeURL(raw)
+	if !ok {
+		return ""
+	}
+	u, err := url.Parse(page)
+	if err != nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 // IssueItem returns the ID of the item an issue's body was written for, or

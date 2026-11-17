@@ -40,6 +40,17 @@ func (s Store) LeakKey() ([]byte, error) {
 	return key, nil
 }
 
+// SavedLeakKey returns the key LeakKey made earlier, or nil when there is
+// none yet. It creates nothing, so a check that saves nothing can still
+// give secrets the fingerprints the saved results show.
+func (s Store) SavedLeakKey() ([]byte, error) {
+	key, err := os.ReadFile(filepath.Join(s.Dir, LeakKeyFile))
+	if errors.Is(err, os.ErrNotExist) || (err == nil && len(key) != 32) {
+		return nil, nil
+	}
+	return key, err
+}
+
 // LeakScan is a saved scan of source code for secrets. Secrets are kept only
 // partly hidden, as the leaks package reports them.
 type LeakScan struct {
