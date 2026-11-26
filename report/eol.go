@@ -39,17 +39,19 @@ func eolText(tr translator, f match.Finding, where string, md bool) (title, why,
 // comingUpWindow is how far ahead the fix list looks for known dates.
 const comingUpWindow = 90 * 24 * time.Hour
 
-// writeComingUp lists what falls due on a known day within the window:
+// dueEvent is something that falls due on a known day.
+type dueEvent struct{ date, text, id string }
+
+// comingUp returns what falls due on a known day within the window:
 // releases whose support ends, certificates that expire and acceptances
-// that end, soonest first, so the work can be planned before the day.
-func writeComingUp(b *strings.Builder, tr translator, open, accepted []match.Group, now time.Time) {
-	type event struct{ date, text, id string }
-	var events []event
+// that end, soonest first.
+func comingUp(tr translator, open, accepted []match.Group, now time.Time, window time.Duration) []dueEvent {
+	var events []dueEvent
 	today := now.UTC().Format(time.DateOnly)
-	until := now.Add(comingUpWindow).UTC().Format(time.DateOnly)
+	until := now.Add(window).UTC().Format(time.DateOnly)
 	add := func(date, text, id string) {
 		if date >= today && date <= until {
-			events = append(events, event{date, text, id})
+			events = append(events, dueEvent{date, text, id})
 		}
 	}
 	for _, g := range open {
@@ -70,10 +72,17 @@ func writeComingUp(b *strings.Builder, tr translator, open, accepted []match.Gro
 			add(a.Until, tr("soon.acc", groupTitle(tr, g)), g.ID())
 		}
 	}
+	slices.SortStableFunc(events, func(x, y dueEvent) int { return strings.Compare(x.date, y.date) })
+	return events
+}
+
+// writeComingUp lists what falls due on a known day within the next 90
+// days, so the work can be planned before the day.
+func writeComingUp(b *strings.Builder, tr translator, open, accepted []match.Group, now time.Time) {
+	events := comingUp(tr, open, accepted, now, comingUpWindow)
 	if len(events) == 0 {
 		return
 	}
-	slices.SortStableFunc(events, func(x, y event) int { return strings.Compare(x.date, y.date) })
 	fmt.Fprintf(b, "## %s\n\n%s\n\n", tr("soon.title"), tr("soon.intro"))
 	for _, e := range events {
 		fmt.Fprintf(b, "- **%s** · %s · %s\n", e.date, mdEscape(e.text), mdCode(e.id))

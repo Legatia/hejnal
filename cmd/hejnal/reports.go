@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Legatia/hejnal/engine"
 	"github.com/Legatia/hejnal/fingerprint"
+	"github.com/Legatia/hejnal/kev"
 	"github.com/Legatia/hejnal/report"
 	"github.com/Legatia/hejnal/state"
 )
@@ -23,9 +25,10 @@ func (a *app) cmdReport(args []string) error {
 		kind, args = args[0], args[1:]
 	}
 	o := &options{}
-	fs := a.flags("report", "fixlist|overview|evidence|nis2|monthly [flags]",
-		"Print a report from the saved runs:\n  fixlist   what to fix, most urgent first\n  overview  one page for decision-makers, as HTML to view, print or save as PDF\n  evidence  proof of monitoring and time to fix, for insurers, auditors and\n            customers' security questionnaires (HTML)\n  nis2      a draft NIS2 early warning, for use if a system was compromised\n  monthly   exposure, new and fixed items and time to fix for one month")
+	fs := a.flags("report", "fixlist|overview|evidence|nis2|monthly|weekly [flags]",
+		"Print a report from the saved runs:\n  fixlist   what to fix, most urgent first\n  overview  one page for decision-makers, as HTML to view, print or save as PDF\n  evidence  proof of monitoring and time to fix, for insurers, auditors and\n            customers' security questionnaires (HTML)\n  nis2      a draft NIS2 early warning, for use if a system was compromised\n  monthly   exposure, new and fixed items and time to fix for one month\n  weekly    the last 7 days: checks, newly exploited flaws, fixed, open, coming up")
 	o.stateFlags(fs)
+	o.cacheFlag(fs)
 	o.langFlag(fs)
 	fs.StringVar(&o.out, "o", "", "write to this file instead of standard output")
 	month := fs.String("month", "", "month for the monthly report, as YYYY-MM (default: this month)")
@@ -53,12 +56,12 @@ func (a *app) cmdReport(args []string) error {
 		return err
 	}
 	switch kind {
-	case "fixlist", "overview", "evidence", "nis2", "monthly":
+	case "fixlist", "overview", "evidence", "nis2", "monthly", "weekly":
 	case "":
 		fs.Usage()
 		return errUsage
 	default:
-		return fmt.Errorf("unknown report %q: use fixlist, overview, evidence, nis2 or monthly", kind)
+		return fmt.Errorf("unknown report %q: use fixlist, overview, evidence, nis2, monthly or weekly", kind)
 	}
 	store := state.Store{Dir: o.stateDir}
 	snap, err := store.LoadFindings()
@@ -121,6 +124,25 @@ func (a *app) cmdReport(args []string) error {
 			return herr
 		}
 		err = report.Monthly(&buf, history, at, m)
+	case "weekly":
+		history, herr := store.History()
+		if herr != nil {
+			return herr
+		}
+		// Reports work offline: the dates flaws were listed come from the
+		// cached catalogs, if there are any.
+		o.offline = true
+		var cat *kev.Catalog
+		if e, eerr := a.engine(o); eerr == nil {
+			if cat, eerr = e.Catalog(context.Background()); eerr != nil {
+				cat = nil
+			}
+		}
+		inv, ierr := store.LoadInventory()
+		if ierr != nil && !errors.Is(ierr, state.ErrNoInventory) {
+			return ierr
+		}
+		buf.WriteString(report.Weekly(history, cat, inv, time.Time{}, a.now(), m))
 	}
 	if err != nil {
 		return err

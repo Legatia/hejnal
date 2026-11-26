@@ -298,7 +298,7 @@ func TestAcceptanceExpires(t *testing.T) {
 
 	// The day after the last day, both items are open again, and news.
 	later := time.Date(2026, 11, 11, 7, 0, 0, 0, time.UTC)
-	code, _, errOut := h.runAtTime(later, h.runArgs("-fail-on", "high")...)
+	code, _, errOut := h.runAtTime(later, h.runArgs("-fail-on", "high", "-weekly", "off")...)
 	msgs := h.sent()
 	if code != exitFindings || len(msgs) != 2 || strings.Count(msgs[1], "· acceptance expired") != 2 {
 		t.Fatalf("run after expiry: %d, messages %q\n%s", code, msgs, errOut)

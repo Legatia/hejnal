@@ -276,6 +276,7 @@ hejnal report fixlist -lang pl     # the fix list in Polish
 hejnal report overview -o overview.html   # one page for decision-makers
 hejnal report evidence -o evidence.html   # proof of monitoring, for insurers and auditors
 hejnal report monthly              # this month: exposure, found, fixed, time to fix
+hejnal report weekly               # the last 7 days: checks, newly exploited flaws, fixed, open
 hejnal report nis2                 # a NIS2 early-warning draft
 ```
 
@@ -327,9 +328,34 @@ ports to `ports`, for example `21`, `22`, `25`, `587`, `27017` and `61616`.
 
 ## Run it every day
 
-`hejnal run` is made for cron or a systemd timer. It notifies only on the
-first run and when something new appears. If a notification cannot be sent,
-the run exits with status 1 and the next run reports the same findings again.
+`hejnal run` is made for cron or a systemd timer. It sends a message on the
+first run, when something new appears and when an item is fixed. It calls an
+item fixed only when the run sees what replaced it: the same product still
+answers without the flaw or with a supported release, the certificate was
+renewed, or the mail record was read and is now in order. A product that
+merely stops showing, behind a maintenance page, say, a version the server
+hides and a DNS lookup that times out are not reported as fixes. If a notification cannot be sent, the run
+exits with status 1 and the next run reports the same findings again.
+
+Once a week, on Monday by default, it also sends a short summary of the days
+since the last one, even when nothing is new. If no run happened on Monday,
+the next run sends it. If no check reached your systems all week, the
+summary says so and shows what the last check that did found, rather than
+reporting nothing open.
+
+```text
+Hejnal · Example Sp. z o.o. · week of 2026-11-16 to 2026-11-23
+Checked on 7 of the last 7 days · Hosts: 12 · Services: 18 · Products recognised: 21
+Flaws newly listed as exploited this week: 9. Hejnal checked each one against the software it found on your systems: none is affected.
+Fixed this week: 2 · New this week: 0
+Open: 3 (critical 0 · high 1 · medium 2 · low 0)
+Oldest open item: Jenkins admin interface reachable on ci.example.com:443, open since 2026-10-02 (days open: 52)
+Coming up: 2026-12-04 · TLS certificate expiring soon on mail.example.com:443
+Full list: hejnal report fixlist
+```
+
+Choose the day with `-weekly friday`, or turn it off with `-weekly off`.
+`hejnal report weekly` prints the same summary at any time.
 
 Each run also compares the services that answer with what answered before,
 and says what changed even when no finding is new:
@@ -557,7 +583,7 @@ To include leaked secrets and breached accounts, see
 | `hejnal live <url>` | Checks one system that is live, such as right after a deploy; saves nothing. |
 | `hejnal feeds` | Downloads CISA's KEV catalog and ENISA's list into the cache. |
 | `hejnal match` | Matches the saved inventory against the catalog. |
-| `hejnal report fixlist\|overview\|evidence\|nis2\|monthly` | Prints a report from the saved runs. |
+| `hejnal report fixlist\|overview\|evidence\|nis2\|monthly\|weekly` | Prints a report from the saved runs. |
 | `hejnal systems [host]` | Lists the systems seen, or prints the history of one: versions, items found and fixed, and when it went away. |
 | `hejnal accept` | Accepts an item you checked, lists what is accepted or removes an acceptance. |
 | `hejnal issues` | Keeps a GitHub issue for every item to fix: opens, closes and reopens issues as the runs find and stop finding items. |
@@ -581,6 +607,7 @@ change it):
 | `inventory.json` | Hosts, open services, certificates and recognised products. |
 | `findings.json` | Findings from the last run. |
 | `reported.json` | The findings people were last told about, used to tell what is new. |
+| `weekly.json` | When the last weekly summary was sent, and the numbers of each summary (up to 104 weeks), to compare weeks. |
 | `accepted.json` | Items accepted with `hejnal accept`: which findings, why, by whom and until when. |
 | `systems.json` | Every service that answered: how its host was found, what runs there, when it was first and last seen, the versions it showed, and when it went away and came back. Gone ones are kept for 400 days. |
 | `system-changes.json` | New, gone and updated services people have not been told about yet. |

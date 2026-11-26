@@ -55,7 +55,7 @@ Usage:
   hejnal feeds     [flags]                      download the lists of exploited flaws and end-of-support dates
   hejnal match     [flags]                      match the last inventory against the catalog
   hejnal report    <report> [flags]             print a report from the saved runs: fixlist,
-                                                overview, evidence, nis2 or monthly
+                                                overview, evidence, nis2, monthly or weekly
   hejnal systems   [host] [flags]               list the systems seen, or the history of one: versions,
                                                 items found and fixed, and when it went away
   hejnal issues    [-repo owner/name] [flags]   keep a GitHub issue for every item to fix: open, close
@@ -209,6 +209,7 @@ type options struct {
 	teams       string
 	emailTo     string
 	failOn      string
+	weekly      string
 	concurrency int
 	timeout     time.Duration
 	out         string
