@@ -142,7 +142,7 @@ func (a *app) cmdReport(args []string) error {
 		if ierr != nil && !errors.Is(ierr, state.ErrNoInventory) {
 			return ierr
 		}
-		buf.WriteString(report.Weekly(history, cat, inv, a.now(), m))
+		buf.WriteString(report.Weekly(history, cat, inv, time.Time{}, a.now(), m))
 	}
 	if err != nil {
 		return err

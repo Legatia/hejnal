@@ -483,9 +483,13 @@ var messages = map[string]map[string]string{
 
 		// The weekly summary.
 		"wk.title":           "Hejnal · %s · week of %s to %s",
-		"wk.runs":            "Checked on %d of the last 7 days · Hosts: %d · Services: %d · Products recognised: %d",
+		"wk.runs":            "Checked on %d of the last %d days",
+		"wk.size":            " · Hosts: %d · Services: %d · Products recognised: %d",
+		"wk.noreach":         "No check has reached any of your systems yet. Check that the scope names systems that answer from here.",
+		"wk.stale":           "No check in this period reached your systems. What follows is from the last check that did, on %s.",
+		"wk.kev.unchecked":   "Flaws newly listed as exploited in this period: %d. No check reached your systems since, so Hejnal could not check them yet.",
 		"wk.unreached":       " · Checks that reached no services: %d",
-		"wk.noruns":          "No check ran in the last 7 days.",
+		"wk.noruns":          "No check ran in the last %d days.",
 		"wk.kev.none":        "No flaw was newly listed as exploited this week.",
 		"wk.kev.clear":       "Flaws newly listed as exploited this week: %d. Hejnal checked each one against the software it found on your systems: none is affected.",
 		"wk.kev.ruled":       "Flaws newly listed as exploited this week: %d. Software you run has %d of them, but the versions it shows are not affected. The rest are not in your software.",
@@ -1003,9 +1007,13 @@ var messages = map[string]map[string]string{
 
 		// Podsumowanie tygodnia.
 		"wk.title":           "Hejnal · %s · tydzień od %s do %s",
-		"wk.runs":            "Sprawdzenia w %d z ostatnich 7 dni · Hosty: %d · Usługi: %d · Rozpoznane produkty: %d",
+		"wk.runs":            "Sprawdzenia w %d z ostatnich %d dni",
+		"wk.size":            " · Hosty: %d · Usługi: %d · Rozpoznane produkty: %d",
+		"wk.noreach":         "Żadne sprawdzenie nie dotarło jeszcze do Twoich systemów. Sprawdź, czy zakres wymienia systemy, które odpowiadają z tego miejsca.",
+		"wk.stale":           "Żadne sprawdzenie w tym okresie nie dotarło do Twoich systemów. Poniżej wyniki ostatniego, które dotarło, z %s.",
+		"wk.kev.unchecked":   "Podatności nowo oznaczone w tym okresie jako wykorzystywane: %d. Od tamtej pory żadne sprawdzenie nie dotarło do Twoich systemów, więc Hejnal nie mógł ich jeszcze sprawdzić.",
 		"wk.unreached":       " · sprawdzenia, które nie dotarły do żadnej usługi: %d",
-		"wk.noruns":          "W ostatnich 7 dniach nie było żadnego sprawdzenia.",
+		"wk.noruns":          "W ostatnich %d dniach nie było żadnego sprawdzenia.",
 		"wk.kev.none":        "W tym tygodniu żadna podatność nie została nowo oznaczona jako wykorzystywana.",
 		"wk.kev.clear":       "Podatności nowo oznaczone w tym tygodniu jako wykorzystywane: %d. Hejnal sprawdził każdą z nich w oprogramowaniu znalezionym w Twoich systemach: żadna go nie dotyczy.",
 		"wk.kev.ruled":       "Podatności nowo oznaczone w tym tygodniu jako wykorzystywane: %d. W oprogramowaniu, którego używasz: %d, ale widoczne wersje nie są podatne. Pozostałe nie dotyczą Twojego oprogramowania.",

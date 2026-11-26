@@ -327,7 +327,7 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 		fmt.Fprint(a.stdout, checksTip(snap.Findings))
 	}
 
-	fixed := report.FixedItems(snap.Findings, ch.Resolved, res.Inventory)
+	fixed := report.FixedItems(snap, ch.Resolved, res.Inventory)
 	if len(notifiers) > 0 && (ch.First || len(ch.Added) > 0 || len(systems) > 0 || len(fixed) > 0) {
 		title, lines := report.SummaryLines(snap.Findings, ch.Added, ch.Resolved, ch.First, m)
 		lines = append(lines, report.FixedLines(fixed, o.lang)...)
@@ -348,13 +348,20 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	if err := e.MarkReported(snap); err != nil {
 		return exitError, err
 	}
+	var weeklyErr error
 	if len(notifiers) > 0 && weeklyOn {
-		if err := a.sendWeekly(ctx, e, notifiers, weekday, res.Inventory, m); err != nil {
-			return exitError, err
-		}
+		weeklyErr = a.sendWeekly(ctx, e, notifiers, weekday, res.Inventory, m)
 	}
 	if match.AtLeast(ch.Added, failOn) {
+		// New findings decide the exit status; the summary is tried again
+		// next time.
+		if weeklyErr != nil {
+			a.logf("%v", weeklyErr)
+		}
 		return exitFindings, nil
+	}
+	if weeklyErr != nil {
+		return exitError, weeklyErr
 	}
 	return exitOK, nil
 }
@@ -373,15 +380,18 @@ func parseWeekday(s string) (time.Weekday, bool, error) {
 	return 0, false, fmt.Errorf("-weekly must be a day of the week, such as monday, or off")
 }
 
-// weeklyDue reports whether the weekly summary is due: on the chosen day
-// once at least six days passed since the last one, or on any day once
-// more than a week passed, when no run happened on the chosen day.
+// weeklyDue reports whether the weekly summary is due: when none was sent
+// since the start of the last chosen day, in the local time zone. A run on
+// that day sends it; if no run happened that day, the next run does, and
+// the one after that waits for the chosen day again.
 func weeklyDue(last, now time.Time, day time.Weekday) bool {
 	if last.IsZero() {
 		return false
 	}
-	age := now.Sub(last)
-	return (now.Weekday() == day && age >= 6*24*time.Hour) || age >= 8*24*time.Hour
+	y, mo, d := now.Date()
+	back := (int(now.Weekday()) - int(day) + 7) % 7
+	anchor := time.Date(y, mo, d-back, 0, 0, 0, 0, now.Location())
+	return last.Before(anchor)
 }
 
 // sendWeekly sends the summary of the last 7 days when it is due. The first
@@ -410,7 +420,9 @@ func (a *app) sendWeekly(ctx context.Context, e *engine.Engine, notifiers []noti
 		a.logf("weekly summary without newly listed flaws: %v", err)
 		cat = nil
 	}
-	title, lines := report.WeeklyLines(history, cat, inv, now, m)
+	// The summary covers the time since the last one, so no day is left out
+	// or told twice.
+	title, lines := report.WeeklyLines(history, cat, inv, last, now, m)
 	var errs []error
 	for _, n := range notifiers {
 		if err := n.Notify(ctx, notify.Message{Title: title, Lines: lines}); err != nil {

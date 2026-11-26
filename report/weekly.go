@@ -1,6 +1,7 @@
 package report
 
 import (
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -12,7 +13,8 @@ import (
 	"github.com/Legatia/hejnal/state"
 )
 
-// weekWindow is the span a weekly summary covers.
+// weekWindow is the span a weekly summary covers when it has no earlier
+// summary to follow on from.
 const weekWindow = 7 * 24 * time.Hour
 
 // weekSoonWindow is how far ahead a weekly summary looks for dates that
@@ -20,8 +22,8 @@ const weekWindow = 7 * 24 * time.Hour
 const weekSoonWindow = 30 * 24 * time.Hour
 
 // Weekly is the weekly summary as plain text for a terminal.
-func Weekly(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventory, now time.Time, m Meta) string {
-	title, lines := WeeklyLines(history, cat, inv, now, m)
+func Weekly(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventory, from, now time.Time, m Meta) string {
+	title, lines := WeeklyLines(history, cat, inv, from, now, m)
 	var b strings.Builder
 	b.WriteString(match.CleanNote(title) + "\n")
 	for _, l := range lines {
@@ -30,80 +32,101 @@ func Weekly(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventor
 	return b.String()
 }
 
-// WeeklyLines is the summary of the last 7 days as a plain title and lines,
-// for any channel. It is sent when nothing is new too, so people see that
-// Hejnal is checking: how often it ran, which newly exploited flaws it
+// WeeklyLines is the summary of the time since from as a plain title and
+// lines, for any channel. It is sent when nothing is new too, so people see
+// that Hejnal is checking: how often it ran, which newly exploited flaws it
 // checked and whether they touch the organisation, what was fixed and found,
-// what is still open and what falls due soon. history are the saved runs, in
-// any order; cat, which may be nil, gives the dates flaws were listed; inv
-// is the inventory of the last run, which tells what is fixed (see
-// FixedItems).
-func WeeklyLines(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventory, now time.Time, m Meta) (string, []string) {
+// what is still open and what falls due soon.
+//
+// from is when the last summary was sent, so summaries neither skip nor
+// repeat a day; the zero time, or one more than two weeks back, means the
+// last 7 days. history are the saved runs, in any order; cat, which may be
+// nil, gives the dates flaws were listed; inv is the inventory of the last
+// run, which tells what is fixed (see FixedItems).
+func WeeklyLines(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventory, from, now time.Time, m Meta) (string, []string) {
 	tr := newTranslator(m.Lang)
-	start := now.Add(-weekWindow)
+	start := from
+	if start.IsZero() || !start.Before(now) || now.Sub(start) > 2*weekWindow {
+		start = now.Add(-weekWindow)
+	}
+	span := int(math.Ceil(now.Sub(start).Hours() / 24))
 	title := tr("wk.title", m.Organization, start.UTC().Format(time.DateOnly), now.UTC().Format(time.DateOnly))
 
 	snaps := slices.Clone(history)
 	sort.SliceStable(snaps, func(i, j int) bool { return snaps[i].GeneratedAt.Before(snaps[j].GeneratedAt) })
 	var in []*state.Snapshot
-	var before *state.Snapshot
+	// latest is the last run that reached something, at any time: a run that
+	// reached nothing, during an outage, would make everything look fixed.
+	// before is the last such run before the period.
+	var latest, before *state.Snapshot
 	days := map[string]bool{}
 	unreached := 0
 	for _, s := range snaps {
-		switch {
-		case s.GeneratedAt.After(now):
-		case s.GeneratedAt.After(start):
-			in = append(in, s)
-			days[s.GeneratedAt.UTC().Format(time.DateOnly)] = true
-			if s.Services == 0 {
-				unreached++
+		if s.GeneratedAt.After(now) {
+			break
+		}
+		if s.Services > 0 {
+			latest = s
+		}
+		if !s.GeneratedAt.After(start) {
+			if s.Services > 0 {
+				before = s
 			}
-		case s.Services > 0:
-			before = s
+			continue
+		}
+		in = append(in, s)
+		days[s.GeneratedAt.UTC().Format(time.DateOnly)] = true
+		if s.Services == 0 {
+			unreached++
 		}
 	}
 	if len(in) == 0 {
-		return title, []string{tr("wk.noruns")}
+		return title, []string{tr("wk.noruns", span)}
 	}
-	// The latest run that reached something describes the organisation now;
-	// one that reached nothing, during an outage, would make all look fixed.
-	latest := in[len(in)-1]
-	for i := len(in) - 1; i >= 0; i-- {
-		if in[i].Services > 0 {
-			latest = in[i]
-			break
-		}
+	runs := tr("wk.runs", min(len(days), span), span)
+	if latest != nil {
+		runs += tr("wk.size", latest.Assets, latest.Services, latest.Technologies)
 	}
-
-	runs := tr("wk.runs", min(len(days), 7), latest.Assets, latest.Services, latest.Technologies)
 	if unreached > 0 {
 		runs += tr("wk.unreached", unreached)
 	}
 	lines := []string{runs}
-	lines = append(lines, newlyExploited(tr, cat, latest, start, now))
+	if latest == nil {
+		return title, append(lines, tr("wk.noreach"))
+	}
+	stale := !latest.GeneratedAt.After(start)
+	if stale {
+		// No run of the period reached anything: say what the last one that
+		// did found, and that it is older.
+		lines = append(lines, tr("wk.stale", latest.GeneratedAt.UTC().Format(time.DateOnly)))
+	}
+	if line := newlyExploited(tr, cat, latest, start, now, stale); line != "" {
+		lines = append(lines, line)
+	}
 
-	// Items found and fixed during the week, by comparing the items open at
-	// the start of the week (or found during it) with those open now.
-	if before == nil {
+	// Items found and fixed during the period, by comparing the items open
+	// at its start, or found during it, with those open now.
+	switch {
+	case stale:
+	case before == nil:
 		lines = append(lines, tr("wk.first"))
-	} else {
+	default:
 		known := map[string]bool{}
 		for _, f := range match.Active(before.Findings) {
 			known[match.GroupKey(f)] = true
 		}
-		var seenDuring []match.Finding
-		seenDuring = append(seenDuring, match.Active(before.Findings)...)
+		seenDuring := match.Active(before.Findings)
 		for _, s := range in {
 			if s.Services > 0 {
 				seenDuring = append(seenDuring, match.Active(s.Findings)...)
 			}
 		}
 		// The inventory describes the last run, so it can tell what is fixed
-		// only if that run reached something.
+		// only if that run is the one that reached something.
 		if in[len(in)-1] != latest {
 			inv = nil
 		}
-		fixed := len(FixedItems(latest.Findings, seenDuring, inv))
+		fixed := len(FixedItems(latest, seenDuring, inv))
 		added := 0
 		for _, g := range match.Groups(match.Open(latest.Findings)) {
 			if !known[g.Key] {
@@ -140,13 +163,19 @@ func WeeklyLines(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inv
 }
 
 // newlyExploited says how many flaws CISA and ENISA listed as exploited
-// during the week and whether any of them is in the organisation's
-// software: affected, or ruled out by the version it shows.
-func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, start, now time.Time) string {
+// during the period and whether any of them is in the organisation's
+// software: affected, or ruled out by the version it shows. Only flaws
+// listed by the day of the last run that reached something were checked.
+// Without the catalog it says nothing, since it cannot tell.
+func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, start, now time.Time, stale bool) string {
 	if cat == nil {
-		return tr("wk.kev.none")
+		return ""
 	}
-	from, to := start.UTC().Format(time.DateOnly), now.UTC().Format(time.DateOnly)
+	from := start.UTC().Format(time.DateOnly)
+	to := now.UTC().Format(time.DateOnly)
+	if checked := latest.GeneratedAt.UTC().Format(time.DateOnly); !stale && checked < to {
+		to = checked
+	}
 	listed := map[string]bool{}
 	for _, v := range cat.Vulnerabilities {
 		d := v.DateAdded
@@ -157,8 +186,11 @@ func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, sta
 			listed[v.CVEID] = true
 		}
 	}
-	if len(listed) == 0 {
+	switch {
+	case len(listed) == 0:
 		return tr("wk.kev.none")
+	case stale:
+		return tr("wk.kev.unchecked", len(listed))
 	}
 	hit, ruled := map[string]bool{}, map[string]bool{}
 	for _, f := range latest.Findings {

@@ -331,13 +331,17 @@ ports to `ports`, for example `21`, `22`, `25`, `587`, `27017` and `61616`.
 `hejnal run` is made for cron or a systemd timer. It sends a message on the
 first run, when something new appears and when an item is fixed. It calls an
 item fixed only when the run sees what replaced it: the same product still
-answers without the flaw, the certificate was renewed or the mail record was
-published. A product that merely stops showing, behind a maintenance page,
-say, is not reported as fixed. If a notification cannot be sent, the run
+answers without the flaw or with a supported release, the certificate was
+renewed, or the mail record was read and is now in order. A product that
+merely stops showing, behind a maintenance page, say, a version the server
+hides and a DNS lookup that times out are not reported as fixes. If a notification cannot be sent, the run
 exits with status 1 and the next run reports the same findings again.
 
-Once a week, on Monday by default, it also sends a short summary, even when
-nothing is new:
+Once a week, on Monday by default, it also sends a short summary of the days
+since the last one, even when nothing is new. If no run happened on Monday,
+the next run sends it. If no check reached your systems all week, the
+summary says so and shows what the last check that did found, rather than
+reporting nothing open.
 
 ```text
 Hejnal · Example Sp. z o.o. · week of 2026-11-16 to 2026-11-23

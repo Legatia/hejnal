@@ -16,6 +16,7 @@ import (
 
 	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
+	"github.com/Legatia/hejnal/state"
 )
 
 // Meta describes the run a report is about.
@@ -500,25 +501,29 @@ func SummaryLines(open, added, resolved []match.Finding, first bool, m Meta) (st
 }
 
 // FixedItems returns the items a run sees are fixed. A finding that is
-// merely gone proves little: a maintenance page hides the product, and a
-// host that stops answering hides everything. So an item counts as fixed
-// only when the run saw what replaced it:
+// merely gone proves little: a maintenance page hides the product, a server
+// stops showing its version, a DNS lookup times out, a certificate that was
+// expiring has now expired. So an item counts as fixed only when the run saw
+// what replaced it:
 //
 //   - the version check now rules out all its flaws, after a run saw the
 //     item with more than a product name (an affected version, or the
 //     problem itself);
 //   - its product still answers on the same host and port, without the
-//     flaw, the old release or the open admin interface;
-//   - its host and port still present a certificate, for certificate items;
-//   - its domain's mail records were read, for mail items.
+//     flaw or the open admin interface; for a release past its end of
+//     support, with a version shown and the support dates at hand;
+//   - its host and port still present a certificate with no problem;
+//   - its domain's SPF or DMARC record, whichever the item was about, was
+//     read and has no problem.
 //
-// all are the run's findings, resolved those gone since the last report and
-// inv the run's inventory.
-func FixedItems(all, resolved []match.Finding, inv *inventory.Inventory) []match.Group {
-	if inv == nil || len(resolved) == 0 {
+// snap is the run, resolved the findings gone since the last report and inv
+// the run's inventory.
+func FixedItems(snap *state.Snapshot, resolved []match.Finding, inv *inventory.Inventory) []match.Group {
+	if snap == nil || inv == nil || len(resolved) == 0 {
 		return nil
 	}
-	tech, cert, mail := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	tech := map[string]inventory.Technology{}
+	cert := map[string]bool{}
 	services := 0
 	for _, a := range inv.Assets {
 		host := strings.ToLower(a.Host)
@@ -529,23 +534,44 @@ func FixedItems(all, resolved []match.Finding, inv *inventory.Inventory) []match
 				cert[at] = true
 			}
 			for _, t := range s.Technologies {
-				tech[at+"|"+t.ID] = true
+				tech[at+"|"+t.ID] = t
 			}
 		}
-	}
-	for _, m := range inv.Mail {
-		mail[strings.ToLower(m.Domain)] = true
 	}
 	if services == 0 {
 		// A run that reached nothing cannot tell what is fixed.
 		return nil
 	}
+	// Mail records read, by domain and record (spf or dmarc).
+	mailRead := map[string]bool{}
+	for _, m := range inv.Mail {
+		d := strings.ToLower(m.Domain)
+		mailRead[d+"|spf"] = m.SPFKnown
+		mailRead[d+"|dmarc"] = m.DMARCKnown
+	}
+	mailRecord := func(f match.Finding) string {
+		rec, _, _ := strings.Cut(f.TechID, "-")
+		return strings.ToLower(f.Host) + "|" + rec
+	}
+	where := func(f match.Finding) string { return strings.ToLower(f.Host) + "|" + strconv.Itoa(f.Port) }
+
 	active, present, confirmed := map[string]bool{}, map[string]bool{}, map[string]bool{}
-	for _, f := range all {
+	// Problems the run still sees in the same place, in another form: an
+	// expired certificate where one was expiring, a missing SPF record
+	// where one was weak.
+	certProblem, mailProblem := map[string]bool{}, map[string]bool{}
+	for _, f := range snap.Findings {
 		k := match.GroupKey(f)
 		present[k] = true
-		if !f.RuledOut() {
-			active[k] = true
+		if f.RuledOut() {
+			continue
+		}
+		active[k] = true
+		switch f.Kind {
+		case match.KindTLSExpired, match.KindTLSExpiring:
+			certProblem[where(f)] = true
+		case match.KindEmail:
+			mailProblem[mailRecord(f)] = true
 		}
 	}
 	for _, f := range resolved {
@@ -554,14 +580,21 @@ func FixedItems(all, resolved []match.Finding, inv *inventory.Inventory) []match
 		}
 	}
 	seen := func(f match.Finding) bool {
-		at := strings.ToLower(f.Host) + "|" + strconv.Itoa(f.Port)
+		at := where(f)
 		switch f.Kind {
-		case match.KindKEV, match.KindEOL, match.KindAdminExposed:
-			return tech[at+"|"+f.TechID]
+		case match.KindKEV, match.KindAdminExposed:
+			_, ok := tech[at+"|"+f.TechID]
+			return ok
+		case match.KindEOL:
+			// Without a version, or without the dates, the run cannot tell
+			// the release, so the item would be gone either way.
+			t, ok := tech[at+"|"+f.TechID]
+			return ok && snap.EOLDate != "" && t.Version != "" && !t.Packaged && !t.Static
 		case match.KindTLSExpired, match.KindTLSExpiring:
-			return cert[at]
+			return cert[at] && !certProblem[at]
 		case match.KindEmail:
-			return mail[strings.ToLower(f.Host)]
+			r := mailRecord(f)
+			return mailRead[r] && !mailProblem[r]
 		}
 		return false
 	}
