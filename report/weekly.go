@@ -45,137 +45,202 @@ func Weekly(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventor
 // run, which tells what is fixed (see FixedItems).
 func WeeklyLines(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventory, from, now time.Time, m Meta) (string, []string) {
 	tr := newTranslator(m.Lang)
-	start := from
-	if start.IsZero() || !start.Before(now) || now.Sub(start) > 2*weekWindow {
-		start = now.Add(-weekWindow)
+	w := weekOf(history, cat, inv, from, now)
+	title := tr("wk.title", m.Organization, w.start.UTC().Format(time.DateOnly), now.UTC().Format(time.DateOnly))
+	if len(w.in) == 0 {
+		return title, []string{tr("wk.noruns", w.span)}
 	}
-	// Rounded, so a run a few seconds later than last week's does not add a
-	// day.
-	span := max(1, int(math.Round(now.Sub(start).Hours()/24)))
-	title := tr("wk.title", m.Organization, start.UTC().Format(time.DateOnly), now.UTC().Format(time.DateOnly))
-
-	snaps := slices.Clone(history)
-	sort.SliceStable(snaps, func(i, j int) bool { return snaps[i].GeneratedAt.Before(snaps[j].GeneratedAt) })
-	var in []*state.Snapshot
-	// latest is the last run that reached something, at any time: a run that
-	// reached nothing, during an outage, would make everything look fixed.
-	// before is the last such run before the period.
-	var latest, before *state.Snapshot
-	days := map[string]bool{}
-	unreached := 0
-	for _, s := range snaps {
-		if s.GeneratedAt.After(now) {
-			break
-		}
-		if s.Services > 0 {
-			latest = s
-		}
-		if !s.GeneratedAt.After(start) {
-			if s.Services > 0 {
-				before = s
-			}
-			continue
-		}
-		in = append(in, s)
-		days[s.GeneratedAt.UTC().Format(time.DateOnly)] = true
-		if s.Services == 0 {
-			unreached++
-		}
+	runs := tr("wk.runs", w.days, w.span)
+	if w.latest != nil {
+		runs += tr("wk.size", w.latest.Assets, w.latest.Services, w.latest.Technologies)
 	}
-	if len(in) == 0 {
-		return title, []string{tr("wk.noruns", span)}
-	}
-	runs := tr("wk.runs", min(len(days), span), span)
-	if latest != nil {
-		runs += tr("wk.size", latest.Assets, latest.Services, latest.Technologies)
-	}
-	if unreached > 0 {
-		runs += tr("wk.unreached", unreached)
+	if w.unreached > 0 {
+		runs += tr("wk.unreached", w.unreached)
 	}
 	lines := []string{runs}
-	if latest == nil {
+	if w.latest == nil {
 		return title, append(lines, tr("wk.noreach"))
 	}
-	stale := !latest.GeneratedAt.After(start)
-	if stale {
+	if w.stale {
 		// No run of the period reached anything: say what the last one that
 		// did found, and that it is older.
-		lines = append(lines, tr("wk.stale", latest.GeneratedAt.UTC().Format(time.DateOnly)))
+		lines = append(lines, tr("wk.stale", w.latest.GeneratedAt.UTC().Format(time.DateOnly)))
 	}
-	if line := newlyExploited(tr, cat, latest, start, now, stale); line != "" {
+	if line := w.kev.line(tr); line != "" {
 		lines = append(lines, line)
 	}
-
-	// Items found and fixed during the period, by comparing the items open
-	// at its start, or found during it, with those open now.
 	switch {
-	case stale:
-	case before == nil:
+	case w.stale:
+	case w.before == nil:
 		lines = append(lines, tr("wk.first"))
 	default:
-		known := map[string]bool{}
-		for _, f := range match.Active(before.Findings) {
-			known[match.GroupKey(f)] = true
-		}
-		seenDuring := match.Active(before.Findings)
-		for _, s := range in {
-			if s.Services > 0 {
-				seenDuring = append(seenDuring, match.Active(s.Findings)...)
-			}
-		}
-		// The inventory describes the last run, so it can tell what is fixed
-		// only if that run is the one that reached something.
-		if in[len(in)-1] != latest {
-			inv = nil
-		}
-		fixed := len(FixedItems(latest, seenDuring, inv))
-		added := 0
-		for _, g := range match.Groups(match.Open(latest.Findings)) {
-			if !known[g.Key] {
-				added++
-			}
-		}
-		lines = append(lines, tr("wk.fixed", fixed)+" · "+tr("wk.new", added))
+		lines = append(lines, tr("wk.fixed", len(w.fixed))+" · "+tr("wk.new", w.added))
 	}
 
-	og := match.Groups(match.Open(latest.Findings))
-	if len(og) == 0 {
+	if len(w.open) == 0 {
 		lines = append(lines, tr("wk.open.none"))
 	} else {
-		c := match.CountGroups(og)
-		lines = append(lines, tr("wk.open", len(og), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
-		if g, since, ok := oldestOpen(snaps, og, now); ok {
+		c := match.CountGroups(w.open)
+		lines = append(lines, tr("wk.open", len(w.open), c[match.Critical], c[match.High], c[match.Medium], c[match.Low]))
+		if g, since, ok := oldestOpen(w.snaps, w.open, now); ok {
 			days := int(now.Sub(since).Hours() / 24)
 			lines = append(lines, tr("wk.oldest", itemTitle(tr, g), since.UTC().Format(time.DateOnly), days))
 		}
 	}
 
-	_, acc := match.SplitAccepted(latest.Findings)
+	_, acc := match.SplitAccepted(w.latest.Findings)
 	const maxSoon = 3
-	for i, e := range comingUp(tr, og, match.Groups(acc), now, weekSoonWindow) {
+	for i, e := range comingUp(tr, w.open, match.Groups(acc), now, weekSoonWindow) {
 		if i == maxSoon {
 			break
 		}
 		lines = append(lines, tr("wk.soon", e.date, e.text))
 	}
-	if len(og) > 0 {
+	if len(w.open) > 0 {
 		lines = append(lines, tr("sum.report"))
 	}
 	return title, lines
 }
 
-// newlyExploited says how many flaws CISA and ENISA listed as exploited
-// during the period and whether any of them is in the organisation's
-// software: affected, or ruled out by the version it shows. A period counts
-// the flaws listed from the day it starts up to the day before it ends, so
-// each summary counts each flaw once, also one listed on the day of a
-// summary after it was sent. Flaws listed on or after the day of the last
-// run that reached something may not have been in the catalog it used, so
-// they are counted as not checked yet. Without the catalog it says nothing,
-// since it cannot tell.
-func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, start, now time.Time, stale bool) string {
+// WeeklyStats returns the numbers of the summary WeeklyLines writes for the
+// same arguments, to keep and compare weeks.
+func WeeklyStats(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventory, from, now time.Time) state.Week {
+	w := weekOf(history, cat, inv, from, now)
+	out := state.Week{
+		Start: w.start.UTC(), End: now.UTC(), Days: w.span, DaysChecked: w.days,
+		Reached: w.latest != nil && !w.stale, Compared: w.compared,
+		CatalogRead: w.kev.known, Listed: w.kev.checked, Affected: w.kev.hit, Unchecked: w.kev.unchecked,
+	}
+	if len(w.in) == 0 {
+		return out
+	}
+	if w.compared {
+		out.Fixed, out.New = len(w.fixed), w.added
+		first := firstSeen(w.snaps, w.fixed, now)
+		for _, g := range w.fixed {
+			if t, ok := first[g.Key]; ok {
+				out.FixDays = append(out.FixDays, max(0, int(w.latest.GeneratedAt.Sub(t).Hours()/24)))
+			}
+		}
+	}
+	if w.latest != nil {
+		c := match.CountGroups(w.open)
+		out.Open = len(w.open)
+		out.Critical, out.High, out.Medium, out.Low = c[match.Critical], c[match.High], c[match.Medium], c[match.Low]
+	}
+	return out
+}
+
+// week is what a weekly summary is made from.
+type week struct {
+	start time.Time
+	// span is the length of the period in days, days the days with a run.
+	span, days int
+	snaps      []*state.Snapshot // all runs up to now, oldest first
+	in         []*state.Snapshot // the runs of the period
+	// latest is the last run that reached something, at any time: a run
+	// that reached nothing, during an outage, would make everything look
+	// fixed. before is the last such run before the period.
+	latest, before *state.Snapshot
+	unreached      int
+	// stale is set when no run of the period reached anything.
+	stale bool
+	kev   kevCount
+	// compared is set when fixed and added were counted.
+	compared bool
+	fixed    []match.Group
+	added    int
+	open     []match.Group
+}
+
+func weekOf(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inventory, from, now time.Time) week {
+	w := week{start: from}
+	if w.start.IsZero() || !w.start.Before(now) || now.Sub(w.start) > 2*weekWindow {
+		w.start = now.Add(-weekWindow)
+	}
+	// Rounded, so a run a few seconds later than last week's does not add a
+	// day.
+	w.span = max(1, int(math.Round(now.Sub(w.start).Hours()/24)))
+
+	snaps := slices.Clone(history)
+	sort.SliceStable(snaps, func(i, j int) bool { return snaps[i].GeneratedAt.Before(snaps[j].GeneratedAt) })
+	days := map[string]bool{}
+	for _, s := range snaps {
+		if s.GeneratedAt.After(now) {
+			break
+		}
+		w.snaps = append(w.snaps, s)
+		if s.Services > 0 {
+			w.latest = s
+		}
+		if !s.GeneratedAt.After(w.start) {
+			if s.Services > 0 {
+				w.before = s
+			}
+			continue
+		}
+		w.in = append(w.in, s)
+		days[s.GeneratedAt.UTC().Format(time.DateOnly)] = true
+		if s.Services == 0 {
+			w.unreached++
+		}
+	}
+	w.days = min(len(days), w.span)
+	if len(w.in) == 0 || w.latest == nil {
+		return w
+	}
+	w.stale = !w.latest.GeneratedAt.After(w.start)
+	w.kev = countNewlyExploited(cat, w.latest, w.start, now, w.stale)
+	w.open = match.Groups(match.Open(w.latest.Findings))
+	if w.stale || w.before == nil {
+		return w
+	}
+
+	// Items found and fixed during the period, by comparing the items open
+	// at its start, or found during it, with those open now.
+	w.compared = true
+	known := map[string]bool{}
+	for _, f := range match.Active(w.before.Findings) {
+		known[match.GroupKey(f)] = true
+	}
+	seenDuring := match.Active(w.before.Findings)
+	for _, s := range w.in {
+		if s.Services > 0 {
+			seenDuring = append(seenDuring, match.Active(s.Findings)...)
+		}
+	}
+	// The inventory describes the last run, so it can tell what is fixed
+	// only if that run is the one that reached something.
+	if w.in[len(w.in)-1] != w.latest {
+		inv = nil
+	}
+	w.fixed = FixedItems(w.latest, seenDuring, inv)
+	for _, g := range w.open {
+		if !known[g.Key] {
+			w.added++
+		}
+	}
+	return w
+}
+
+// kevCount counts the flaws CISA and ENISA listed as exploited during a
+// period: checked against the last run that reached something, of them hit
+// (in the organisation's software) and ruled (in it, but not the affected
+// versions), and unchecked (listed after that run). known is false without
+// the catalog.
+type kevCount struct {
+	known                          bool
+	checked, hit, ruled, unchecked int
+}
+
+// countNewlyExploited counts the flaws listed from the day a period starts
+// up to the day before it ends, so each summary counts each flaw once, also
+// one listed on the day of a summary after it was sent. Flaws listed on or
+// after the day of the last run that reached something may not have been in
+// the catalog it used, so they are counted as not checked yet.
+func countNewlyExploited(cat *kev.Catalog, latest *state.Snapshot, start, now time.Time, stale bool) kevCount {
 	if cat == nil {
-		return ""
+		return kevCount{}
 	}
 	from := start.UTC().Format(time.DateOnly)
 	to := now.UTC().Format(time.DateOnly)
@@ -198,16 +263,6 @@ func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, sta
 			unchecked[v.CVEID] = true
 		}
 	}
-	later := ""
-	if len(unchecked) > 0 {
-		later = tr("wk.kev.unchecked", len(unchecked))
-	}
-	if len(checked) == 0 {
-		if later != "" {
-			return later
-		}
-		return tr("wk.kev.none")
-	}
 	hit, ruled := map[string]bool{}, map[string]bool{}
 	for _, f := range latest.Findings {
 		if f.Kind != match.KindKEV || !checked[f.CVE] {
@@ -222,14 +277,34 @@ func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, sta
 	for c := range hit {
 		delete(ruled, c)
 	}
+	return kevCount{known: true, checked: len(checked), hit: len(hit), ruled: len(ruled), unchecked: len(unchecked)}
+}
+
+// line says how many flaws were newly listed as exploited and whether any
+// of them is in the organisation's software. Without the catalog it says
+// nothing, since it cannot tell.
+func (k kevCount) line(tr translator) string {
+	if !k.known {
+		return ""
+	}
+	later := ""
+	if k.unchecked > 0 {
+		later = tr("wk.kev.unchecked", k.unchecked)
+	}
+	if k.checked == 0 {
+		if later != "" {
+			return later
+		}
+		return tr("wk.kev.none")
+	}
 	var line string
 	switch {
-	case len(hit) > 0:
-		line = tr("wk.kev.hit", len(checked), len(hit))
-	case len(ruled) > 0:
-		line = tr("wk.kev.ruled", len(checked), len(ruled))
+	case k.hit > 0:
+		line = tr("wk.kev.hit", k.checked, k.hit)
+	case k.ruled > 0:
+		line = tr("wk.kev.ruled", k.checked, k.ruled)
 	default:
-		line = tr("wk.kev.clear", len(checked))
+		line = tr("wk.kev.clear", k.checked)
 	}
 	if later != "" {
 		line += " " + later
@@ -239,8 +314,21 @@ func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, sta
 
 // oldestOpen returns the open item first seen longest ago, and when.
 func oldestOpen(snaps []*state.Snapshot, open []match.Group, now time.Time) (match.Group, time.Time, bool) {
-	want := map[string]bool{}
+	first := firstSeen(snaps, open, now)
+	var best match.Group
+	var at time.Time
 	for _, g := range open {
+		if t, ok := first[g.Key]; ok && (at.IsZero() || t.Before(at)) {
+			best, at = g, t
+		}
+	}
+	return best, at, !at.IsZero()
+}
+
+// firstSeen returns when each of the items was first found, up to now.
+func firstSeen(snaps []*state.Snapshot, items []match.Group, now time.Time) map[string]time.Time {
+	want := map[string]bool{}
+	for _, g := range items {
 		want[g.Key] = true
 	}
 	first := map[string]time.Time{}
@@ -255,12 +343,5 @@ func oldestOpen(snaps []*state.Snapshot, open []match.Group, now time.Time) (mat
 			}
 		}
 	}
-	var best match.Group
-	var at time.Time
-	for _, g := range open {
-		if t, ok := first[g.Key]; ok && (at.IsZero() || t.Before(at)) {
-			best, at = g, t
-		}
-	}
-	return best, at, !at.IsZero()
+	return first
 }

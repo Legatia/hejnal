@@ -607,7 +607,7 @@ change it):
 | `inventory.json` | Hosts, open services, certificates and recognised products. |
 | `findings.json` | Findings from the last run. |
 | `reported.json` | The findings people were last told about, used to tell what is new. |
-| `weekly.json` | When the last weekly summary was sent. |
+| `weekly.json` | When the last weekly summary was sent, and the numbers of each summary (up to 104 weeks), to compare weeks. |
 | `accepted.json` | Items accepted with `hejnal accept`: which findings, why, by whom and until when. |
 | `systems.json` | Every service that answered: how its host was found, what runs there, when it was first and last seen, the versions it showed, and when it went away and came back. Gone ones are kept for 400 days. |
 | `system-changes.json` | New, gone and updated services people have not been told about yet. |

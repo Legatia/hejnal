@@ -126,3 +126,34 @@ func TestWriteFileReplaces(t *testing.T) {
 		t.Errorf("temporary files left behind: %v", entries)
 	}
 }
+
+func TestWeeks(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if last, err := s.WeeklySent(); err != nil || !last.IsZero() {
+		t.Fatalf("WeeklySent on a new store = %v, %v", last, err)
+	}
+	start := time.Date(2026, 11, 2, 7, 0, 0, 0, time.UTC)
+	if err := s.SaveWeeklySent(start); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= MaxWeeks+2; i++ {
+		end := start.AddDate(0, 0, 7*i)
+		if err := s.SaveWeek(Week{Start: end.AddDate(0, 0, -7), End: end, Fixed: i}, end); err != nil {
+			t.Fatal(err)
+		}
+	}
+	weeks, err := s.Weeks()
+	if err != nil || len(weeks) != MaxWeeks || weeks[0].Fixed != 3 || weeks[MaxWeeks-1].Fixed != MaxWeeks+2 {
+		t.Fatalf("Weeks = %d weeks, first %+v, %v", len(weeks), weeks[0], err)
+	}
+	// Recording the day only keeps the weeks.
+	if err := s.SaveWeeklySent(start); err != nil {
+		t.Fatal(err)
+	}
+	if weeks, _ := s.Weeks(); len(weeks) != MaxWeeks {
+		t.Errorf("SaveWeeklySent dropped the weeks: %d left", len(weeks))
+	}
+	if last, _ := s.WeeklySent(); !last.Equal(start) {
+		t.Errorf("WeeklySent = %v, want %v", last, start)
+	}
+}

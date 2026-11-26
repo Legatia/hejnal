@@ -368,30 +368,11 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 
 // parseWeekday reads the -weekly flag: a day of the week, or off.
 func parseWeekday(s string) (time.Weekday, bool, error) {
-	s = strings.ToLower(strings.TrimSpace(s))
-	if s == "off" || s == "none" {
-		return 0, false, nil
+	d, on, err := report.ParseWeekday(s)
+	if err != nil {
+		return 0, false, fmt.Errorf("-weekly %v", err)
 	}
-	for d := time.Sunday; d <= time.Saturday; d++ {
-		if s == strings.ToLower(d.String()) {
-			return d, true, nil
-		}
-	}
-	return 0, false, fmt.Errorf("-weekly must be a day of the week, such as monday, or off")
-}
-
-// weeklyDue reports whether the weekly summary is due: when none was sent
-// since the start of the last chosen day, in the local time zone. A run on
-// that day sends it; if no run happened that day, the next run does, and
-// the one after that waits for the chosen day again.
-func weeklyDue(last, now time.Time, day time.Weekday) bool {
-	if last.IsZero() {
-		return false
-	}
-	y, mo, d := now.Date()
-	back := (int(now.Weekday()) - int(day) + 7) % 7
-	anchor := time.Date(y, mo, d-back, 0, 0, 0, 0, now.Location())
-	return last.Before(anchor)
+	return d, on, nil
 }
 
 // sendWeekly sends the summary of the last 7 days when it is due. The first
@@ -407,7 +388,7 @@ func (a *app) sendWeekly(ctx context.Context, e *engine.Engine, notifiers []noti
 	if last.IsZero() {
 		return store.SaveWeeklySent(now)
 	}
-	if !weeklyDue(last, now, day) {
+	if !report.WeeklyDue(last, now, day) {
 		return nil
 	}
 	history, err := store.History()
@@ -433,7 +414,7 @@ func (a *app) sendWeekly(ctx context.Context, e *engine.Engine, notifiers []noti
 		return fmt.Errorf("weekly summary: %w; the next run sends it again", err)
 	}
 	fmt.Fprintln(a.stdout, "Weekly summary sent.")
-	return store.SaveWeeklySent(now)
+	return store.SaveWeek(report.WeeklyStats(history, cat, inv, last, now), now)
 }
 
 // notifiers builds the configured notification channels. Secrets come from

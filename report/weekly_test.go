@@ -1,6 +1,7 @@
 package report
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -181,6 +182,18 @@ func TestWeeklyLines(t *testing.T) {
 		}
 	}
 
+	// The same summary as numbers, to keep: PHP on a was fixed a week after
+	// it was first found.
+	got := WeeklyStats(history, cat, phpInv, time.Time{}, now)
+	want := state.Week{Start: now.Add(-weekWindow), End: now, Days: 7, DaysChecked: 3, Reached: true, Compared: true,
+		Fixed: 1, New: 1, FixDays: []int{7}, Open: 2, Medium: 2, CatalogRead: true, Listed: 2}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("WeeklyStats = %+v\nwant %+v", got, want)
+	}
+	if got := WeeklyStats(history, nil, phpInv, time.Time{}, now); got.CatalogRead || got.Listed != 0 || got.Fixed != 1 {
+		t.Errorf("WeeklyStats without a catalog = %+v", got)
+	}
+
 	// From the last summary on: since Thursday the 19th.
 	title, lines = WeeklyLines(history, cat, phpInv, time.Date(2026, 11, 19, 8, 0, 0, 0, time.UTC), now, m)
 	out = title + "\n" + strings.Join(lines, "\n")
@@ -276,6 +289,10 @@ func TestWeeklyLinesOutageWeek(t *testing.T) {
 		if strings.Contains(out, wrong) {
 			t.Errorf("outage-week summary claims %q\n%s", wrong, out)
 		}
+	}
+	// As numbers: nothing reached, nothing compared, the flaw not checked.
+	if got := WeeklyStats(history, cat, &inventory.Inventory{}, time.Time{}, now); got.Reached || got.Compared || got.Fixed != 0 || got.Unchecked != 1 || got.Listed != 0 || got.Open != 1 {
+		t.Errorf("outage-week WeeklyStats = %+v", got)
 	}
 	// Runs that never reached anything.
 	_, lines = WeeklyLines(history[1:], cat, nil, time.Time{}, now, m)
