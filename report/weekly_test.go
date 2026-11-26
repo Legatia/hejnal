@@ -184,7 +184,7 @@ func TestWeeklyLines(t *testing.T) {
 	// From the last summary on: since Thursday the 19th.
 	title, lines = WeeklyLines(history, cat, phpInv, time.Date(2026, 11, 19, 8, 0, 0, 0, time.UTC), now, m)
 	out = title + "\n" + strings.Join(lines, "\n")
-	for _, want := range []string{"week of 2026-11-19 to 2026-11-23", "Checked on 2 of the last 4 days", "listed as exploited this week: 1."} {
+	for _, want := range []string{"week of 2026-11-19 to 2026-11-23", "Checked on 2 of the last 4 days", "listed as exploited this week: 2."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("summary since the last one is missing %q\n%s", want, out)
 		}
@@ -281,5 +281,64 @@ func TestWeeklyLinesOutageWeek(t *testing.T) {
 	_, lines = WeeklyLines(history[1:], cat, nil, time.Time{}, now, m)
 	if out := strings.Join(lines, "\n"); !strings.Contains(out, "No check has reached any of your systems yet.") || strings.Contains(out, "Nothing is open") {
 		t.Errorf("summary without any reached run:\n%s", out)
+	}
+}
+
+func TestWeeklyLinesCountsEachFlawOnce(t *testing.T) {
+	m := Meta{Organization: "Example", Lang: "en"}
+	stays := kevFinding("b.example.com", "CVE-2019-11043", match.Medium)
+	inv := invWith(inventory.Service{Port: 443, Technologies: []inventory.Technology{{ID: "php"}}})
+	var history []*state.Snapshot
+	for d := 9; d <= 23; d++ {
+		history = append(history, snap(time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC).Format(time.DateOnly), 1, stays))
+	}
+	// Listed on Monday the 16th, after that morning's summary.
+	cat := weekCatalog(kev.Vulnerability{CVEID: "CVE-2026-9100", DateAdded: "2026-11-16"})
+	mon16 := time.Date(2026, 11, 16, 7, 0, 40, 0, time.UTC)
+	mon23 := time.Date(2026, 11, 23, 7, 0, 45, 0, time.UTC)
+	_, first := WeeklyLines(history[:8], cat, inv, time.Date(2026, 11, 9, 7, 0, 40, 0, time.UTC), mon16, m)
+	_, second := WeeklyLines(history, cat, inv, mon16, mon23, m)
+	if out := strings.Join(first, "\n"); !strings.Contains(out, "No flaw was newly listed") {
+		t.Errorf("the summary sent that morning counts it:\n%s", out)
+	}
+	out := strings.Join(second, "\n")
+	if !strings.Contains(out, "listed as exploited this week: 1.") {
+		t.Errorf("the next summary leaves it out:\n%s", out)
+	}
+	// Daily runs, a few seconds apart from week to week.
+	if !strings.Contains(out, "Checked on 7 of the last 7 days") {
+		t.Errorf("day count:\n%s", out)
+	}
+}
+
+func TestWeeklyLinesFlawsAfterTheLastReachedRun(t *testing.T) {
+	m := Meta{Organization: "Example", Lang: "en"}
+	stays := kevFinding("b.example.com", "CVE-2019-11043", match.Medium)
+	var history []*state.Snapshot
+	for d := 9; d <= 16; d++ {
+		s := snap(time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC).Format(time.DateOnly), 1, stays)
+		if d >= 15 {
+			s.Services, s.Findings = 0, nil // Sunday and Monday reach nothing
+		}
+		history = append(history, s)
+	}
+	cat := weekCatalog(
+		kev.Vulnerability{CVEID: "CVE-2026-9200", DateAdded: "2026-11-12"},
+		kev.Vulnerability{CVEID: "CVE-2026-9201", DateAdded: "2026-11-15"},
+	)
+	from := time.Date(2026, 11, 9, 8, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 11, 16, 8, 0, 0, 0, time.UTC)
+	_, lines := WeeklyLines(history, cat, nil, from, now, m)
+	out := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"Flaws newly listed as exploited this week: 1. Hejnal checked each one",
+		"Flaws listed as exploited after the last check that reached your systems: 1. Hejnal could not check them yet.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary is missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "No flaw was newly listed") {
+		t.Errorf("summary says no flaw was listed:\n%s", out)
 	}
 }

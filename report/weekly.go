@@ -49,7 +49,9 @@ func WeeklyLines(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inv
 	if start.IsZero() || !start.Before(now) || now.Sub(start) > 2*weekWindow {
 		start = now.Add(-weekWindow)
 	}
-	span := int(math.Ceil(now.Sub(start).Hours() / 24))
+	// Rounded, so a run a few seconds later than last week's does not add a
+	// day.
+	span := max(1, int(math.Round(now.Sub(start).Hours()/24)))
 	title := tr("wk.title", m.Organization, start.UTC().Format(time.DateOnly), now.UTC().Format(time.DateOnly))
 
 	snaps := slices.Clone(history)
@@ -164,37 +166,51 @@ func WeeklyLines(history []*state.Snapshot, cat *kev.Catalog, inv *inventory.Inv
 
 // newlyExploited says how many flaws CISA and ENISA listed as exploited
 // during the period and whether any of them is in the organisation's
-// software: affected, or ruled out by the version it shows. Only flaws
-// listed by the day of the last run that reached something were checked.
-// Without the catalog it says nothing, since it cannot tell.
+// software: affected, or ruled out by the version it shows. A period counts
+// the flaws listed from the day it starts up to the day before it ends, so
+// each summary counts each flaw once, also one listed on the day of a
+// summary after it was sent. Flaws listed on or after the day of the last
+// run that reached something may not have been in the catalog it used, so
+// they are counted as not checked yet. Without the catalog it says nothing,
+// since it cannot tell.
 func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, start, now time.Time, stale bool) string {
 	if cat == nil {
 		return ""
 	}
 	from := start.UTC().Format(time.DateOnly)
 	to := now.UTC().Format(time.DateOnly)
-	if checked := latest.GeneratedAt.UTC().Format(time.DateOnly); !stale && checked < to {
-		to = checked
+	checkedTo := latest.GeneratedAt.UTC().Format(time.DateOnly)
+	if stale {
+		checkedTo = ""
 	}
-	listed := map[string]bool{}
+	checked, unchecked := map[string]bool{}, map[string]bool{}
 	for _, v := range cat.Vulnerabilities {
 		d := v.DateAdded
 		if v.ENISAEarlier != "" && (d == "" || v.ENISAEarlier < d) {
 			d = v.ENISAEarlier
 		}
-		if d > from && d <= to && v.CVEID != "" {
-			listed[v.CVEID] = true
+		if v.CVEID == "" || d < from || d >= to {
+			continue
+		}
+		if d < checkedTo {
+			checked[v.CVEID] = true
+		} else {
+			unchecked[v.CVEID] = true
 		}
 	}
-	switch {
-	case len(listed) == 0:
+	later := ""
+	if len(unchecked) > 0 {
+		later = tr("wk.kev.unchecked", len(unchecked))
+	}
+	if len(checked) == 0 {
+		if later != "" {
+			return later
+		}
 		return tr("wk.kev.none")
-	case stale:
-		return tr("wk.kev.unchecked", len(listed))
 	}
 	hit, ruled := map[string]bool{}, map[string]bool{}
 	for _, f := range latest.Findings {
-		if f.Kind != match.KindKEV || !listed[f.CVE] {
+		if f.Kind != match.KindKEV || !checked[f.CVE] {
 			continue
 		}
 		if f.RuledOut() {
@@ -206,13 +222,19 @@ func newlyExploited(tr translator, cat *kev.Catalog, latest *state.Snapshot, sta
 	for c := range hit {
 		delete(ruled, c)
 	}
+	var line string
 	switch {
 	case len(hit) > 0:
-		return tr("wk.kev.hit", len(listed), len(hit))
+		line = tr("wk.kev.hit", len(checked), len(hit))
 	case len(ruled) > 0:
-		return tr("wk.kev.ruled", len(listed), len(ruled))
+		line = tr("wk.kev.ruled", len(checked), len(ruled))
+	default:
+		line = tr("wk.kev.clear", len(checked))
 	}
-	return tr("wk.kev.clear", len(listed))
+	if later != "" {
+		line += " " + later
+	}
+	return line
 }
 
 // oldestOpen returns the open item first seen longest ago, and when.
