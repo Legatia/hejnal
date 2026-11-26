@@ -12,9 +12,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Legatia/hejnal/discover"
 	"github.com/Legatia/hejnal/engine"
+	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
 	"github.com/Legatia/hejnal/notify"
 	"github.com/Legatia/hejnal/report"
@@ -270,6 +272,7 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	fs.StringVar(&o.emailTo, "email-to", "", "comma-separated addresses to email new findings to; SMTP settings come from HEJNAL_SMTP_* (or set HEJNAL_EMAIL_TO)")
 	fs.StringVar(&o.failOn, "fail-on", "none", "exit with status 2 when new findings reach this severity: critical, high, medium, low or none")
 	fs.StringVar(&o.out, "out", "", "where to write the fix list (default <state>/fixlist.md)")
+	fs.StringVar(&o.weekly, "weekly", "monday", "day to send a summary of the week, even when nothing is new: monday to sunday, or off")
 	if err := a.parse(fs, args); err != nil {
 		return exitError, err
 	}
@@ -277,6 +280,10 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitError, err
 	}
 	failOn, err := match.ParseSeverity(o.failOn)
+	if err != nil {
+		return exitError, err
+	}
+	weekday, weeklyOn, err := parseWeekday(o.weekly)
 	if err != nil {
 		return exitError, err
 	}
@@ -320,8 +327,10 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 		fmt.Fprint(a.stdout, checksTip(snap.Findings))
 	}
 
-	if len(notifiers) > 0 && (ch.First || len(ch.Added) > 0 || len(systems) > 0) {
+	fixed := report.FixedItems(snap.Findings, ch.Resolved, res.Inventory)
+	if len(notifiers) > 0 && (ch.First || len(ch.Added) > 0 || len(systems) > 0 || len(fixed) > 0) {
 		title, lines := report.SummaryLines(snap.Findings, ch.Added, ch.Resolved, ch.First, m)
+		lines = append(lines, report.FixedLines(fixed, o.lang)...)
 		lines = append(lines, systems...)
 		msg := notify.Message{Title: title, Lines: lines, FixList: fix.Bytes()}
 		var errs []error
@@ -339,10 +348,80 @@ func (a *app) cmdRun(ctx context.Context, args []string) (int, error) {
 	if err := e.MarkReported(snap); err != nil {
 		return exitError, err
 	}
+	if len(notifiers) > 0 && weeklyOn {
+		if err := a.sendWeekly(ctx, e, notifiers, weekday, res.Inventory, m); err != nil {
+			return exitError, err
+		}
+	}
 	if match.AtLeast(ch.Added, failOn) {
 		return exitFindings, nil
 	}
 	return exitOK, nil
+}
+
+// parseWeekday reads the -weekly flag: a day of the week, or off.
+func parseWeekday(s string) (time.Weekday, bool, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "off" || s == "none" {
+		return 0, false, nil
+	}
+	for d := time.Sunday; d <= time.Saturday; d++ {
+		if s == strings.ToLower(d.String()) {
+			return d, true, nil
+		}
+	}
+	return 0, false, fmt.Errorf("-weekly must be a day of the week, such as monday, or off")
+}
+
+// weeklyDue reports whether the weekly summary is due: on the chosen day
+// once at least six days passed since the last one, or on any day once
+// more than a week passed, when no run happened on the chosen day.
+func weeklyDue(last, now time.Time, day time.Weekday) bool {
+	if last.IsZero() {
+		return false
+	}
+	age := now.Sub(last)
+	return (now.Weekday() == day && age >= 6*24*time.Hour) || age >= 8*24*time.Hour
+}
+
+// sendWeekly sends the summary of the last 7 days when it is due. The first
+// run only records the day, since its own message already says what Hejnal
+// found. If a channel fails, the next run tries again.
+func (a *app) sendWeekly(ctx context.Context, e *engine.Engine, notifiers []notify.Notifier, day time.Weekday, inv *inventory.Inventory, m report.Meta) error {
+	store := e.Store()
+	now := a.now()
+	last, err := store.WeeklySent()
+	if err != nil {
+		return err
+	}
+	if last.IsZero() {
+		return store.SaveWeeklySent(now)
+	}
+	if !weeklyDue(last, now, day) {
+		return nil
+	}
+	history, err := store.History()
+	if err != nil {
+		return err
+	}
+	cat, err := e.Catalog(ctx)
+	if err != nil {
+		// The summary still says what was checked and fixed.
+		a.logf("weekly summary without newly listed flaws: %v", err)
+		cat = nil
+	}
+	title, lines := report.WeeklyLines(history, cat, inv, now, m)
+	var errs []error
+	for _, n := range notifiers {
+		if err := n.Notify(ctx, notify.Message{Title: title, Lines: lines}); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("weekly summary: %w; the next run sends it again", err)
+	}
+	fmt.Fprintln(a.stdout, "Weekly summary sent.")
+	return store.SaveWeeklySent(now)
 }
 
 // notifiers builds the configured notification channels. Secrets come from

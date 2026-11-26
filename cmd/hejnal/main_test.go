@@ -36,6 +36,7 @@ type harness struct {
 	php      string // the PHP version the site shows; 8.3.12 when empty, none when "-"
 	siteURL  string
 	hook     *httptest.Server
+	now      time.Time // the clock; testNow when zero
 }
 
 // setPHP changes the PHP version the site shows; "-" stops it showing PHP.
@@ -92,7 +93,11 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) run(args ...string) (code int, stdout, stderr string) {
 	var out, errOut bytes.Buffer
 	a := newApp(&out, &errOut)
-	a.now = func() time.Time { return testNow }
+	now := testNow
+	if !h.now.IsZero() {
+		now = h.now
+	}
+	a.now = func() time.Time { return now }
 	a.githubPause = 0
 	a.livePause = 10 * time.Millisecond
 	code = a.run(context.Background(), args)

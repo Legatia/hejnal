@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Legatia/hejnal/inventory"
 	"github.com/Legatia/hejnal/match"
 )
 
@@ -496,6 +497,103 @@ func SummaryLines(open, added, resolved []match.Finding, first bool, m Meta) (st
 		lines = append(lines, tr("sum.report"))
 	}
 	return title, lines
+}
+
+// FixedItems returns the items a run sees are fixed. A finding that is
+// merely gone proves little: a maintenance page hides the product, and a
+// host that stops answering hides everything. So an item counts as fixed
+// only when the run saw what replaced it:
+//
+//   - the version check now rules out all its flaws, after a run saw the
+//     item with more than a product name (an affected version, or the
+//     problem itself);
+//   - its product still answers on the same host and port, without the
+//     flaw, the old release or the open admin interface;
+//   - its host and port still present a certificate, for certificate items;
+//   - its domain's mail records were read, for mail items.
+//
+// all are the run's findings, resolved those gone since the last report and
+// inv the run's inventory.
+func FixedItems(all, resolved []match.Finding, inv *inventory.Inventory) []match.Group {
+	if inv == nil || len(resolved) == 0 {
+		return nil
+	}
+	tech, cert, mail := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	services := 0
+	for _, a := range inv.Assets {
+		host := strings.ToLower(a.Host)
+		for _, s := range a.Services {
+			services++
+			at := host + "|" + strconv.Itoa(s.Port)
+			if s.TLS != nil {
+				cert[at] = true
+			}
+			for _, t := range s.Technologies {
+				tech[at+"|"+t.ID] = true
+			}
+		}
+	}
+	for _, m := range inv.Mail {
+		mail[strings.ToLower(m.Domain)] = true
+	}
+	if services == 0 {
+		// A run that reached nothing cannot tell what is fixed.
+		return nil
+	}
+	active, present, confirmed := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, f := range all {
+		k := match.GroupKey(f)
+		present[k] = true
+		if !f.RuledOut() {
+			active[k] = true
+		}
+	}
+	for _, f := range resolved {
+		if f.Confidence != match.ConfidenceProduct {
+			confirmed[match.GroupKey(f)] = true
+		}
+	}
+	seen := func(f match.Finding) bool {
+		at := strings.ToLower(f.Host) + "|" + strconv.Itoa(f.Port)
+		switch f.Kind {
+		case match.KindKEV, match.KindEOL, match.KindAdminExposed:
+			return tech[at+"|"+f.TechID]
+		case match.KindTLSExpired, match.KindTLSExpiring:
+			return cert[at]
+		case match.KindEmail:
+			return mail[strings.ToLower(f.Host)]
+		}
+		return false
+	}
+	var fixed []match.Finding
+	for _, f := range resolved {
+		k := match.GroupKey(f)
+		switch {
+		case active[k]:
+		case present[k]:
+			if confirmed[k] {
+				fixed = append(fixed, f)
+			}
+		case seen(f):
+			fixed = append(fixed, f)
+		}
+	}
+	return match.Groups(fixed)
+}
+
+// FixedLines names fixed items for a run summary, at most a few.
+func FixedLines(fixed []match.Group, lang string) []string {
+	tr := newTranslator(lang)
+	const maxFixed = 5
+	var lines []string
+	for i, g := range fixed {
+		if i == maxFixed {
+			lines = append(lines, tr("sum.fixed.more", len(fixed)-maxFixed))
+			break
+		}
+		lines = append(lines, tr("sum.fixed", itemTitle(tr, g)))
+	}
+	return lines
 }
 
 // ItemTitle names an item to fix in plain text, such as "WordPress on
